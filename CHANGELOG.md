@@ -210,6 +210,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-648: guard bảo vệ thêm dạng hàng ký mà formatter có thể chuẩn hóa. Cổng G7 vẫn chỉ xác nhận dòng ký chuẩn.
+
 - AUD-HAR-406: trình cài và `--plan` báo lỗi `core.hooksPath` trỏ vào tệp trước khi ghi dự án.
 
 - AUD-HAR-401: `release-check` chỉ đúng worktree cần chạy xác minh vòng khi checkout hiện tại chưa có sổ máy.
