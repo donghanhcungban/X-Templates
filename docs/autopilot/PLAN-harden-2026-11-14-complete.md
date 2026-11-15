@@ -11,6 +11,6 @@
 
 ## Task
 - [x] `T-3890` 🔴 AUD-SEC-648: bảo toàn GO-NO-GO khi lỗi I/O tại điểm vào formatter — Gate: `python3 -m unittest tests.test_hooks.DevTaskTest`
-- [ ] `T-3891` Đồng bộ hướng dẫn harden/merge với ADR-0079 — Gate: `python3 scripts/xt.py validate && python3 scripts/check-links.py`
+- [x] `T-3891` Đồng bộ hướng dẫn harden/merge với ADR-0079 — Gate: `python3 scripts/xt.py validate && python3 scripts/check-links.py` — #568 (`c57610d2`).
 - [ ] `T-3892` Trả nợ audit và xác nhận các phát hiện còn mở theo sổ — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md --strict`
 Sau `loop verify --all`, chạy `release-check` trên ứng viên phát hành.

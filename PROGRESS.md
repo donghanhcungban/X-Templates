@@ -34,7 +34,7 @@
 - Coverage cục bộ < 100 % khi `coverage` cài ở site người dùng: hook chạy `python3 -I` nên tiến trình con không được đo — CI là cổng coverage (đo 2026-11-05).
 
 ## Bàn giao phiên
-- Mốc `main` `ae7727e6` (#576). Xét PR xanh theo số tăng dần.
+- Mốc `main` `be61864b` (#582). Xét PR xanh theo số tăng dần.
 - Chờ người (một lần, gom theo lát S8 của nghiên cứu): fixture Codex/Gemini (tài khoản trả phí); T-1834 gỡ `merge-gate` ở ruleset hai dự án đích rồi xoá stub (hạn xét: 2026-12-31); ruleset X-Templates sống còn tắt resolve thread + bật "Allow auto-merge" (RUNBOOK-PR-STEWARD §1), `XT_STEWARD_TOKEN` (một GitHub App); Dependabot security updates. Máy làm được, chưa làm (lộ trình nghiên cứu): Routine tuần `feedback aggregate` có tồn tại nhưng push 403 vì thiếu nguồn repo (S2); bỏ `pull_request_target` khỏi `pr-review.yml` trước 2026-12-02 (S3); T-1508 ghi D-NNN không bật (S1).
 - `pr stats --days 7` (2026-11-05):
 
