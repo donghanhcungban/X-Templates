@@ -5293,7 +5293,7 @@ def _wrapper_value(name: str, prev: str) -> bool:
 
 
 EXEC_A_LAST_RE = re.compile(r"-[^a]*a")  # cụm cờ `exec` mà `a` ĐẦU TIÊN đứng cuối: tên ở từ kế (`-la x`, `-ca x`)
-# Cờ có giá trị chỉ ăn từ kế nếu nó đứng cuối cụm. Nguồn: https://man.openbsd.org/ssh-agent.
+# Cờ có giá trị chỉ ăn từ kế nếu nó đứng cuối cụm (ssh-agent(1), OpenBSD).
 SSH_AGENT_VALUE_LAST_RE = re.compile(rf"-[{''.join(sorted(SSH_AGENT_FIXED_FLAGS))}]*[aAEOPt]")
 SSH_AGENT_COMBINED_RE = re.compile(r"-[cDdksTUuV]+|-[cDdksTUuV]*[aAEOPt].+")
 
