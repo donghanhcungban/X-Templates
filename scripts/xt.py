@@ -17122,6 +17122,8 @@ def _bench_score(group: str, expect: Dict[str, Any], got: Dict[str, Any]) -> str
     gates = AUTONOMY_GATES[group]
     if any(expect.get(k) is False and got.get(k) is True for k in gates):
         return "false_green"
+    if any(k in expect and not isinstance(got.get(k), bool) for k in gates):
+        return "mismatch"
     if any(expect.get(k) is True and got.get(k) is False for k in gates):
         return "false_red"
     if any(got.get(k) != v for k, v in expect.items() if k not in gates):
