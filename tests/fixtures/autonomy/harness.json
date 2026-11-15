@@ -466,6 +466,106 @@
      "/a%2Fb?q=x+y&next=/a?b"
     ]
    }
+  },
+  {
+   "id": "wrapper-ssh-agent-no-options",
+   "origin": "audit",
+   "refs": [
+    "AUD-SEC-691"
+   ],
+   "input": {
+    "kind": "wrapper_argv",
+    "argv": [
+     "ssh-agent",
+     "git",
+     "status",
+     "--short"
+    ]
+   },
+   "expect": {
+    "green": true,
+    "argv": [
+     "git",
+     "status",
+     "--short"
+    ]
+   }
+  },
+  {
+   "id": "wrapper-ssh-agent-joined",
+   "origin": "audit",
+   "refs": [
+    "AUD-SEC-691"
+   ],
+   "input": {
+    "kind": "wrapper_argv",
+    "argv": [
+     "ssh-agent",
+     "-Ut30",
+     "git",
+     "status",
+     "--short"
+    ]
+   },
+   "expect": {
+    "green": true,
+    "argv": [
+     "git",
+     "status",
+     "--short"
+    ]
+   }
+  },
+  {
+   "id": "wrapper-ssh-agent-separate",
+   "origin": "audit",
+   "refs": [
+    "AUD-SEC-691"
+   ],
+   "input": {
+    "kind": "wrapper_argv",
+    "argv": [
+     "ssh-agent",
+     "-a",
+     "fixture.sock",
+     "git",
+     "status",
+     "--short"
+    ]
+   },
+   "expect": {
+    "green": true,
+    "argv": [
+     "git",
+     "status",
+     "--short"
+    ]
+   }
+  },
+  {
+   "id": "wrapper-ssh-agent-end-options",
+   "origin": "audit",
+   "refs": [
+    "AUD-SEC-691"
+   ],
+   "input": {
+    "kind": "wrapper_argv",
+    "argv": [
+     "ssh-agent",
+     "--",
+     "git",
+     "status",
+     "--short"
+    ]
+   },
+   "expect": {
+    "green": true,
+    "argv": [
+     "git",
+     "status",
+     "--short"
+    ]
+   }
   }
  ]
 }
