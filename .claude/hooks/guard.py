@@ -808,27 +808,38 @@ def _is_go_no_go(path: str) -> bool:
 
 
 def _go_sign_rows(text: str) -> Set[GoRow]:
-    """Dòng ký (các ô, bỏ khoảng trắng hai đầu) ở §5 của GO-NO-GO: hợp hai họ của `_go_sign_views`."""
+    """Dòng ký ở §5 như bộ kiểm phát hành đọc, kể cả cách đọc thô."""
     raw, shown = _go_sign_views(text)
     return raw | shown
 
 
-def _go_sign_views(text: str) -> Tuple[Set[GoRow], Set[GoRow]]:
-    """(luật thô cũ, phần `release-check` thấy — như `xt._go_sign_rows` trên `_go_shown`)."""
-    return _go_raw_rows(text), _go_raw_rows(_go_shown(text))
+def _go_sign_views(text: str, *, align: bool = False) -> Tuple[Set[GoRow], Set[GoRow]]:
+    """Dòng thô và dòng nhìn thấy. Cách đọc formatter được so riêng, không thay cách xác nhận chữ ký."""
+    return _go_raw_rows(text, align=align), _go_raw_rows(_go_shown(text), align=align)
 
 
-def _go_raw_rows(text: str) -> Set[GoRow]:
+def _go_align_table_edge(line: str) -> str:
+    return "|" + line.strip(" \t").removeprefix("|").removesuffix("|") + "|"
+
+
+def _go_raw_rows(text: str, *, align: bool = False) -> Set[GoRow]:
     """Dòng ký trong mục `## 5` đầu tiên tới `## ` kế; không có tiêu đề §5 → rỗng."""
     part = GO_SIGN_HEAD_RE.split(text, maxsplit=1)
     section = GO_NEXT_HEAD_RE.split(part[1], maxsplit=1)[0] if len(part) == 2 else ""
+    if align:
+        section = "\n".join(map(_go_align_table_edge, section.split("\n")))
     return {tuple(c.strip() for c in m[0].strip().strip("|").split("|")) for m in GO_SIGN_ROW_RE.finditer(section)}
 
 
 def _go_signed_safe(text: str) -> bool:
     """Nội dung MCP có dòng ký §5 hay `\\r` trần (đọc khác `release-check`); lỗi khi đọc → coi như có (chiều chặt)."""
     try:
-        return bool(GO_BARE_CR_RE.search(text)) or bool(_go_sign_rows(_go_nl(text)))
+        normalized = _go_nl(text)
+        return (
+            bool(GO_BARE_CR_RE.search(text))
+            or bool(_go_sign_rows(normalized))
+            or any(_go_sign_views(normalized, align=True))
+        )
     except Exception:  # hook lỗi thì fail-open — không để lỗi thoát ra
         return True
 
@@ -981,14 +992,18 @@ def _go_write_why(rel: str, disk: str, content: str) -> str:
     hay BOM lệch đĩa (D-417: `release-check` đọc khác nội dung gửi); file đã ký đổi tiêu đề/`subject:` (D-392)."""
     before, after = _go_nl(disk), _go_nl(content)
     old, now = _go_sign_views(before), _go_sign_views(after)
-    new = sorted((now[0] - old[0]) | (now[1] - old[1]))
+    old_aligned, now_aligned = _go_sign_views(before, align=True), _go_sign_views(after, align=True)
+    new = sorted(
+        (now[0] - old[0]) | (now[1] - old[1]) | (now_aligned[0] - old_aligned[0]) | (now_aligned[1] - old_aligned[1])
+    )
     if new:
         row = ("| " + " | ".join(new[0]) + " |")[:160]
         return f"Không ghi dòng ký §5 vào {rel} (`{row}`): {GO_SIGN_WHY} — agent lập phần máy, để trống ô Tên/Ngày."
     if GO_BARE_CR_RE.search(content) or (before[:1] == chr(0xFEFF)) != (after[:1] == chr(0xFEFF)):
         return f"Không ghi {rel} có `\\r` không kèm `\\n` hay BOM lệch file trên đĩa (D-417): {GO_SIGN_WHY}."
-    if (old[0] | old[1]) and (now[0] | now[1]) and _go_anchor_views(before) != _go_anchor_views(after):
-        return f"Không đổi tiêu đề/dòng `subject:` của {rel}: {GO_REBIND_WHY} (D-392); {GO_SIGN_WHY}."
+    if (any(old) or any(old_aligned)) and (any(now) or any(now_aligned)):
+        if _go_anchor_views(before) != _go_anchor_views(after):
+            return f"Không đổi tiêu đề/dòng `subject:` của {rel}: {GO_REBIND_WHY} (D-392); {GO_SIGN_WHY}."
     return ""
 
 
