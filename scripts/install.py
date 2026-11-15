@@ -1087,6 +1087,20 @@ def hooks_symlink(target: Path, hooks: Path) -> bool:
     return inside and parent_symlink(hooks / GIT_HOOKS[0])
 
 
+def git_hooks_path_error(target: Path, no_harness: bool, no_git_hooks: bool) -> str | None:
+    if no_harness or no_git_hooks:
+        return None
+    hooks = git_hooks_dir(target)
+    if hooks is None or hooks_symlink(target, hooks):
+        return None
+    for part in (hooks, *hooks.parents):
+        if part.exists():
+            if not part.is_dir():
+                return f"✗ core.hooksPath: '{part}' không phải thư mục. Sửa cấu hình Git hoặc chạy với --no-git-hooks."
+            break
+    return None
+
+
 def git_hook_action(dst: Path) -> str:
     """Quyết định (không ghi) cho một git hook: 'copied' (chưa có) | 'updated' (hook khung, khác bản mới) | 'kept' (hook
     khung, giống bản mới) | 'kept-own' (hook không mang dấu khung — của dự án, husky, pre-commit… — hay symlink)."""
@@ -2191,7 +2205,11 @@ def install_plan(
     """`--plan`: in JSON kế hoạch (quyền/hook/file/git hook/adapter; gói khi `--pack`) ra stdout, KHÔNG ghi gì vào dự án.
     Thoát 0; 2 nếu đích không hợp lệ."""
     target = target.resolve()
-    error = target_error(target, with_github) or pack_root_error(target, pack)
+    error = (
+        target_error(target, with_github)
+        or pack_root_error(target, pack)
+        or git_hooks_path_error(target, no_harness, no_git_hooks)
+    )
     if error:
         log(error)
         return 2
@@ -2246,7 +2264,11 @@ def install(
     _new_cwd: bool = False,
 ) -> int:
     target = target if _new_cwd else target.resolve()
-    error = target_error(target, with_github) or pack_root_error(target, pack)
+    error = (
+        target_error(target, with_github)
+        or pack_root_error(target, pack)
+        or git_hooks_path_error(target, no_harness, no_git_hooks)
+    )
     if error:
         log(error)
         return 2
