@@ -1012,6 +1012,39 @@ class PerfGuardTextAttrTest(unittest.TestCase):
         (d / "link").symlink_to(xt.PERF_ODD_NAME)
         self.assertFalse(xt._perf_binary(d, sha, "link"))
 
+    def test_blob_probe_has_timeout_even_with_partial_output(self):
+        stub = self.d / "sleeping_git.py"
+        stub.write_text("import sys, time\nsys.stdout.buffer.write(b'abc')\nsys.stdout.flush()\ntime.sleep(2)\n")
+        with (
+            unittest.mock.patch.object(xt, "GIT_SAFE_READ", (sys.executable, str(stub))),
+            unittest.mock.patch.object(xt, "GIT_TIMEOUT", 0.1),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "git cat-file quá"):
+                xt._perf_blob_head(self.d, "HEAD:app.py")
+
+    def test_blob_probe_reports_pipe_error_and_reaps_child(self):
+        proc = unittest.mock.Mock()
+        proc.stdout = unittest.mock.MagicMock(spec=io.BytesIO)
+        proc.stdout.read.side_effect = OSError("read failed")
+        with unittest.mock.patch.object(xt.subprocess, "Popen", return_value=proc):
+            with self.assertRaisesRegex(RuntimeError, "git cat-file: read failed"):
+                xt._perf_blob_head(self.d, "HEAD:app.py")
+        proc.stdout.read.assert_called_once_with(xt.PERF_BINARY_PEEK)
+        proc.kill.assert_called_once_with()
+        proc.wait.assert_called_once_with()
+
+    def test_blob_probe_closes_pipe_if_reader_cannot_start(self):
+        proc = unittest.mock.Mock(stdout=io.BytesIO())
+        with (
+            unittest.mock.patch.object(xt.subprocess, "Popen", return_value=proc),
+            unittest.mock.patch.object(xt.threading.Thread, "start", side_effect=RuntimeError("thread unavailable")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "thread unavailable"):
+                xt._perf_blob_head(self.d, "HEAD:app.py")
+        self.assertTrue(proc.stdout.closed)
+        proc.kill.assert_called_once_with()
+        proc.wait.assert_called_once_with()
+
     def test_guard_text_attr_snippet_around_match(self):
         """Đoạn trích trong ⚠ lấy quanh chỗ khớp — dòng 130 `#` rồi mới tới `lru_cache` vẫn in chỗ khớp — và escape ký
         tự không in được: `\\r`, ESC không ra terminal thô (G4)."""
