@@ -140,7 +140,21 @@ import urllib.parse
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, List, NamedTuple, NoReturn, Optional, Sequence, Set, Tuple
+from typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    NoReturn,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_FRAMEWORK = (SCRIPT_DIR.parent / "framework").resolve()
@@ -17630,13 +17644,39 @@ def _perf_untracked_lines(base: Path, names: List[str]) -> List[Tuple[str, str]]
     return out
 
 
+def _perf_read_prefix(pipe: BinaryIO, result: "concurrent.futures.Future[bytes]") -> None:
+    """Luồng đọc sở hữu pipe, kể cả khi luồng chính đã dừng chờ."""
+    try:
+        with pipe:
+            head = pipe.read(PERF_BINARY_PEEK)
+    except OSError as exc:
+        result.set_exception(exc)
+    else:
+        result.set_result(head)
+
+
 def _perf_blob_head(base: Path, spec: str) -> bytes:
-    """≤ PERF_BINARY_PEEK byte đầu của blob `spec` (không có → b""): đọc qua ống rồi giết git, không nạp cả blob."""
+    """Đọc tối đa PERF_BINARY_PEEK byte đầu và giới hạn thời gian đợi Git."""
     cmd = [*GIT_SAFE_READ, "-C", str(base), "cat-file", "blob", spec]
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=_no_grafts(_perf_env())) as proc:
-        head = proc.stdout.read(PERF_BINARY_PEEK) if proc.stdout else b""
+    env = {**_no_grafts(_perf_env()), "GIT_NO_LAZY_FETCH": "1"}
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+    assert proc.stdout is not None
+    result: concurrent.futures.Future[bytes] = concurrent.futures.Future()
+    reader = threading.Thread(target=_perf_read_prefix, args=(proc.stdout, result), daemon=True)
+    try:
+        try:
+            reader.start()
+        except RuntimeError:
+            proc.stdout.close()
+            raise
+        return result.result(timeout=GIT_TIMEOUT)
+    except TimeoutError:
+        raise RuntimeError(f"git cat-file quá {GIT_TIMEOUT} s") from None
+    except OSError as exc:
+        raise RuntimeError(f"git cat-file: {exc}") from exc
+    finally:
         proc.kill()
-    return head
+        proc.wait()
 
 
 def _perf_binary(base: Path, ref: str, name: str) -> bool:

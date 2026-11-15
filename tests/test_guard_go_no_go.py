@@ -557,6 +557,24 @@ class GoNoGoXtSyncTest(GoNoGoGuardBase):
         ("GO_HTML_HIDDEN_RE", "HTML_HIDDEN_RE"),
     )
 
+    def test_formatter_edge_normalization_preserves_table_cells(self) -> None:
+        cells = "Role | | Decision | Date"
+        for row in (cells, "|" + cells, cells + "|", "\t|" + cells + "|  "):
+            with self.subTest(row=row):
+                normalized = guard._go_align_table_edge(row)
+                self.assertEqual([c.strip() for c in normalized[1:-1].split("|")], ["Role", "", "Decision", "Date"])
+        self.assertFalse(guard._go_sign_rows(TEMPLATE_S))
+        self.assertFalse(any(guard._go_sign_views(TEMPLATE_S, align=True)))
+
+    def test_formatter_view_cannot_discard_strict_protection(self) -> None:
+        def views(text: str, *, align: bool = False):
+            return (set(), set()) if align else ({("role", "name", "decision", "date")}, set())
+
+        with mock.patch.object(guard, "_go_sign_views", side_effect=views):
+            self.assertTrue(guard._go_signed_safe(ANCHORED))
+            why = guard._go_write_why(GO_REL, ANCHORED, ANCHORED.replace(SUBJ, SUBJ_DIGEST))
+        self.assertIn(guard.GO_REBIND_WHY, why)
+
     def test_regex_copies_match(self) -> None:
         for mine, theirs in self.PAIRS:
             with self.subTest(mine):
