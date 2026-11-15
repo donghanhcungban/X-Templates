@@ -611,6 +611,13 @@
    "ids": [
     "AUD-HAR-406"
    ]
+  },
+  {
+   "reason": "Quy tắc index PostgreSQL trong gói web-api-ts, kiểm bằng tests.test_packs.MigrationIndexTest trên fixture migration giao dịch.",
+   "ids": [
+    "AUD-DATA-012",
+    "AUD-DATA-013"
+   ]
   }
  ]
 }
