@@ -16531,6 +16531,8 @@ def bash_decision(
             return literal
         READING.set(LEGACY)
         return _stricter_reading(literal, _bash_reading(cmd, root, cwd, depth, None, rewrites))
+    except RecursionError:
+        return _budget_result(cmd, "vượt giới hạn đệ quy của bộ quét")
     finally:
         LIT_SEEN.reset(seen)
         READING.reset(mode)

@@ -37,6 +37,15 @@ def decide(cmd: str) -> dict:
         return guard.apply_policy(guard.bash_decision(cmd, str(ROOT)))
 
 
+class GuardRecursionBudgetTest(unittest.TestCase):
+    def test_scan_recursion_is_denied_and_next_scan_runs(self):
+        with mock.patch.object(guard, "_bash_decision", side_effect=RecursionError):
+            result = decide("echo hello")
+        self.assertEqual((result["decision"], result["code"]), ("deny", "BUDGET"))
+        self.assertIn("đệ quy", result["reason"])
+        self.assertEqual(decide("echo hello")["decision"], "")
+
+
 class StrictSubsetDenyTest(unittest.TestCase):
     """Mẫu tái hiện các 🔴/🟠 lớp từ vựng: guard cũ cho chạy, bash chạy tải."""
 
