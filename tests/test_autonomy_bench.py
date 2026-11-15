@@ -396,6 +396,17 @@ class AutonomyBenchCorpusTest(unittest.TestCase):
         rc, _, _ = self.run_bench("--json", "--remediation", "R.md")
         self.assertEqual(rc, 0)
 
+    def test_autonomy_bench_rejects_missing_or_non_boolean_gate_results(self):
+        for expected in (False, True):
+            self.write("harness.json", {"cases": [case("shape", {"kind": "same_command"}, {"green": expected})]})
+            for got in ({}, {"green": None}, {"green": "false"}, {"green": 0}):
+                with (
+                    self.subTest(expected=expected, got=got),
+                    unittest.mock.patch.dict(xt.BENCH_EVAL, {"harness": lambda inp, env: got}),
+                ):
+                    rc, out, _ = self.run_bench("--json")
+                    self.assertEqual((rc, json.loads(out)["mismatch"]), (1, 1))
+
     def test_autonomy_bench_guard_scratch_files_must_stay_inside(self):
         """`files` của ca: đường tuyệt đối/`..`/rỗng → ca lỗi (không ghi ra ngoài thư mục tạm); đường hợp lệ được tạo."""
         bad = [{"/etc/x": "1"}, {"../x": "1"}, {"": "1"}]

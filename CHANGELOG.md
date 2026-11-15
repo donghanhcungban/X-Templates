@@ -208,6 +208,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- `autonomy-bench` báo kết quả lệch khi bộ đánh giá trả thiếu hoặc sai kiểu giá trị cổng.
+
 - Kiểm liên kết HTTP mã hoá đường dẫn và truy vấn Unicode để lịch kiểm không dừng khi gặp URL tiếng Việt.
 
 - AUD-SEC-648: dừng formatter khi không sao lưu được GO-NO-GO và giữ bản sao phục hồi nếu ghi trả thất bại.
