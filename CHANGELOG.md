@@ -213,6 +213,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 - AUD-HAR-406: trình cài và `--plan` báo lỗi `core.hooksPath` trỏ vào tệp trước khi ghi dự án.
 
 - AUD-HAR-401: `release-check` chỉ đúng worktree cần chạy xác minh vòng khi checkout hiện tại chưa có sổ máy.
+- T-3867: guard trả `BUDGET` khi bộ quét Bash chạm giới hạn đệ quy của Python.
 
 - Kiểm liên kết HTTP mã hoá đường dẫn và truy vấn Unicode để lịch kiểm không dừng khi gặp URL tiếng Việt.
 
