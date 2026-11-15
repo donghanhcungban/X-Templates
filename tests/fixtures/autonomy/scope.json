@@ -587,6 +587,18 @@
     "AUD-SEC-639",
     "AUD-DOC-289"
    ]
+  },
+  {
+   "reason": "Bộ chấm JUnit cho mutation của gói Vitest nằm ngoài sáu nhóm của autonomy-bench. CI chạy tests.test_packs, có ca đúng tên, sai tên và lỗi hạ tầng.",
+   "ids": [
+    "AUD-TEST-107"
+   ]
+  },
+  {
+   "reason": "Hợp đồng của chính bộ chấm autonomy-bench được kiểm độc lập bởi tests.test_autonomy_bench.AutonomyBenchCorpusTest trong CI: kết quả thiếu hoặc sai kiểu phải trả exit 1 và ghi mismatch cho cả hai giá trị mong đợi.",
+   "ids": [
+    "AUD-TEST-108"
+   ]
   }
  ]
 }
