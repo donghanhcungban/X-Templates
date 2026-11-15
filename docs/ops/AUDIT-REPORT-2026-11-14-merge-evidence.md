@@ -23,3 +23,9 @@ Kế hoạch: D-488 xử lý 407/408 và thiếu context trước; sau đó sử
 - TEST: CI 43610149568 xanh, 3.423 unit test, 8 E2E, 100 % dòng/nhánh. Hai lượt rà tập trung đạt 336 và 168 test. Đã rà cấu trúc 64 tệp đổi, chưa kiểm từng assertion/corpus và 84 miễn trừ mới. AUD-TEST-107/108 được xác minh độc lập với XML/corpus tạm.
 - HAR: rà 10/11 tệp kể từ 454d146; còn nội bộ guard và bằng chứng cũ. Hai lượt test đạt 96 và 62 ca. AUD-HAR-401/406 tái hiện; AUD-HAR-411 xác minh độc lập. Không nâng SHA quét TEST/HAR.
 - D-492/T-3867: giả lập RecursionError với lệnh vô hại. Kiểm độc lập cả hai lượt đọc, hook, adapter và Gate. Không kết luận đóng các mục đỏ khác.
+
+## Rà phạm vi bench tại ae7727e6
+
+- 84 ID thêm vào `scope.json` từ 454d146 đã đối chiếu sổ và 19 lý do. 81 ID thực sự được miễn khỏi mẫu số và 3 ID xanh không thuộc mẫu số. Trên ae7727e6 có 414 ID phủ trực tiếp và 309 ngoài phạm vi. Không gộp việc đối chiếu lý do với tái hiện từng phát hiện.
+- AUD-HAR-362 đã có 5 ca đối chứng; gắn ID vào đúng các ca và bỏ miễn. TEST còn phần assertion/corpus guard chưa rà ngữ nghĩa hết.
+- HAR: đã đối chiếu 30 mục stale thuộc harness, 18 lệnh kiểm và 175 test đều đạt. BASE-ERR-004 còn đường đọc Git blob chưa xác minh đủ timeout; BASE-CFG-001/DEP-002/GATE-001 còn câu mô tả cũ. Còn 39 dòng stale ngoài phạm vi lọc và phần nội bộ guard.
