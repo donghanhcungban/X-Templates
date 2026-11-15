@@ -1093,11 +1093,9 @@ def git_hooks_path_error(target: Path, no_harness: bool, no_git_hooks: bool) -> 
     hooks = git_hooks_dir(target)
     if hooks is None or hooks_symlink(target, hooks):
         return None
-    for part in (hooks, *hooks.parents):
-        if part.exists():
-            if not part.is_dir():
-                return f"✗ core.hooksPath: '{part}' không phải thư mục. Sửa cấu hình Git hoặc chạy với --no-git-hooks."
-            break
+    existing = next(filter(Path.exists, (hooks, *hooks.parents)), target)
+    if not existing.is_dir():
+        return f"✗ core.hooksPath: '{existing}' không phải thư mục. Sửa cấu hình Git hoặc chạy với --no-git-hooks."
     return None
 
 
