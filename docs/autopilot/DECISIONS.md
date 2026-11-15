@@ -723,3 +723,10 @@
 - Chọn: Mã hoá path và query tại điểm gửi HTTP, giữ liên kết nguyên văn trong báo cáo
 - Lý do (tiêu chí chất lượng cuối): Hai kiểm độc lập xác nhận Unicode thô làm dừng cả báo cáo. Điểm gửi dùng chung xử lý cả URL hiện tại và URL mới, không mã hoá lại %xx.
 - Đường lùi: Revert PR kiểm liên kết và mã hoá thủ công URL nguồn trong lúc điều tra.
+
+### D-492 · 2026-11-14T15:33:02+00:00 · T-3867: guard làm gì khi bộ quét Bash ném RecursionError?
+
+- Phương án: (1) Giữ xử lý lỗi chung và báo lỗi từ runner · (2) Trả deny BUDGET ở ranh giới quyết định Bash, giữ nguyên giải phóng context
+- Chọn: Trả deny BUDGET ở ranh giới quyết định Bash, giữ nguyên giải phóng context
+- Lý do (tiêu chí chất lượng cuối): Unit mock vô hại xác nhận RecursionError thoát ranh giới quyết định; deny BUDGET giữ chính sách khi không đủ khả năng quét.
+- Đường lùi: Revert PR riêng và ghi T-3867 mở trong sổ.
