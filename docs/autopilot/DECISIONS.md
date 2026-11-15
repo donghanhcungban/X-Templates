@@ -730,3 +730,10 @@
 - Chọn: Trả deny BUDGET ở ranh giới quyết định Bash, giữ nguyên giải phóng context
 - Lý do (tiêu chí chất lượng cuối): Unit mock vô hại xác nhận RecursionError thoát ranh giới quyết định; deny BUDGET giữ chính sách khi không đủ khả năng quét.
 - Đường lùi: Revert PR riêng và ghi T-3867 mở trong sổ.
+
+### D-493 · 2026-11-15T01:41:32+00:00 · AUD-SEC-648: xử lý hàng ký mà formatter có thể chuẩn hóa thế nào?
+
+- Phương án: (1) Chỉ bảo toàn trước/sau ở dev-task.sh · (2) Giữ bảo toàn formatter và nhận dạng hàng ký tiềm năng ở biên Write/MCP
+- Chọn: Giữ bảo toàn formatter và nhận dạng hàng ký tiềm năng ở biên Write/MCP
+- Lý do (tiêu chí chất lượng cuối): Hai lớp bảo vệ bổ sung cho nhau. Guard phát hiện thêm nội dung tiềm năng, G7 giữ đúng tiêu chí chữ ký chuẩn và quy trình ký của người.
+- Đường lùi: Revert lát guard, giữ cơ chế bảo toàn của dev-task.sh.
