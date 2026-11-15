@@ -17047,9 +17047,18 @@ def _bench_harness(inp: Dict[str, Any], env: BenchEnv) -> Dict[str, Any]:
         return _bench_merge_policy_docs(inp, env)
     if inp.get("kind") == "link_request":
         return _bench_link_request(inp, env)
+    if inp.get("kind") == "wrapper_argv":
+        return {"green": True, "argv": env.module("guard").normalize(inp["argv"])}
     fn = BENCH_HARNESS.get(str(inp.get("kind")))
     if fn is None:
-        kinds = (*BENCH_HARNESS, "loop_block", "merge_review_config", "merge_policy_docs", "link_request")
+        kinds = (
+            *BENCH_HARNESS,
+            "loop_block",
+            "merge_review_config",
+            "merge_policy_docs",
+            "link_request",
+            "wrapper_argv",
+        )
         raise BenchInputError(f"kind lạ: {inp.get('kind')!r} (có: {', '.join(kinds)})")
     return {"green": fn(inp, env)}
 

@@ -212,6 +212,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 - AUD-SEC-648: guard bảo vệ thêm dạng hàng ký mà formatter có thể chuẩn hóa. Cổng G7 vẫn chỉ xác nhận dòng ký chuẩn.
 - `perf guard` giới hạn thời gian đọc Git blob, vẫn chỉ lấy tiền tố để phân loại nhị phân.
+- AUD-SEC-691: guard xét lệnh được `ssh-agent` khởi chạy theo cùng quy tắc với các trình bọc khác.
 
 - AUD-HAR-406: trình cài và `--plan` báo lỗi `core.hooksPath` trỏ vào tệp trước khi ghi dự án.
 
