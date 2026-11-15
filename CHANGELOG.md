@@ -210,6 +210,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-691: guard xét lệnh được `ssh-agent` khởi chạy theo cùng quy tắc với các trình bọc khác.
+
 - AUD-HAR-406: trình cài và `--plan` báo lỗi `core.hooksPath` trỏ vào tệp trước khi ghi dự án.
 
 - AUD-HAR-401: `release-check` chỉ đúng worktree cần chạy xác minh vòng khi checkout hiện tại chưa có sổ máy.

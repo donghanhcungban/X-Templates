@@ -45,7 +45,8 @@ from typing import Any, Callable, Dict, FrozenSet, Iterator, List, NamedTuple, O
 
 # `busybox <applet>`/`toybox <applet>`: applet là lệnh thật (`busybox sh`, `toybox rm …` — AUD-SEC-332/341)
 WRAPPERS = {"command", "builtin", "exec", "nohup", "time", "nice", "stdbuf", "xargs", "timeout", "setsid", "busybox"}
-WRAPPERS |= {"toybox"}
+WRAPPERS |= {"toybox", "ssh-agent"}
+SSH_AGENT_FIXED_FLAGS = frozenset("cDdksTUuV")
 # Tuỳ chọn của wrapper ăn thêm một token giá trị (`nice -n 5`) — không bóc thì giá trị bị hiểu là tên lệnh (AUD-SEC-011).
 WRAPPER_OPTS_WITH_VALUE: Dict[str, Set[str]] = {
     "nice": {"-n", "--adjustment"},
@@ -5082,6 +5083,8 @@ def _skip_wrapper_args(name: str, a: List[str]) -> None:
     """Sau wrapper: bỏ tuỳ chọn (kèm giá trị nếu có) và đối số thời lượng của `timeout`."""
     while a and a[0].startswith("-") and a[0] != "-":
         opt = a.pop(0)
+        if name == "ssh-agent" and opt == "--":
+            break
         if _wrapper_opt_takes_next(name, opt) and a:
             a.pop(0)
     if name == "timeout" and a:
@@ -5208,6 +5211,7 @@ WRAPPER_FIXED_FLAGS = {
     "env": frozenset({"-", "-i", "--ignore-environment", "-0", "--null", "--debug"}),
     "exec": frozenset({"-c", "-l", "-cl", "-lc"}),
     "nice": frozenset(),
+    "ssh-agent": frozenset("-" + flag for flag in SSH_AGENT_FIXED_FLAGS),
     "time": frozenset({"-p", "--portability", "-a", "--append", "-v", "--verbose"}),
     "timeout": frozenset({"--foreground", "--preserve-status", "-v", "--verbose"}),
     "xargs": frozenset(
@@ -5264,7 +5268,11 @@ def _wrapper_arguments(name: str, raw: List[str], plain: List[str], start: int, 
                 return i, known, raw[i]
             i += 1
         else:
-            known = known and opt in WRAPPER_FIXED_FLAGS.get(name, ())
+            known = known and (
+                opt in WRAPPER_FIXED_FLAGS.get(name, ())
+                or name == "ssh-agent"
+                and SSH_AGENT_COMBINED_RE.fullmatch(opt) is not None
+            )
     if name == "env":
         while i < len(plain) and ENV_ASSIGN_RE.fullmatch(plain[i]):
             if not re.match(r"[A-Za-z_][A-Za-z0-9_]*\+?=", raw[i]):
@@ -5285,11 +5293,16 @@ def _wrapper_value(name: str, prev: str) -> bool:
 
 
 EXEC_A_LAST_RE = re.compile(r"-[^a]*a")  # cụm cờ `exec` mà `a` ĐẦU TIÊN đứng cuối: tên ở từ kế (`-la x`, `-ca x`)
+# Cờ có giá trị chỉ ăn từ kế nếu nó đứng cuối cụm. Nguồn: https://man.openbsd.org/ssh-agent.
+SSH_AGENT_VALUE_LAST_RE = re.compile(rf"-[{''.join(sorted(SSH_AGENT_FIXED_FLAGS))}]*[aAEOPt]")
+SSH_AGENT_COMBINED_RE = re.compile(r"-[cDdksTUuV]+|-[cDdksTUuV]*[aAEOPt].+")
 
 
 def _wrapper_opt_takes_next(name: str, opt: str) -> bool:
     """Cờ `opt` của trình bọc `name` ăn từ kế làm giá trị. `exec` đọc cụm cờ như getopt của bash (AUD-SEC-659, cùng
     `_exec_login`): `-la x CMD`/`-ca x CMD` — `a` cuối cụm ăn `x`; `-al CMD` là `-a l` (giá trị dính)."""
+    if name == "ssh-agent":
+        return SSH_AGENT_VALUE_LAST_RE.fullmatch(opt) is not None
     return opt in WRAPPER_OPTS_WITH_VALUE.get(name, ()) or name == "exec" and bool(EXEC_A_LAST_RE.fullmatch(opt))
 
 

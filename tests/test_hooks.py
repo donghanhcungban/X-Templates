@@ -725,6 +725,15 @@ class GuardMatrixTest(unittest.TestCase):
         self.assertEqual(n([]), [])
         self.check("deny", ["env -u FOO git reset --hard", "time -p sudo ls", "nohup -x sudo ls"])
 
+    def test_guard_normalizes_ssh_agent_wrapped_read(self):
+        command = ["git", "status", "--short"]
+        for options in ([], ["-t", "30"], ["-t30"], ["-Ut", "30"], ["-Ut30"], ["--"]):
+            with self.subTest(options=options):
+                self.assertEqual(self.g.normalize(["ssh-agent", *options, *command]), command)
+        for options in ("-t 30", "-t30", "-Ut30", "-UU"):
+            with self.subTest(options=options):
+                self.check("", [f'ssh-agent {options} -a "$socket" git status --short'])
+
     def test_guard_assignment_only_command_is_ignored(self):
         self.check("", ["X=1", "A=1 B=2; FOO=bar", "env"])
         res = self.g.bash_decision("X=1; git commit -m x", self.root)
