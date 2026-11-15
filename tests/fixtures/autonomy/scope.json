@@ -599,6 +599,18 @@
    "ids": [
     "AUD-TEST-108"
    ]
+  },
+  {
+   "reason": "Hướng dẫn phục hồi của release-check khi dùng worktree, kiểm bằng ReleaseVerifyWorktreeTest với hai checkout Git thật.",
+   "ids": [
+    "AUD-HAR-401"
+   ]
+  },
+  {
+   "reason": "Lỗi kiểu đường dẫn của trình cài đặt, kiểm bằng HooksPathSymlinkTest với Git hooksPath trỏ vào file hoặc đi qua file.",
+   "ids": [
+    "AUD-HAR-406"
+   ]
   }
  ]
 }
