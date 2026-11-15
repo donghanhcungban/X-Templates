@@ -8,6 +8,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- `autonomy-bench` phủ AUD-CI-033 bằng request HTTP giả, gồm URL Unicode và URL đã mã hoá.
+
 - `autonomy-bench` phủ AUD-HAR-407…410: thiếu bằng chứng ruleset, nguồn check, lỗi cấu hình review và tài liệu chính sách merge.
 
 - Audit TEST/HAR sau #558 ghi hai sai lệch cổng merge, hai vấn đề cấu hình/tài liệu và một khoảng trống test; các nhóm vẫn chưa quét đủ.
@@ -208,6 +210,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-HAR-401: `release-check` chỉ đúng worktree cần chạy xác minh vòng khi checkout hiện tại chưa có sổ máy.
 - T-3867: guard trả `BUDGET` khi bộ quét Bash chạm giới hạn đệ quy của Python.
 
 - Kiểm liên kết HTTP mã hoá đường dẫn và truy vấn Unicode để lịch kiểm không dừng khi gặp URL tiếng Việt.
