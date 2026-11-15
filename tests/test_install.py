@@ -2674,6 +2674,22 @@ class HooksPathSymlinkTest(SymlinkEscapeCase):
     """AUD-SEC-650: `core.hooksPath` trỏ vào thư mục của dự án là symlink ra ngoài (`.githooks → ../out`, `.husky →
     ../out` với `.husky/_`) → không ghi hook (cũng không `mkdir` `out/_`), `--plan` báo `skipped-symlink` như cài thật."""
 
+    def test_hooks_path_to_regular_file_is_rejected_before_install(self):
+        target, _ = self.fresh()
+        self.git(target, "init", "-q")
+        existing = target / "hooks-placeholder.txt"
+        existing.write_text("keep me\n", encoding="utf-8")
+        for hooks_path in (existing.name, f"{existing.name}/hooks"):
+            self.git(target, "config", "core.hooksPath", hooks_path)
+            for args in (("--plan",), ()):
+                with self.subTest(args=args, hooks_path=hooks_path):
+                    rc, _, err = self.main(target, *args)
+                    self.assertEqual(rc, 2, err)
+                    self.assertIn("core.hooksPath", err)
+                    self.assertFalse((target / ".xtemplates").exists())
+        self.assertEqual(existing.read_text(encoding="utf-8"), "keep me\n")
+        self.assertEqual(self.main(target, "--no-git-hooks")[0], 0)
+
     def test_hooks_dir_through_symlink_not_written(self):
         for link, hooks_path in ((".githooks", ".githooks"), (".husky", ".husky/_")):
             with self.subTest(hooks_path=hooks_path):
