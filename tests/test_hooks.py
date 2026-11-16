@@ -7996,6 +7996,44 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardGitRedirectArgsTest(unittest.TestCase):
+    """AUD-SEC-680 (T-3895): chuyển hướng đứng sau lệnh con git, trước lệnh con cấp hai/đối số, che đối số với luật của
+    stash/config/remote/update-ref/tag — nay quét thêm bản đã bỏ chuyển hướng, cùng mã như dạng trơn."""
+
+    DENY = (
+        ("git stash 2>/dev/null drop", "git stash drop"),
+        ("git stash 2>/dev/null clear", "git stash clear"),
+        ("git config 2>/dev/null core.hooksPath /tmp", "git config core.hooksPath /tmp"),
+        ("git remote 2>/dev/null remove origin", "git remote remove origin"),
+        ("git update-ref 2>/dev/null refs/remotes/origin/main HEAD", "git update-ref refs/remotes/origin/main HEAD"),
+        ("git tag 2>/dev/null origin/main", "git tag origin/main"),
+    )
+    ALLOW = ("git stash list 2>/dev/null", "git log --oneline >/tmp/log.txt", "git status 2>&1")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_redirect_does_not_hide_args(self):
+        for cmd, plain in self.DENY:
+            with self.subTest(cmd=cmd):
+                want = self.decide(plain)
+                self.assertEqual(want["decision"], "deny", want)
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", want.get("code")), res)
+
+    def test_plain_redirects_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardGitDynPositionTest(unittest.TestCase):
     """AUD-SEC-741/742/744 (T-3894): `git-<lệnh con>` không kích cổng tập con; `config` và lệnh con qua alias có cấp hai mở
     rộng; `$X` trần không nháy (rỗng thì biến mất) làm lệch vị trí đối số → BUDGET."""

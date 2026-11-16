@@ -17,7 +17,7 @@
 - [x] `T-3893` 🔴 AUD-SEC-790: gán bằng thay lệnh làm tiền tố của lệnh (`d=$(cat f) true`) không đổi giá trị biến của guard — Gate: `python3 -m unittest tests.test_hooks.GuardPrefixAssignSubstTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 2 — tên lệnh git và vị trí đối số
 - [x] `T-3894` 🔴 AUD-SEC-741/742/744: `git-<lệnh con>` kích cổng, `config` cấp hai có mở rộng, `$X` trần làm lệch vị trí → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardGitDynPositionTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
-- [ ] `T-3895` 🔴 AUD-SEC-680: chuyển hướng giữa lệnh con git và đối số không che luật — Gate: `python3 -m unittest tests.test_hooks.GuardGitRedirectArgsTest` (sau: T-3894; files: .claude/hooks/guard.py, tests/test_hooks.py)
+- [x] `T-3895` 🔴 AUD-SEC-680: chuyển hướng giữa lệnh con git và đối số không che luật — Gate: `python3 -m unittest tests.test_hooks.GuardGitRedirectArgsTest` (sau: T-3894; files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 3 — trình chạy và công cụ đối ngoại
 - [ ] `T-3896` 🔴 AUD-SEC-743/745: cờ sau `--` của trình chạy và lệnh con có mở rộng của công cụ ngoài git/gh → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardRunnerDynTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 4 — IFS
