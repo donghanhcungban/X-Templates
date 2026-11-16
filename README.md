@@ -3,6 +3,22 @@
 > Thư viện **yêu cầu có ID** cho mọi loại phần mềm và ngành nghề, kèm công cụ ghép thành checklist dự án, kiểm "xong" bằng máy,
 > và harness để AI agent **tự làm đến khi hoàn thành** mà vẫn dừng đúng chỗ cần người.
 > Nội dung tiếng Việt; phiên bản, chuẩn và luật có nguồn và ngày kiểm tra theo từng mục. Mục ghi **chưa xác minh** cần đối chiếu trước khi áp dụng.
+>
+> Mã mở [MIT](LICENSE), miễn phí. Thấy hữu ích? [Ủng hộ tác giả](#ủng-hộ-và-liên-hệ) ☕
+
+## Vì sao dùng X-Templates
+
+| Bạn gặp | X-Templates giúp |
+|---|---|
+| Không biết dự án còn thiếu gì: bảo mật, log, backup, pháp lý… | ~2.850 yêu cầu có ID (1.546 MUST) cho 14 loại phần mềm và 8 ngành, mỗi mục có cách kiểm và nguồn kèm ngày xác minh |
+| Checklist quá dài so với quy mô thật | Ghép theo loại phần mềm + ngành + quy mô S/M/L: `web-app` có 70 MUST ở bản prototype, 473 ở production |
+| "Xong" chỉ là lời nói | `blueprint-status --strict --run` chạy lệnh kiểm của từng mục; `release-check` ra GO/NO-GO cho phát hành |
+| AI agent làm nhanh nhưng dễ phá hoặc khai "xong" sai | `/autopilot` trong Claude Code: mỗi task có bằng chứng máy, mỗi lát một PR, hook chặn thao tác không đảo ngược và lộ bí mật, dừng đúng chỗ cần người |
+| Tuân thủ luật Việt Nam khó tra | Gói ngành dẫn Luật Bảo vệ dữ liệu cá nhân 91/2025, NĐ 356/2025, Luật An ninh mạng 116/2025, cùng chuẩn quốc tế (OWASP, EU AI Act) |
+| Ngại cài thêm công cụ | Một lệnh `install.py`; CLI chỉ dùng thư viện chuẩn Python; app cục bộ 7 màn xem tiến độ, kế hoạch, PR |
+
+Phù hợp cho lập trình viên và nhóm nhỏ muốn làm phần mềm đúng chuẩn production, tech lead cần checklist audit trước
+phát hành, và người dùng AI agent muốn giao việc dài mà vẫn kiểm soát được chất lượng.
 
 ## Có gì trong khung
 
@@ -288,6 +304,22 @@ AI agent và giao thức, cơ chế Claude Code. Khung cũ khôi phục được
 Định hướng [xưởng phần mềm từ 34 mục stored](research/2026-11-04-software-factory-direction.md) (4/11/2026, chấp nhận qua
 [ADR-0068](docs/adr/0068-software-factory-direction.md), D-353): gói sản phẩm có phiên bản, bằng chứng phát hành có kiểu, lộ trình
 nghiệm thu A–E; lát A–E đã làm, gộp một PR (#451) theo quyết định chủ dự án (D-358/D-359) thay vì mỗi lát một PR.
+
+## Ủng hộ và liên hệ
+
+X-Templates miễn phí và sẽ luôn mở mã. Nếu khung giúp bạn tiết kiệm thời gian hoặc tránh được sự cố, bạn có thể ủng
+hộ để tác giả duy trì và cập nhật nội dung (chuẩn, luật, phiên bản công cụ thay đổi liên tục):
+
+<img src="docs/assets/donate-vietqr-techcombank.png" alt="Mã VietQR ủng hộ: Techcombank, số tài khoản 890977819110" width="260">
+
+- Quét mã VietQR bằng ứng dụng ngân hàng bất kỳ, hoặc chuyển khoản **Techcombank — số tài khoản `890977819110`**.
+- Liên hệ, góp ý, hợp tác: điện thoại / Zalo **[+84 977 819 110](https://zalo.me/0977819110)** ·
+  email **admin@donghanhcungban.org**. Lỗi và đề xuất tính năng xin mở [issue](https://github.com/seeker19110/X-Templates/issues).
+- **Hỗ trợ triển khai:** tác giả hỗ trợ cài đặt và áp dụng X-Templates cho dự án của bạn — **trực tiếp tại TP. Hồ Chí
+  Minh** hoặc **online** ở bất kỳ đâu. Liên hệ qua điện thoại/Zalo hoặc email ở trên để trao đổi nhu cầu.
+
+Ủng hộ là tự nguyện, không kèm quyền lợi riêng; hỗ trợ triển khai thoả thuận riêng theo từng dự án. Báo lỗ hổng bảo
+mật theo [`SECURITY.md`](SECURITY.md).
 
 ## Đóng góp
 
