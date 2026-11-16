@@ -296,4 +296,5 @@ Bản đề xuất [khắc phục và nâng cấp tự động hóa ngày 2026-1
 gồm tái hiện, nghiên cứu nguồn sống, thang tự chủ theo loại PR, tiêu chí nghiệm thu và kế hoạch máy đọc
 [`PLAN-3.9-automation.md`](docs/archive/autopilot/PLAN-3.9-automation.md) cho đợt sau 3.8.0.
 Vận hành: [runbook `pr-steward`](docs/ops/RUNBOOK-PR-STEWARD.md) · [phụ thuộc và license](docs/ops/DEPENDENCIES.md).
-Báo lỗ hổng: [`SECURITY.md`](SECURITY.md). Giấy phép: [MIT](LICENSE).
+Báo lỗ hổng: [`SECURITY.md`](SECURITY.md). Giấy phép: [MIT](LICENSE) cho toàn repo (mã và tài liệu), trừ thành phần
+bên thứ ba và nhãn hiệu ghi ở [`NOTICE`](NOTICE); X-Templates không liên kết với các tổ chức có sản phẩm được nhắc tên.
