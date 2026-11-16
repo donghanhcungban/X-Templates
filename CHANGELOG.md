@@ -233,6 +233,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-660/661 (T-3899): biến dùng trong thân hàm mà gán lại sau định nghĩa (`g() { rm -rf $d; }; d=/; g`, cả `~`
+  với `HOME=`), thân hàm chạy shell/`source`/`xargs`/`eval`, và nhóm `{ … }` có shell nhận stdin → BUDGET.
 - AUD-SEC-750/606 (T-3898): nháy đơn trong nháy kép lồng trong `"$(…)"` với số `'` chẵn (bộ tách từ nuốt lệnh đứng
   giữa hai thay lệnh) và backtick thoát trong thân `sh -c`/`eval` nháy kép → BUDGET.
 - AUD-SEC-752 (T-3897): lệnh nhắc `IFS` mà không phải gán chữ không chữ số (`IFS=0`, `export IFS=0`, `IFS=$'\060'`,
