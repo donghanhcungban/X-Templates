@@ -624,6 +624,12 @@
    "ids": [
     "AUD-DEP-022"
    ]
+  },
+  {
+   "reason": "Phạm vi hook pre-push do Git gọi, kiểm bằng GitHooksTest với hai repo dùng chung core.hooksPath; corpus mô phỏng guard Bash, không gọi hook Git.",
+   "ids": [
+    "AUD-HAR-393"
+   ]
   }
  ]
 }
