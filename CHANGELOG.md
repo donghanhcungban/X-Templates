@@ -233,6 +233,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-752 (T-3897): lệnh nhắc `IFS` mà không phải gán chữ không chữ số (`IFS=0`, `export IFS=0`, `IFS=$'\060'`,
+  `n=IFS`) không còn miễn trừ tham số ra số (`$?`, `$#`, `$$`, `$((…))`) — bash tách chúng theo chữ số trong IFS.
 - AUD-SEC-743/745 (T-3896): phần sau `--` của trình chạy (`uv run`, `npx`, `poetry run`, `pnpm/npm exec`…) xét như một
   lệnh mới ở cổng tập con; lệnh con cấp một có mở rộng/glob của công cụ đối ngoại, huỷ hạ tầng hay cài gói
   (`kubectl delete$X`, `terraform destroy$X`, `npm publish$X`, `pip install$X`) → BUDGET.

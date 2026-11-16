@@ -23559,6 +23559,9 @@
 {"id": "aud743-ctl-npm-run-dashdash", "origin": "control", "refs": ["AUD-SEC-743"], "input": {"command": "npm run test -- --watch"}, "expect": {"allowed": true}},
 {"id": "aud745-kubectl-sub1-dyn", "origin": "audit", "refs": ["AUD-SEC-745"], "input": {"command": "kubectl delete$X pod x"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud745-npm-publish-glob", "origin": "audit", "refs": ["AUD-SEC-745"], "input": {"command": "npm publis?"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud745-ctl-kubectl-get", "origin": "control", "refs": ["AUD-SEC-745"], "input": {"command": "kubectl get pods"}, "expect": {"allowed": true}}
+{"id": "aud745-ctl-kubectl-get", "origin": "control", "refs": ["AUD-SEC-745"], "input": {"command": "kubectl get pods"}, "expect": {"allowed": true}},
+{"id": "aud752-ifs-digit-status", "origin": "audit", "refs": ["AUD-SEC-752"], "input": {"command": "IFS=0; git push -d$? origin feat/other"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud752-ifs-digit-arith", "origin": "audit", "refs": ["AUD-SEC-752"], "input": {"command": "export IFS=0; rm -rf /tmp/a$((0))b"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud752-ctl-ifs-empty-read", "origin": "control", "refs": ["AUD-SEC-752"], "input": {"command": "while IFS= read -r l; do n=$((n+1)); done < f; echo \"$n\""}, "expect": {"allowed": true}}
  ]
 }

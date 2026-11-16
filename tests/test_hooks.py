@@ -7996,6 +7996,48 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardIfsDigitTest(unittest.TestCase):
+    """AUD-SEC-752 (T-3897): `IFS` chứa chữ số tách tham số "ra số" (`IFS=0; git push -d$? origin x` → `git push -d origin
+    x`). Miễn trừ số chỉ giữ khi mọi lần nhắc `IFS` là gán chữ không có chữ số."""
+
+    BUDGET = (
+        "IFS=0; git push -d$? origin feat/other",
+        "IFS=0; git reset x$?--hard",
+        "IFS=0; rm -rf /tmp/rvx$?/zz",
+        "(IFS=0; git push -d$? origin feat/other)",
+        "export IFS=0; git push -d$? origin feat/other",
+        "IFS=0; rm -rf /tmp/a$((0))b",
+        "IFS=$'\\060'; git push -d$? origin feat/other",
+        "n=IFS; git push -d$? origin feat/other",
+    )
+    ALLOW = (
+        'while IFS= read -r line; do echo "$line"; done < f.txt',
+        "IFS=, read -r a b <<< x; echo $?",
+        "echo $?",
+        "i=$((1 + 2)); echo done",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_ifs_with_digits_drops_numeric_exemption(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "deny", cmd)
+
+    def test_digit_free_ifs_keeps_exemption(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardRunnerDynTest(unittest.TestCase):
     """AUD-SEC-743/745 (T-3896): vùng cờ dừng ở `--` của trình chạy (`uv run -- python3 "$X"-c …`) và lệnh con cấp một có
     mở rộng/glob của công cụ ngoài git/gh (`kubectl delete$X`, `terraform destroy$X`, `npm publish$X`) → BUDGET."""
