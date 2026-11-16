@@ -751,3 +751,10 @@
 - Chọn: Đợt 1 chỉ 🔴, gom theo gốc lỗi, mỗi lát một PR; 🟠 và nợ 🟢 ở đợt 2–3 (ADR-0080)
 - Lý do (tiêu chí chất lượng cuối): Theo ADR-0080/D-494: vét việc theo mức rủi ro; PLAN 150 task quá dài để mỗi task có Gate máy riêng; gom theo gốc lỗi để một test hồi quy phủ cả họ. Hướng D-415 (không đọc chắc → BUDGET) giữ bản sửa nhỏ và đúng chiều chặt.
 - Đường lùi: Bỏ PLAN này, lập lại theo next-step.
+
+### D-496 · 2026-11-16T20:41:59+00:00 · Duyệt PLAN-harden-2026-11-17 đợt 2 (42 mục 🟠, 8 lát theo gốc lỗi)?
+
+- Phương án: (1) Đợt 2 toàn bộ 🟠 gom 8 lát theo gốc lỗi, guard trước (rủi ro cao), sổ/SPEC sau; mỗi lát một PR · (2) Chỉ làm 🟠 bảo mật guard, để HAR/SPEC sang đợt 3
+- Chọn: Đợt 2 toàn bộ 🟠 gom 8 lát theo gốc lỗi, guard trước (rủi ro cao), sổ/SPEC sau; mỗi lát một PR
+- Lý do (tiêu chí chất lượng cuối): ADR-0080: vét hết việc trước cổng ký; trả hết nợ mới ký GO (yêu cầu chủ dự án 2026-11-16). Gom theo gốc lỗi để một test hồi quy phủ cả họ; guard trước vì là hàng rào an toàn; mục SPEC Draft đóng bằng quyết định ghi D-NNN hoặc chấp nhận có hạn.
+- Đường lùi: Bỏ PLAN đợt 2, lập lại từ sổ.
