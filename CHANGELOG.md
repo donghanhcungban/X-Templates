@@ -8,6 +8,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- README thêm mục "Vì sao dùng X-Templates" (vấn đề → lợi ích) và "Ủng hộ và liên hệ" (VietQR Techcombank,
+  điện thoại/Zalo, email, hỗ trợ triển khai tại TP.HCM hoặc online); `.github/FUNDING.yml` bật nút Sponsor trỏ về mục này.
+
 - `NOTICE` ghi phạm vi giấy phép MIT, thành phần bên thứ ba (axe-core, MPL-2.0) và tuyên bố nhãn hiệu; README trỏ tới
   `NOTICE`, `CONTRIBUTING.md` thêm mục giấy phép đóng góp (inbound = outbound). Fixture `pip-audit` bỏ mô tả advisory
   chép nguyên văn; research bỏ danh mục Shape of AI (CC BY-NC-SA) và tên nhánh phiên cloud.
