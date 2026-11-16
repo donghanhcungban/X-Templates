@@ -7996,6 +7996,65 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardGitNestedRunTest(unittest.TestCase):
+    """AUD-SEC-636 (T-3904): lệnh git chạy lệnh lồng (`rebase --exec`, `bisect run`, `submodule foreach`,
+    `for-each-repo`) và giá trị chạy lệnh cục bộ (`--receive-pack`/`--exec`/`--upload-pack`/`clone -u`) → BUDGET."""
+
+    BUDGET = (
+        "git rebase --exec 'git push --force origin main' HEAD~2",
+        "git rebase -x 'rm -rf .autopilot' HEAD~1",
+        "git rebase -i --exec='git reset --hard' main",
+        "git rebase -ix true main",
+        "git bisect run sh -c 'git push --force origin main'",
+        "git submodule foreach 'git push --force origin main'",
+        "git submodule --quiet foreach --recursive git reset --hard",
+        "git for-each-repo --config=maintenance.repo gc",
+        "git push --receive-pack='git reset --hard; git-receive-pack' /srv/r.git",
+        "git push --exec='rm -rf x' /srv/r.git",
+        "git fetch --upload-pack='rm -rf x' /srv/r.git",
+        "git clone --upload-pack='rm -rf x' /srv/r.git d",
+        "git clone -u 'rm -rf x' /srv/r.git d",
+        "git ls-remote --upload-pack='rm -rf x' /srv/r.git",
+        "git archive --remote=/srv/r.git --exec='rm -rf x' HEAD",
+    )
+    ALLOW = (
+        "git rebase -i HEAD~2",
+        "git rebase main",
+        "git bisect start",
+        "git bisect good",
+        "git bisect run python3 -m unittest tests.test_hooks",
+        "git submodule update --init",
+        "git push origin feat/x",
+        "git fetch origin",
+        "git clone https://github.com/o/r.git",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_nested_runs_are_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_plain_git_runs(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertNotEqual(self.decide(cmd).get("code"), "BUDGET", cmd)
+
+    def test_bisect_run_tail_scanned(self):  # lệnh sau `run` quét như lệnh thường
+        res = self.decide("git bisect run git push --force origin main")
+        self.assertEqual((res["decision"], res.get("code")), ("deny", "RULE_DENY"), res)
+
+
 class GuardExecEnvMoreTest(unittest.TestCase):
     """AUD-SEC-588/608 (T-3903): lệnh nằm trong biến môi trường mà git/ssh chạy (`PAGER`, `GIT_SEQUENCE_EDITOR`,
     `GIT_SSH_COMMAND`…), script nội tuyến tự chạy argv/stdin bằng shell, `tmux`/`screen` chạy lệnh → BUDGET."""

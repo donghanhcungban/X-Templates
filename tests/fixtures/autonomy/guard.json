@@ -23579,6 +23579,11 @@
 {"id": "aud588-ctl-editor-true", "origin": "control", "refs": ["AUD-SEC-588"], "input": {"command": "GIT_EDITOR=true git commit --amend --no-edit"}, "expect": {"allowed": true}},
 {"id": "aud608-perl-system-argv", "origin": "audit", "refs": ["AUD-SEC-608"], "input": {"command": "perl -e 'system(@ARGV)' git push --force origin main"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud608-tmux-new-cmd", "origin": "audit", "refs": ["AUD-SEC-608"], "input": {"command": "tmux new -d git push --force origin main"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud608-ctl-tmux-ls", "origin": "control", "refs": ["AUD-SEC-608"], "input": {"command": "tmux ls"}, "expect": {"allowed": true}}
+{"id": "aud608-ctl-tmux-ls", "origin": "control", "refs": ["AUD-SEC-608"], "input": {"command": "tmux ls"}, "expect": {"allowed": true}},
+{"id": "aud636-rebase-exec", "origin": "audit", "refs": ["AUD-SEC-636"], "input": {"command": "git rebase --exec 'git push --force origin main' HEAD~2"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud636-push-receive-pack", "origin": "audit", "refs": ["AUD-SEC-636"], "input": {"command": "git push --receive-pack='git reset --hard; git-receive-pack' /srv/r.git"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud636-submodule-foreach", "origin": "audit", "refs": ["AUD-SEC-636"], "input": {"command": "git submodule foreach 'git push --force origin main'"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud636-bisect-run-tail", "origin": "audit", "refs": ["AUD-SEC-636"], "input": {"command": "git bisect run git push --force origin main"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+{"id": "aud636-ctl-rebase-plain", "origin": "control", "refs": ["AUD-SEC-636"], "input": {"command": "git rebase main"}, "expect": {"allowed": true}}
  ]
 }
