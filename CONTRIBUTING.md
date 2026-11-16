@@ -26,5 +26,11 @@ Nâng lên ≥ 1 ngay khi có người thứ hai (sửa JSON qua PR rồi import
 Hook/skill/agent trong `.claude/` được `scripts/install.py` copy sang dự án đích (copy-if-absent). Sửa chúng = sửa hành vi của mọi dự án dùng khung:
 giữ fail-open, không hard-code stack, thêm test payload trong `tests/test_hooks.py`.
 
+## Giấy phép đóng góp
+Đóng góp theo nguyên tắc *inbound = outbound*: nội dung bạn gửi phát hành theo [MIT](LICENSE) như phần còn lại của repo.
+Chỉ gửi nội dung bạn có quyền cấp phép: không chép nguyên văn chuẩn có bản quyền (ISO, CIS, PCI DSS…), tài liệu CC BY-SA/NC
+hay mã của dự án khác — tóm tắt bằng lời mình và dẫn link. Mã bên thứ ba bắt buộc vendor thì giữ `LICENSE`/`SOURCE` cạnh nó
+(`CMP-LIC-022`) và thêm vào [`NOTICE`](NOTICE).
+
 ## Phong cách
 Tiếng Việt có dấu; thuật ngữ kỹ thuật giữ tiếng Anh; tên file kebab-case tiếng Anh; không "số ma thuật" không nguồn; một chủ đề một nhà.
