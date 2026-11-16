@@ -96,4 +96,4 @@ updated: 2026-10-15
 - RFC 9457 Problem Details for HTTP APIs (thay RFC 7807): <https://www.rfc-editor.org/rfc/rfc9457> — xác minh 2026-10-13.
 - OpenAPI Specification v3.2.1 (2026-09-10): <https://spec.openapis.org/oas/latest.html>; JSON Schema 2020-12: <https://json-schema.org/specification> — xác minh 2026-10-13.
 - Khung cũ X-stored `project-completion.md` (truy vết F → W → PR → bằng chứng) và `01-process-and-standards.md` GĐ1 (DoD/DoR), commit `1b80fe4`.
-- `seeker19110/stored` mục 13 §5 (spec-driven: OpenAPI trước khi chia việc), mục 23 §2.3 (spec hở → dừng), §2.5 (`feat:` phải link spec Approved) — đọc 2026-10-13.
+- `www-donghanhcungban-org/stored` mục 13 §5 (spec-driven: OpenAPI trước khi chia việc), mục 23 §2.3 (spec hở → dừng), §2.5 (`feat:` phải link spec Approved) — đọc 2026-10-13.

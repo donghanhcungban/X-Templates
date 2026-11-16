@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 ITEM_RE = re.compile(r"^- \[[ x~]\] `([A-Z0-9-]+)` ")
 # MỌI file git theo dõi (agent đọc như chỉ thị; research/ cài vào dự án đích — review #450) trừ tests/: payload thử guard
 # cố ý chứa ký tự vô hình. Ví dụ trong tài liệu viết bằng ký hiệu (`می` + U+200C + `خواهم`), không dán ký tự thật.
-INVISIBLE_SPECS = (".", ":(exclude)tests/")
+# Ảnh nhị phân hợp lệ (mã ủng hộ VietQR ở README) loại tường minh, chỉ đuôi `.png` trong `docs/assets/`.
+INVISIBLE_SPECS = (".", ":(exclude)tests/", ":(exclude)docs/assets/*.png")
 # U+FE0E/U+FE0F hợp lệ một cái ngay sau ký tự cơ sở; chuỗi liên tiếp là kênh giấu dữ liệu (`AI-GUARD-018`).
 SELECTOR_RUN_RE = re.compile(r"[\ufe0e\ufe0f]{2,}")
 

@@ -423,7 +423,7 @@ class RealRegistryTest(unittest.TestCase):
         self.assertEqual(errors, [])
         assert data is not None
         repos = [p["repo"] for p in data["products"]]
-        self.assertIn("seeker19110/hotel-manager", repos)
+        self.assertIn("www-donghanhcungban-org/hotel-manager", repos)
         targets = (ROOT / "docs" / "ops" / "TARGETS.md").read_text(encoding="utf-8")
         # hai chiều (AUD-TEST-064): repo thêm vào TARGETS.md mà quên registry cũng đỏ
         self.assertEqual(sorted(target_repos(targets)), sorted(repos))

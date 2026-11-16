@@ -6,7 +6,7 @@ updated: 2026-11-16
 
 # Gói `web-api-ts`
 
-> Stack lấy từ dự án đích hotel-manager (`seeker19110/hotel-manager@30492c9`, đọc 2026-11-05): Node 24, pnpm,
+> Stack lấy từ dự án đích hotel-manager (`www-donghanhcungban-org/hotel-manager@30492c9`, đọc 2026-11-05): Node 24, pnpm,
 > TypeScript, `pg` + `kysely`, `vitest`, `biome` và PostgreSQL. Gói đầu chưa có UI (D-359).
 > Hạn hỗ trợ nằm ở `support_until` trong `pack.json`.
 
