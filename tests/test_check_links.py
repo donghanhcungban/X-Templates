@@ -541,6 +541,9 @@ class LinkClassificationTest(unittest.TestCase):
                 op = FakeOpener([("HEAD", http_err(head)), ("GET", 200)])
                 self.assertEqual(self.cl.http_status("http://h", 1.0, op), 200)
                 self.assertEqual(op.calls, ["HEAD", "GET"])
+        op = FakeOpener([("HEAD", http_err(503))])  # 5xx là lỗi tạm: không GET, check_url tự thử lại
+        self.assertEqual(self.cl.http_status("http://h", 1.0, op), 503)
+        self.assertEqual(op.calls, ["HEAD"])
         self.assertEqual(self.cl.classify_status(401), "unverified")
         self.assertEqual(self.cl.classify_status(410), "dead")
 
