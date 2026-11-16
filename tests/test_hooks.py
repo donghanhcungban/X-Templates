@@ -7996,6 +7996,45 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardFuncScopeTest(unittest.TestCase):
+    """AUD-SEC-660/661 (T-3899): thân hàm quét lúc định nghĩa nên biến gán sau đó (trước lời gọi) không được biết; shell
+    trong nhóm/thân hàm đọc stdin của nhóm/lời gọi → BUDGET (D-415)."""
+
+    BUDGET = (
+        "g() { rm -rf $d; }; d=/; g",
+        "g() { git $c origin feat/me --force; }; c=push; g",
+        "g() { echo x > $t; }; t=.claude/settings.json; g",
+        "g() { rm -f ~/settings.json; }; HOME=.claude; g",
+        "function g { rm -rf $d; }; d=/; g",
+        "{ bash; } <<< 'git push --force origin main'",
+        "g() { bash; }; echo 'git push --force origin main' | g",
+        "g() { bash -s; }; g <<< 'git push --force origin main'",
+        "g() { xargs -I{} sh -c {}; }; echo 'git push --force origin main' | g",
+        "g() { source /dev/stdin; }; echo 'git push --force origin main' | g",
+    )
+    ALLOW = ("g() { echo hi; }; g", "{ echo a; echo b; } > out.txt", "echo a | { read -r x; echo done; }")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_function_scope_is_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "deny", cmd)
+
+    def test_plain_functions_and_groups_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardNestedQuoteTest(unittest.TestCase):
     """AUD-SEC-750/606 (T-3898): `'` trong nháy kép lồng trong `"$(…)"` (số `'` chẵn: shlex nuốt lệnh giữa vào một token) và
     backtick thoát trong thân `sh -c`/`eval` nháy kép (bash bỏ `\\` rồi chạy) → BUDGET."""

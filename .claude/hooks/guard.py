@@ -2238,8 +2238,47 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = _dyn_head_why(cmd) or _reread_why(cmd) or _split_why(cmd) or _here_shell_why(cmd)
     why = why or _array_arg_why(cmd) or _script_run_why(cmd) or _reuse_why(cmd) or _fd_script_why(cmd)
     why = why or _home_dyn_why(cmd) or _run_named_why(cmd) or _implicit_load_why(cmd) or _patch_file_why(cmd)
-    why = why or _prefix_why(cmd) or _nested_quote_why(cmd)  # ADR-0076 P0 (lát 4); AUD-SEC-750
+    why = why or _prefix_why(cmd) or _nested_quote_why(cmd) or _func_scope_why(cmd)  # P0 lát 4; AUD-SEC-750/660/661
     return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
+
+
+# AUD-SEC-660/661 (D-415): thân hàm được quét lúc định nghĩa, với bảng biến lúc đó — biến gán sau (trước lời gọi) không
+# được biết; shell trong hàm/nhóm đọc stdin của lời gọi/nhóm mà guard không quét như script.
+FUNC_DEF_RE = re.compile(
+    r"(?:^|[\s;&|(){}])(?:function\s+[^\s(){};&|]+\s*(?:\(\s*\))?|[^\s(){};&|$`]+\s*\(\s*\))\s*[{(]"
+)
+STDIN_RUNNER_RE = re.compile(rf"(?<![\w/.-])(?:{'|'.join(sorted(SHELLS))}|source|\.|xargs|eval)(?=[\s;&|)}}]|$)")
+GROUP_STDIN_RE = re.compile(r"\|\s*\{|\}\s*(?:\d*<|\|)")
+FUNC_SCOPE_WHY = (
+    "định nghĩa hàm mà thân có mở rộng hay chạy shell/`source`/`xargs`/`eval`, hoặc nhóm `{ … }` có shell nhận stdin"
+    " (AUD-SEC-660/661) — guard quét thân lúc định nghĩa, không theo biến/stdin lúc gọi; viết lại: lệnh thẳng, hoặc ghi"
+    " script bằng Write rồi chạy"
+)
+
+
+def _late_assigned(live: str, start: int) -> bool:
+    """Biến dùng sau `start` (`$d`, `${d…}`, `~` = HOME) lại được gán ở chỗ sau lần dùng đầu (`d=…`, `read d`, `export d`)
+    — thân hàm thấy giá trị lúc gọi, guard chỉ thấy giá trị lúc định nghĩa."""
+    uses = {m[1] or m[2]: m.start() for m in reversed(list(VAR_NAME_USE_RE.finditer(live, start)))}
+    tilde = FUNC_TILDE_RE.search(live, start)
+    if tilde:
+        uses.setdefault("HOME", tilde.start())
+    return any(re.compile(LATE_ASSIGN_FMT.format(re.escape(n))).search(live, at) for n, at in uses.items())
+
+
+VAR_NAME_USE_RE = re.compile(r"\$(?:([A-Za-z_]\w*)|\{[#!]?([A-Za-z_]\w*))")
+FUNC_TILDE_RE = re.compile(r"(?<![\w/.-])~")
+LATE_ASSIGN_FMT = r"(?<![\w$]){0}(?:\[[^\]]*\])?\+?=|(?:read|export|declare|typeset|local|readonly|mapfile|readarray|-v)\b[^;&|\n]*(?<![\w$]){0}\b"
+
+
+def _func_scope_why(cmd: str) -> str:
+    live = _code_views(_split_view(cmd)[0])[0]
+    m = FUNC_DEF_RE.search(live)
+    if m and (_late_assigned(live, m.end()) or STDIN_RUNNER_RE.search(live, m.end())):
+        return FUNC_SCOPE_WHY
+    groups = [g for g in re.finditer(r"\{\s[^{}]*\}", live) if STDIN_RUNNER_RE.search(g.group())]
+    near = [live[max(0, g.start() - 3) : g.end() + 4] for g in groups]
+    return FUNC_SCOPE_WHY if any(GROUP_STDIN_RE.search(t) for t in near) else ""
 
 
 NESTED_QUOTE_WHY = (
