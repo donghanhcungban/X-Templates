@@ -8,6 +8,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- README thêm mục "Vì sao dùng X-Templates" (vấn đề → lợi ích) và "Ủng hộ và liên hệ" (VietQR Techcombank,
+  điện thoại/Zalo, email, hỗ trợ triển khai tại TP.HCM hoặc online); `.github/FUNDING.yml` bật nút Sponsor trỏ về mục này.
+
 - `NOTICE` ghi phạm vi giấy phép MIT, thành phần bên thứ ba (axe-core, MPL-2.0) và tuyên bố nhãn hiệu; README trỏ tới
   `NOTICE`, `CONTRIBUTING.md` thêm mục giấy phép đóng góp (inbound = outbound). Fixture `pip-audit` bỏ mô tả advisory
   chép nguyên văn; research bỏ danh mục Shape of AI (CC BY-NC-SA) và tên nhánh phiên cloud.
@@ -100,6 +103,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 - AUD-TEST-061: thêm fixture SARIF trích từ CodeQL 2.27.4 trên CI để kiểm adapter đọc kết quả quét rỗng.
 
 ### Changed
+
+- Repo khung và các dự án đích chuyển từ tài khoản GitHub `seeker19110` sang `www-donghanhcungban-org` (link cũ tự chuyển
+  hướng): `FRAMEWORK_REPO` của `xt.py`, lệnh `git clone` ở README, `docs/ops/registry.json`, `TARGETS.md`, nguồn dẫn
+  trong `framework/` và `BLUEPRINT.md`, chủ bản quyền ở `LICENSE`/`NOTICE`. Ghi chép lịch sử (ADR, CHANGELOG cũ,
+  research, báo cáo) giữ nguyên. Fork đặt `XT_FRAMEWORK_REPO` như trước.
 
 - Steward xét PR theo số tăng dần, mặc định merge khi check xanh không bắt buộc review (ADR-0079, D-486). Dự án đích nâng khung, workflow steward và ruleset để nhận chính sách mới; check CI giữ nguyên.
 

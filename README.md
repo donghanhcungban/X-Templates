@@ -3,6 +3,22 @@
 > Thư viện **yêu cầu có ID** cho mọi loại phần mềm và ngành nghề, kèm công cụ ghép thành checklist dự án, kiểm "xong" bằng máy,
 > và harness để AI agent **tự làm đến khi hoàn thành** mà vẫn dừng đúng chỗ cần người.
 > Nội dung tiếng Việt; phiên bản, chuẩn và luật có nguồn và ngày kiểm tra theo từng mục. Mục ghi **chưa xác minh** cần đối chiếu trước khi áp dụng.
+>
+> Mã mở [MIT](LICENSE), miễn phí. Thấy hữu ích? [Ủng hộ tác giả](#ủng-hộ-và-liên-hệ) ☕
+
+## Vì sao dùng X-Templates
+
+| Bạn gặp | X-Templates giúp |
+|---|---|
+| Không biết dự án còn thiếu gì: bảo mật, log, backup, pháp lý… | ~2.850 yêu cầu có ID (1.546 MUST) cho 14 loại phần mềm và 8 ngành, mỗi mục có cách kiểm và nguồn kèm ngày xác minh |
+| Checklist quá dài so với quy mô thật | Ghép theo loại phần mềm + ngành + quy mô S/M/L: `web-app` có 70 MUST ở bản prototype, 473 ở production |
+| "Xong" chỉ là lời nói | `blueprint-status --strict --run` chạy lệnh kiểm của từng mục; `release-check` ra GO/NO-GO cho phát hành |
+| AI agent làm nhanh nhưng dễ phá hoặc khai "xong" sai | `/autopilot` trong Claude Code: mỗi task có bằng chứng máy, mỗi lát một PR, hook chặn thao tác không đảo ngược và lộ bí mật, dừng đúng chỗ cần người |
+| Tuân thủ luật Việt Nam khó tra | Gói ngành dẫn Luật Bảo vệ dữ liệu cá nhân 91/2025, NĐ 356/2025, Luật An ninh mạng 116/2025, cùng chuẩn quốc tế (OWASP, EU AI Act) |
+| Ngại cài thêm công cụ | Một lệnh `install.py`; CLI chỉ dùng thư viện chuẩn Python; app cục bộ 7 màn xem tiến độ, kế hoạch, PR |
+
+Phù hợp cho lập trình viên và nhóm nhỏ muốn làm phần mềm đúng chuẩn production, tech lead cần checklist audit trước
+phát hành, và người dùng AI agent muốn giao việc dài mà vẫn kiểm soát được chất lượng.
 
 ## Có gì trong khung
 
@@ -33,7 +49,7 @@ Chỉ mục đầy đủ theo vai đọc: [`framework/README.md`](framework/READ
 
 ```bash
 # 1) Chọn CPython 3.15 trên PATH, rồi cài khung vào dự án
-git clone https://github.com/seeker19110/X-Templates /tmp/x-templates
+git clone https://github.com/www-donghanhcungban-org/X-Templates /tmp/x-templates
 python3 /tmp/x-templates/scripts/install.py /đường/dẫn/dự-án --with-github
 
 # 2) Chọn hồ sơ, ngành, quy mô rồi ghép checklist
@@ -164,7 +180,7 @@ nghe 127.0.0.1, đòi token mỗi lần chạy, kiểm `Host`/`Origin` và đặ
 Biến môi trường (đều tuỳ chọn): `XT_FRAMEWORK` (thư mục khung, mặc định cạnh `scripts/`) · `XT_FRAMEWORK_LINK` (gốc liên kết
 trong blueprint, mặc định `.xtemplates/framework`; ghép lại `BLUEPRINT.md` của chính repo khung: đặt `framework`, nếu không mục đã tick bị coi đổi chữ — AUD-HAR-113) · `XT_RECORD_TIMEOUT` (giây, mặc định 1800) · `XT_PROGRESS_BASE` (nhánh chính cho `progress-check` và `audit check`, mặc định `origin/HEAD` → `origin/main` → `origin/master`; rỗng = tắt) · `CLAUDE_PROJECT_DIR` (gốc dự án cho
 `loop`; không đặt thì: bản cài `.xtemplates/scripts/xt.py` → cha của `.xtemplates`; nếu không, thư mục cha gần nhất có
-`.autopilot`/`xt.yaml`/`.xtemplates`, rồi gần nhất có `.git` — thư mục cha là repo khác (vd `$HOME` dotfiles) sẽ thắng; không thấy thì cwd) · `CLAUDE_CONFIG_DIR` (thư mục cấu hình người dùng của Claude Code mà `doctor`/`loop init` đọc; mặc định `~/.claude` + `~/.claude.json`) · `XT_DEBUG=1` (in traceback khi lỗi) · `XT_GUARD_POLICY=strict` (hook hỏi người như trước ADR-0018; mặc định không hỏi) · `XT_FRAMEWORK_REPO` (repo GitHub để `doctor` so bản phát hành mới nhất, mặc định `seeker19110/X-Templates`) · `XT_STEWARD_UPDATE=off` (`pr steward` không tự cập nhật nhánh tụt base — workflow chạy bằng `GITHUB_TOKEN`) · `XT_CHANGED_FILES` (mỗi dòng một file đổi; `dev-task.sh gate-fast` đặt, `test-select` đọc để chọn lớp test liên quan; không đặt = chạy cả suite) · `XT_MIN_TESTS` (số lớp test tối thiểu `dev-task.sh test-shard` đòi, mặc định 1; liệt kê hỏng không được xanh) · `XT_JOBS` (số tiến trình pytest-xdist cho lệnh `test` tự dò của `dev-task.sh`: nguyên dương, trần 4×số nhân; `1` = `pytest -q` tuần tự; không đặt/rác = `auto`) · `XT_FRAMEWORK_PYTHON` (đường dẫn Python để `dev-task.sh` chạy CLI của khung, CI mẫu đặt tự động) · `XT_COV_DIR` (thư mục dữ liệu coverage `dev-task.sh test-shard`/`test-combine` dùng, đặt bởi chính script) · `XT_SHARD`, `XT_GATE_ALL_TESTS` (cổng test của `dev-task.sh`, tự đặt) · `XT_CI_WORKFLOW` (tên workflow CI khi khác `ci.yml`) · `XT_GUARD_PHASE=harden` (ép guard vào pha harden, ADR-0040) · `CLAUDE_CODE_SESSION_ID` (id phiên, do Claude Code đặt; chỉ đọc).
+`.autopilot`/`xt.yaml`/`.xtemplates`, rồi gần nhất có `.git` — thư mục cha là repo khác (vd `$HOME` dotfiles) sẽ thắng; không thấy thì cwd) · `CLAUDE_CONFIG_DIR` (thư mục cấu hình người dùng của Claude Code mà `doctor`/`loop init` đọc; mặc định `~/.claude` + `~/.claude.json`) · `XT_DEBUG=1` (in traceback khi lỗi) · `XT_GUARD_POLICY=strict` (hook hỏi người như trước ADR-0018; mặc định không hỏi) · `XT_FRAMEWORK_REPO` (repo GitHub để `doctor` so bản phát hành mới nhất, mặc định `www-donghanhcungban-org/X-Templates`) · `XT_STEWARD_UPDATE=off` (`pr steward` không tự cập nhật nhánh tụt base — workflow chạy bằng `GITHUB_TOKEN`) · `XT_CHANGED_FILES` (mỗi dòng một file đổi; `dev-task.sh gate-fast` đặt, `test-select` đọc để chọn lớp test liên quan; không đặt = chạy cả suite) · `XT_MIN_TESTS` (số lớp test tối thiểu `dev-task.sh test-shard` đòi, mặc định 1; liệt kê hỏng không được xanh) · `XT_JOBS` (số tiến trình pytest-xdist cho lệnh `test` tự dò của `dev-task.sh`: nguyên dương, trần 4×số nhân; `1` = `pytest -q` tuần tự; không đặt/rác = `auto`) · `XT_FRAMEWORK_PYTHON` (đường dẫn Python để `dev-task.sh` chạy CLI của khung, CI mẫu đặt tự động) · `XT_COV_DIR` (thư mục dữ liệu coverage `dev-task.sh test-shard`/`test-combine` dùng, đặt bởi chính script) · `XT_SHARD`, `XT_GATE_ALL_TESTS` (cổng test của `dev-task.sh`, tự đặt) · `XT_CI_WORKFLOW` (tên workflow CI khi khác `ci.yml`) · `XT_GUARD_PHASE=harden` (ép guard vào pha harden, ADR-0040) · `CLAUDE_CODE_SESSION_ID` (id phiên, do Claude Code đặt; chỉ đọc).
 
 Kiểm tra trước khi đóng góp với CPython 3.15.x và công cụ ghim kèm hash trong `requirements-dev.txt`.
 
@@ -282,12 +298,28 @@ python3 -m unittest discover -s tests    # chỉ test (cổng test còn đòi co
 - [ADR-0074](docs/adr/0074-agent-release-signoff.md) (D-401): chủ repo cho agent ký §5 GO-NO-GO — khoá `release_signoff: agent` (cây + nhánh chính, chỉ người đổi), `xt.py release-sign` chỉ ký khi `release-check` không FAIL và chỉ còn chữ ký, ô tên ghi `agent`; mẫu dự án đích để trống.
 - [ADR-0075](docs/adr/0075-end-to-end-factory.md) (D-419): xưởng đầu-cuối theo chủ dự án 2026-11-11 — ý tưởng tới bản dev có receipt không hỏi người; song song khi `files:` không giao và diff nằm trong `files:`; agent ký/duyệt ở mọi quy mô qua khoá chỉ người bật; việc người gom một checklist sau bản dev; cơ chế chất lượng bù merge trước phần nới. Việc: [PLAN-factory-e2e](docs/autopilot/PLAN-factory-e2e.md); đặc tả: `docs/specs/SPEC-factory-*.md` (D-422…D-424).
 
-Nghiên cứu nền ngày 2026-10-13 ở [`research/`](research/): phân tích khung cũ, trích xuất catalog `seeker19110/stored`,
+Nghiên cứu nền ngày 2026-10-13 ở [`research/`](research/): phân tích khung cũ, trích xuất catalog `www-donghanhcungban-org/stored`,
 AI agent và giao thức, cơ chế Claude Code. Khung cũ khôi phục được bằng `git archive 1b80fe4`.
 
 Định hướng [xưởng phần mềm từ 34 mục stored](research/2026-11-04-software-factory-direction.md) (4/11/2026, chấp nhận qua
 [ADR-0068](docs/adr/0068-software-factory-direction.md), D-353): gói sản phẩm có phiên bản, bằng chứng phát hành có kiểu, lộ trình
 nghiệm thu A–E; lát A–E đã làm, gộp một PR (#451) theo quyết định chủ dự án (D-358/D-359) thay vì mỗi lát một PR.
+
+## Ủng hộ và liên hệ
+
+X-Templates miễn phí và sẽ luôn mở mã. Nếu khung giúp bạn tiết kiệm thời gian hoặc tránh được sự cố, bạn có thể ủng
+hộ để tác giả duy trì và cập nhật nội dung (chuẩn, luật, phiên bản công cụ thay đổi liên tục):
+
+<img src="docs/assets/donate-vietqr-techcombank.png" alt="Mã VietQR ủng hộ: Techcombank, số tài khoản 890977819110" width="260">
+
+- Quét mã VietQR bằng ứng dụng ngân hàng bất kỳ, hoặc chuyển khoản **Techcombank — số tài khoản `890977819110`**.
+- Liên hệ, góp ý, hợp tác: điện thoại / Zalo **[+84 977 819 110](https://zalo.me/0977819110)** ·
+  email **admin@donghanhcungban.org**. Lỗi và đề xuất tính năng xin mở [issue](https://github.com/www-donghanhcungban-org/X-Templates/issues).
+- **Hỗ trợ triển khai:** tác giả hỗ trợ cài đặt và áp dụng X-Templates cho dự án của bạn — **trực tiếp tại TP. Hồ Chí
+  Minh** hoặc **online** ở bất kỳ đâu. Liên hệ qua điện thoại/Zalo hoặc email ở trên để trao đổi nhu cầu.
+
+Ủng hộ là tự nguyện, không kèm quyền lợi riêng; hỗ trợ triển khai thoả thuận riêng theo từng dự án. Báo lỗ hổng bảo
+mật theo [`SECURITY.md`](SECURITY.md).
 
 ## Đóng góp
 

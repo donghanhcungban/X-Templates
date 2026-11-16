@@ -5428,7 +5428,8 @@ def _doctor_settings_local(base: Path) -> List[Finding]:
     return out
 
 
-FRAMEWORK_REPO = "seeker19110/X-Templates"  # nguồn bản phát hành của khung; fork đặt XT_FRAMEWORK_REPO=chủ/repo
+# Nguồn bản phát hành của khung; fork đặt XT_FRAMEWORK_REPO=chủ/repo.
+FRAMEWORK_REPO = "www-donghanhcungban-org/X-Templates"
 # Đầu nhãn `.xtemplates/VERSION`: "3.0.0 (abc1234)"; đuôi pre-release ("3.0.0-rc1") nhỏ hơn bản cùng số (SemVer §11).
 SEMVER_PREFIX_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?")
 RELEASE_TAG_RE = re.compile(r"v(\d+)\.(\d+)\.(\d+)")  # tag phát hành (release-tag.yml); pre-release không tính
