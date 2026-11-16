@@ -4,7 +4,7 @@
 
 ## Đang làm
 - 2026-11-11 **ADR-0075** xưởng đầu-cuối (chủ dự án: song song theo file · thiết lập sau bản dev · mọi quy mô — D-419) + [PLAN-factory-e2e](docs/autopilot/PLAN-factory-e2e.md) (D-420, T-3841…T-3866) + 7 đặc tả `docs/specs/SPEC-factory-*.md` (D-422…D-424). T-3866 xong ([research](research/2026-11-12-dev-self-host-live-sources.md)). T-3841 chốt hợp đồng triển khai ([ADR-0077](docs/adr/0077-deployment-receipts.md)). T-3845 (#536): `install.py --new`, `doctor --offline` (D-452/D-453/D-455/D-460). T-3842 giữ fingerprint khi ghi receipt; kế là lệnh triển khai.
-- /complete D-490: theo [PLAN harden](docs/autopilot/PLAN-harden-2026-11-14-complete.md). #565 phủ bốn mục merge; #566 bảo toàn GO-NO-GO qua format.
+- /complete D-490 ([PLAN](docs/autopilot/PLAN-harden-2026-11-14-complete.md)): #593 đóng 🔴 AUD-SEC-727/780; mới 🔴 785/786/787/790.
 - T-3763: [mẫu 505 lượt](research/evidence/2026-11-13-guard-p4.json) không đổi; AUD-SEC-609 mở.
 - T-3867: guard trả `BUDGET` khi hết đệ quy (#576, D-492).
 - AUD-DOC-273/274: [báo cáo pilot](docs/ops/ARTIFACT-PILOT-2026-11-08.md) đối chiếu receipt staging và cổng Production. Còn receipt bền và kiểm artifact trên VPS.
@@ -34,7 +34,7 @@
 - Coverage cục bộ < 100 % khi `coverage` cài ở site người dùng: hook chạy `python3 -I` nên tiến trình con không được đo — CI là cổng coverage (đo 2026-11-05).
 
 ## Bàn giao phiên
-- Mốc `main` `be61864b` (#582). Xét PR xanh theo số tăng dần.
+- Mốc `main` `a8d80ca1` (#593). Xét PR xanh theo số tăng dần.
 - Chờ người (một lần, gom theo lát S8 của nghiên cứu): fixture Codex/Gemini (tài khoản trả phí); T-1834 gỡ `merge-gate` ở ruleset hai dự án đích rồi xoá stub (hạn xét: 2026-12-31); ruleset X-Templates sống còn tắt resolve thread + bật "Allow auto-merge" (RUNBOOK-PR-STEWARD §1), `XT_STEWARD_TOKEN` (một GitHub App); Dependabot security updates. Máy làm được, chưa làm (lộ trình nghiên cứu): Routine tuần `feedback aggregate` có tồn tại nhưng push 403 vì thiếu nguồn repo (S2); bỏ `pull_request_target` khỏi `pr-review.yml` trước 2026-12-02 (S3); T-1508 ghi D-NNN không bật (S1).
 - `pr stats --days 7` (2026-11-05):
 
@@ -50,4 +50,4 @@
 | PR xanh ngay lần push đầu | 86/112 (77%) |
 | Run `cancelled` cùng SHA với run khác | 0 |
 
-- Container mới: `scripts/dev-task.sh setup`; trước khi đẩy `gate-fast`, CI là cổng đầy đủ. Subagent dùng thư mục scratch riêng (bài học audit 2026-11-01). Gate cục bộ: `coverage` và `pip` phải ở site-packages của `python3` (hook chạy `python3 -I`, bỏ user site → mất coverage subprocess) — dùng venv.
+- Container mới: `scripts/dev-task.sh setup`; trước khi đẩy `gate-fast`, CI là cổng đầy đủ. Subagent dùng scratch riêng. Gate cục bộ: `coverage` và `pip` phải ở site-packages của `python3` (hook chạy `python3 -I`, bỏ user site → mất coverage subprocess) — venv 3.15 đầu PATH; G7 cần `fetch --unshallow --tags`.
