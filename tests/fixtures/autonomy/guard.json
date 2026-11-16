@@ -23536,6 +23536,10 @@
 {"id": "aud792-lesskey-content-opt", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-792"], "input": {"command": "less --lesskey-con='#env' f.txt"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud792-ctl-less-env-r", "origin": "control", "refs": ["AUD-SEC-792"], "input": {"command": "LESS=-R less f"}, "expect": {"allowed": true}},
 {"id": "aud793-difftool-extcmd", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-793"], "input": {"command": "git difftool -y -x rm HEAD"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud793-ctl-difftool-tool", "origin": "control", "refs": ["AUD-SEC-793"], "input": {"command": "git difftool -t vimdiff HEAD"}, "expect": {"allowed": true}}
+{"id": "aud793-ctl-difftool-tool", "origin": "control", "refs": ["AUD-SEC-793"], "input": {"command": "git difftool -t vimdiff HEAD"}, "expect": {"allowed": true}},
+{"id": "aud795-env-file-devnull", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-795"], "input": {"command": "env -f /dev/null git push --force origin main"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud795-env-file-long", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-795"], "input": {"command": "env --file=vars git diff"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud795-ctl-env-i", "origin": "control", "refs": ["AUD-SEC-795"], "input": {"command": "env -i git status"}, "expect": {"allowed": true}},
+{"id": "aud797-ctl-env-unset-joined", "origin": "control", "refs": ["AUD-SEC-797"], "input": {"command": "env -uLESSOPEN less f"}, "expect": {"allowed": true}}
  ]
 }
