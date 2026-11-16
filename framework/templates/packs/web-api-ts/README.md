@@ -1,7 +1,7 @@
 ---
 title: Gói web-api-ts — API nhiều tenant trên Node 24 + Postgres
 kind: index
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # Gói `web-api-ts`
@@ -29,6 +29,16 @@ Phiên bản pnpm và các gói npm nằm trong `starter/package.json` ở cây 
 
 Chạy cục bộ: `DATABASE_URL=postgres://…/postgres pnpm test` (vai trò có quyền `CREATE DATABASE`; mỗi file test tạo cơ sở
 riêng). Không có `DATABASE_URL` → test đỏ, không bỏ qua.
+
+## Quét phụ thuộc
+
+Workflow `pack-acceptance` quét `pnpm-lock.yaml` bằng `pnpm audit --audit-level moderate` trước khi cài phụ thuộc.
+Cảnh báo từ mức vừa hoặc lỗi truy cập registry làm job đỏ. Chạy cùng lệnh tại gốc dự án để kiểm tra cục bộ.
+
+Để bật PR cập nhật tự động, kiểm tra phiên bản pnpm của dự án với bảng hỗ trợ của Dependabot. Nếu được hỗ trợ,
+thêm một mục `package-ecosystem: npm`, `directory: /` và lịch vào `updates` trong `.github/dependabot.yml`.
+Quét registry của workflow chạy độc lập với cấu hình Dependabot.
+[Xem phiên bản được hỗ trợ](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories).
 
 ## Ca sai cố ý (`mutants.json`)
 

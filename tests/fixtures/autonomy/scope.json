@@ -618,6 +618,12 @@
     "AUD-DATA-012",
     "AUD-DATA-013"
    ]
+  },
+  {
+   "reason": "Kiểm tra upstream của lockfile bằng registry npm trên workflow dự án đích; nghiệm thu bằng cài gói vào repo sạch và chạy pnpm audit.",
+   "ids": [
+    "AUD-DEP-022"
+   ]
   }
  ]
 }
