@@ -13472,7 +13472,7 @@ def _dyn_exec_check(placed: "PlacedCmds") -> None:
     for c, _ in placed:
         n = normalize(c)
         name, args = (n[0], n[1:]) if n else ("", [])
-        why = _dyn_exec_why(name, args) or _special_var_why(c, name, args)
+        why = _dyn_exec_why(name, args) or _special_var_why(c, name, args) or _exec_env_why(c, name, args)
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
 
@@ -13503,10 +13503,49 @@ def _reader_exec_opt(name: str, args: List[str]) -> str:
     return ""
 
 
+# AUD-SEC-785: `git grep -O<lệnh>`/`--open-files-in-pager[=<lệnh>]` chạy lệnh với tệp khớp (git-grep(1)); parse-options
+# của git nhận tên dài viết tắt (`--op`). Cờ ngắn ăn giá trị (cụm dừng sau chúng, token sau chúng là giá trị): -e -f -A -B
+# -C -m. Cờ có mở rộng/glob (`-$X`, `--op$X`) không biết bash mở ra gì → tính như cờ chạy lệnh (D-415).
+GIT_GREP_PAGER = "--open-files-in-pager"
+GIT_GREP_VALUED = "efABCm"
+
+
+def _git_grep_pager(args: List[str]) -> bool:
+    skip = False
+    for a in args:
+        if skip or a[:1] != "-" or a == "-":
+            skip = False
+            continue
+        if a in OPTS_END:
+            return False
+        key = a.partition("=")[0]
+        if GIT_DYN_FLAG_RE.search(key) or key[:2] == "--" and len(key) >= 4 and GIT_GREP_PAGER.startswith(key):
+            return True
+        body = "" if key[:2] == "--" else a[1:]
+        valued = next((i for i, ch in enumerate(body) if ch in GIT_GREP_VALUED), len(body))
+        if "O" in body[:valued]:
+            return True
+        skip = valued == len(body) - 1
+    return False
+
+
+# AUD-SEC-786/787: biến môi trường mà công cụ đọc chạy như lệnh — `GIT_EXTERNAL_DIFF=rm git diff` (như `-c diff.external`),
+# `LESSOPEN='|rm %s' less f` (less chạy cả khi không có TTY). Gán ở bất kỳ lệnh nào (tiến trình con kế thừa) → chặn;
+# giá trị rỗng thì cho (git/less coi như không đặt).
+EXEC_ENV_TOKEN_RE = re.compile(r"(?:GIT_EXTERNAL_DIFF|LESSOPEN|LESSCLOSE)(?:\+?=(.*))?", re.S)
+
+
+def _exec_env_why(c: List[str], name: str, args: List[str]) -> str:
+    hit = [m for t in _assigned_tokens(c, name, args) for m in [EXEC_ENV_TOKEN_RE.fullmatch(t)] if m and m[1] != ""]
+    return "ghi biến môi trường chạy lệnh (`GIT_EXTERNAL_DIFF`/`LESSOPEN`/`LESSCLOSE`, AUD-SEC-786/787)" if hit else ""
+
+
 def _dyn_exec_why(name: str, args: List[str]) -> str:
     opt = _reader_exec_opt(name, args)
     if opt:
         return f"`{name} {opt}` chạy chương trình theo giá trị cờ (AUD-SEC-727)"
+    if name == "git" and args[:1] == ["grep"] and _git_grep_pager(args[1:]):
+        return "`git grep -O`/`--open-files-in-pager` chạy chương trình với tệp khớp (AUD-SEC-785)"
     if name not in SED_NAMES and name not in AWK_NAMES:
         return ""
     if _stdin_program(args):
@@ -13565,13 +13604,19 @@ def _stdin_program(args: List[str]) -> bool:
 def _special_var_why(c: List[str], name: str, args: List[str]) -> str:
     """Biến bash tự chạy (`BASH_ENV`, prompt) ở gán tiền tố (`PS4[0]=…`) hoặc là đối số của lệnh dựng sẵn ghi biến
     (`printf -v`, `mapfile`, `read`, `declare`, `export`…)."""
-    prefix = [t for t in c[: len(c) - len(args)] if ANY_ASSIGN_RE.fullmatch(t)]  # cả `PS4[0]=…` đứng một mình
-    if name in ("mapfile", "readarray", "read") or (name == "printf" and "-v" in args):  # giá trị tính lúc chạy
+    hit = any(SPECIAL_VAR_TOKEN_RE.fullmatch(t) and _special_value_live(t) for t in _assigned_tokens(c, name, args))
+    return "ghi biến bash tự chạy (`BASH_ENV`/`PS0…PS4`/`PROMPT_COMMAND`, AUD-SEC-287/291/299/300)" if hit else ""
+
+
+def _assigned_tokens(c: List[str], name: str, args: List[str]) -> List[str]:
+    """Token gán biến của lệnh: gán tiền tố (cả `env X=…`, `PS4[0]=…` đứng một mình) và đối số của lệnh dựng sẵn ghi biến;
+    `mapfile`/`read`/`printf -v` tính lúc chạy nên mọi đối số là tên được ghi."""
+    prefix = [t for t in c[: len(c) - len(args)] if ANY_ASSIGN_RE.fullmatch(t)]
+    if name in ("mapfile", "readarray", "read") or (name == "printf" and "-v" in args):
         prefix += args
     elif name in VAR_WRITER_CMDS:
         prefix += [a for a in args if "=" in a]
-    hit = any(SPECIAL_VAR_TOKEN_RE.fullmatch(t) and _special_value_live(t) for t in prefix)
-    return "ghi biến bash tự chạy (`BASH_ENV`/`PS0…PS4`/`PROMPT_COMMAND`, AUD-SEC-287/291/299/300)" if hit else ""
+    return prefix
 
 
 def _special_value_live(tok: str) -> bool:

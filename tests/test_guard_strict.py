@@ -2871,7 +2871,7 @@ class GuardDebt429Test(unittest.TestCase):
         không làm mất miễn; gán `GIT_*`/`-c` toàn cục vẫn mất miễn (D-329). (b) diff từ tệp giữ chặn (chấp nhận)."""
         self.assert_budget(
             (
-                "GIT_EXTERNAL_DIFF=sh git log -p -- s.sh; bash s.sh",
+                "GIT_PAGER=sh git log -p -- s.sh; bash s.sh",
                 "git -C . log -p -- s.sh; bash s.sh",
                 "command bash s.sh; sponge s.sh < in.txt",
                 "command -p sponge s.sh < in.txt; bash s.sh",
@@ -2888,6 +2888,8 @@ class GuardDebt429Test(unittest.TestCase):
             ),
             "AUD-SEC-41",
         )
+        cmd = "GIT_EXTERNAL_DIFF=sh git log -p -- s.sh; bash s.sh"  # AUD-SEC-786: biến chạy lệnh → BUDGET trước
+        self.assertEqual(decide(cmd)["decision"], "deny")
         cmd = "git -c diff.external=sh log -p -- s.sh; bash s.sh"  # `-c` chạy chương trình: luật cũ chặn trước
         self.assertEqual(decide(cmd)["decision"], "deny")
         self.assertTrue(guard._run_named_why(cmd))
