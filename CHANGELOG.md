@@ -224,6 +224,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-785/786/787: guard chặn (BUDGET) `git grep -O<lệnh>`/`--open-files-in-pager` (cả cụm `-nO`, viết tắt
+  `--op`, cờ có mở rộng) và gán biến môi trường chạy lệnh `GIT_EXTERNAL_DIFF`, `LESSOPEN`, `LESSCLOSE` ở mọi lệnh
+  (tiền tố, `env`, `export`, `declare`, `read`); giá trị rỗng vẫn cho chạy.
 - AUD-SEC-780: guard ghi nhận gán đứng cùng chuyển hướng (`>o d=/`, `>o export d=/`) như bash; lệnh chỉ có gán
   mà có fd trước chuyển hướng (`2>o`, `{fd}>o`) hay đích bị cắt (`>$(…)`) bị chặn BUDGET.
 - AUD-SEC-727: guard chặn (BUDGET) cờ chạy chương trình của công cụ đọc: `rg --pre`/`--hostname-bin`,

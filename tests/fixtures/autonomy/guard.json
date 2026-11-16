@@ -23517,6 +23517,15 @@
 {"id": "aud727-rg-pre", "origin": "audit", "refs": ["AUD-SEC-727"], "input": {"command": "rg --pre rm x .autopilot"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud727-ugrep-filter", "origin": "audit", "refs": ["AUD-SEC-727"], "input": {"command": "ugrep --filter=txt:rm x ."}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud727-ag-pager-abbrev", "origin": "audit", "refs": ["AUD-SEC-727"], "input": {"command": "ag --pag rm x"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud727-ctl-rg-pre-glob", "origin": "control", "refs": ["AUD-SEC-727"], "input": {"command": "rg --pre-glob '*.gz' x"}, "expect": {"allowed": true}}
+{"id": "aud727-ctl-rg-pre-glob", "origin": "control", "refs": ["AUD-SEC-727"], "input": {"command": "rg --pre-glob '*.gz' x"}, "expect": {"allowed": true}},
+{"id": "aud785-git-grep-open-pager", "origin": "audit", "refs": ["AUD-SEC-785"], "input": {"command": "git grep -Orm -e x -- .autopilot"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud785-git-grep-open-pager-long", "origin": "audit", "refs": ["AUD-SEC-785"], "input": {"command": "git grep --op=rm -e x"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud785-ctl-git-grep-e-value", "origin": "control", "refs": ["AUD-SEC-785"], "input": {"command": "git grep -n -e -O foo"}, "expect": {"allowed": true}},
+{"id": "aud786-git-external-diff-env", "origin": "audit", "refs": ["AUD-SEC-786"], "input": {"command": "GIT_EXTERNAL_DIFF=rm git diff HEAD~1"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud786-git-external-diff-export", "origin": "audit", "refs": ["AUD-SEC-786"], "input": {"command": "export GIT_EXTERNAL_DIFF=rm; git diff"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud786-ctl-git-external-diff-empty", "origin": "control", "refs": ["AUD-SEC-786"], "input": {"command": "GIT_EXTERNAL_DIFF= git diff"}, "expect": {"allowed": true}},
+{"id": "aud787-lessopen", "origin": "audit", "refs": ["AUD-SEC-787"], "input": {"command": "LESSOPEN='|rm %s' less f"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud787-lessclose-env", "origin": "audit", "refs": ["AUD-SEC-787"], "input": {"command": "env LESSCLOSE='rm %s' less f"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud787-ctl-less-plain", "origin": "control", "refs": ["AUD-SEC-787"], "input": {"command": "less README.md"}, "expect": {"allowed": true}}
  ]
 }

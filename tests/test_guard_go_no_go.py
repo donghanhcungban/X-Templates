@@ -818,13 +818,14 @@ class GoNoGoArgvTest(GoNoGoGuardBase):
             "mytool out:GO-NO-GO-y.md",
             "mytool docs/ops/go-no-go-y.MD",
             f"tar -xf /tmp/a.tar {GO_REL}",
-            f"LESSOPEN='|x' less {GO_REL}",
-            f"env GIT_EXTERNAL_DIFF=sh git diff {GO_REL}",
             f"git -C . diff {GO_REL}",
             f"git stash push -- {GO_REL}",
             "find docs -name 'GO-NO-GO*.md' -exec sed -i s/a/b/ {} +",
         ):
             self.assertEqual(self.bash(cmd), ("deny", "GO_SIGN"), cmd)
+        # AUD-SEC-786/787: biến môi trường chạy lệnh bị chặn sớm hơn, ở mọi đích (BUDGET)
+        for cmd in (f"LESSOPEN='|x' less {GO_REL}", f"env GIT_EXTERNAL_DIFF=sh git diff {GO_REL}"):
+            self.assertEqual(self.bash(cmd), ("deny", "BUDGET"), cmd)
 
     def test_rename_family_denied(self) -> None:
         for cmd in (
