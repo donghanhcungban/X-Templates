@@ -738,6 +738,13 @@
 - Lý do (tiêu chí chất lượng cuối): Hai lớp bảo vệ bổ sung cho nhau. Guard phát hiện thêm nội dung tiềm năng, G7 giữ đúng tiêu chí chữ ký chuẩn và quy trình ký của người.
 - Đường lùi: Revert lát guard, giữ cơ chế bảo toàn của dev-task.sh.
 
+### D-494 · 2026-11-16T16:05:46+00:00 · Pha harden: rà độc lập và audit đặt ở đâu để vòng chạy tới khi xong mà không ngừng giữa chừng?
+
+- Phương án: (1) Giữ như cũ: audit và trả nợ review ở đầu /complete; phiên chính được gọi reviewer khi thấy rủi ro ở từng PR · (2) Vét việc trước, rà một lần ở cổng ký: trong vòng harden chỉ Gate máy + CI (reviewer chỉ khi pr next trả review); hết task mới audit delta + rà gom diff tích luỹ; phát hiện thành task, lặp tới khi release-check GO · (3) Bỏ rà độc lập, chỉ còn CI và release-check
+- Chọn: Vét việc trước, rà một lần ở cổng ký: trong vòng harden chỉ Gate máy + CI (reviewer chỉ khi pr next trả review); hết task mới audit delta + rà gom diff tích luỹ; phát hiện thành task, lặp tới khi release-check GO
+- Lý do (tiêu chí chất lượng cuối): Chủ dự án yêu cầu 2026-11-16 (lặp tới khi xong, không reviewer-alt tới cổng ký, trả hết nợ mới ký). Đo ở phiên 2026-11-16: 2 PR guard rà riêng sinh 5 mục đỏ mới và phiên ngừng lượt nhiều lần để chờ CI/reviewer (không có vòng sống giữ phiên); rà gom trên diff tích luỹ tốn ít lượt hơn và main chưa phát hành nên lỗi lọt giữa pha không tới dự án đích. Phương án 3 bỏ lớp rà trước chữ ký — kém an toàn.
+- Đường lùi: Revert ADR-0080 và hai skill; đặt merge_review: required để có lại review từng PR.
+
 ### D-495 · 2026-11-16T16:25:06+00:00 · Duyệt PLAN-harden-2026-11-16 đợt 1 (14 mục 🔴 của guard, 9 lát)?
 
 - Phương án: (1) Đợt 1 chỉ 🔴, gom theo gốc lỗi, mỗi lát một PR; 🟠 và nợ 🟢 ở đợt 2–3 (ADR-0080) · (2) Một PLAN 150 task theo next-step
