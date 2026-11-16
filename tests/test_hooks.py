@@ -7996,6 +7996,57 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardExecEnvMoreTest(unittest.TestCase):
+    """AUD-SEC-588/608 (T-3903): lệnh nằm trong biến môi trường mà git/ssh chạy (`PAGER`, `GIT_SEQUENCE_EDITOR`,
+    `GIT_SSH_COMMAND`…), script nội tuyến tự chạy argv/stdin bằng shell, `tmux`/`screen` chạy lệnh → BUDGET."""
+
+    BUDGET = (
+        "GIT_SEQUENCE_EDITOR='git push --force origin main #' git rebase -i HEAD~2",
+        "GIT_EDITOR='rm -rf / #' git commit",
+        "EDITOR='git push --force origin main #' git commit",
+        "export VISUAL='rm -rf /'; git commit",
+        "GIT_SSH_COMMAND='sh -c \"git push --force origin main\"' git fetch",
+        "GIT_ASKPASS=./evil git fetch",
+        "python3 -c 'import os,sys; os.system(\" \".join(sys.argv[1:]))' git push --force origin main",
+        "perl -e 'system(@ARGV)' git push --force origin main",
+        "node -e 'require(\"child_process\").execSync(process.argv[1])' 'git push --force origin main'",
+        "tmux new -d git push --force origin main",
+        "tmux new-session -d 'git push --force origin main'",
+        "tmux run-shell 'git push --force origin main'",
+        "screen -dm git push --force origin main",
+    )
+    ALLOW = (
+        "PAGER=cat git log",
+        "PAGER='gh pr merge 5 #' git log",  # không TTY: git không mở pager (AUD-SEC-420)
+        "GIT_PAGER= git log -1",
+        "GIT_EDITOR=true git commit --amend --no-edit",
+        "python3 -c 'print(1)'",
+        "python3 -c 'import sys; print(sys.argv)' a b",
+        "tmux ls",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_hidden_command_carriers_are_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_safe_values_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertNotEqual(self.decide(cmd).get("code"), "BUDGET", cmd)
+
+
 class GuardMidArgSubstTest(unittest.TestCase):
     """AUD-SEC-609 (T-3900): thay tiến trình/thay lệnh giữa đối số che phần sau, từ dính quanh thay lệnh — khoá các dạng
     của sổ (đóng nhờ P4 ADR-0076, tham số, nháy lồng T-3898)."""
@@ -9856,6 +9907,9 @@ class GuardReviewForgeKeptTest(_GuardDebtCase):
         "sh -c 'gh pr $0 5 -F -' comment < r.md",
         "bash -c 'gh pr \"$1\" 5 -F -' _ review < r.md",
         "sh -c 'gh api \"$@\"' x repos/o/r/issues/5/comments -F body=@- < r.md",
+    )
+    # editor git mang lệnh: AUD-SEC-588 chặn BUDGET trước, mọi giá trị ngoài danh sách an toàn
+    FORGE_EDITOR = (
         "GIT_EDITOR='gh pr comment 5 -F - #' git commit --amend < r.md",
         "env GIT_EDITOR='gh pr comment 5 -F - #' git commit --amend < r.md",
     )
@@ -9878,6 +9932,7 @@ class GuardReviewForgeKeptTest(_GuardDebtCase):
     def test_forms_with_mark_denied(self):  # AUD-SEC-585/586: hồi quy của bản rút (D-410)
         """Mọi dạng ghim (lệnh con dính mở rộng, lệnh bọc `sh -c`/`bash -c`, editor git) → REVIEW_FORGE."""
         self.assert_code(self.cmds(self.FORGE_585 + self.FORGE_586), "REVIEW_FORGE")
+        self.assert_code(self.cmds(self.FORGE_EDITOR), "BUDGET")
 
     def test_forms_without_mark_not_forge(self):
         """Đối chứng: nguồn không mang dấu review (tệp thường; editor git không nhận tệp dấu) → không phải REVIEW_FORGE.

@@ -13660,7 +13660,7 @@ def _dyn_exec_check(placed: "PlacedCmds") -> None:
         n = normalize(c)
         name, args = (n[0], n[1:]) if n else ("", [])
         why = _dyn_exec_why(name, args) or _special_var_why(c, name, args) or _exec_env_why(c, name, args)
-        why = why or _env_file_why(c)
+        why = why or _env_file_why(c) or _cmd_env_why(c, name, args) or _runner_why(name, args, n)
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
 
@@ -13765,6 +13765,48 @@ def _exec_env_token(t: str, prev: str) -> bool:
     if hit and not (hit.start() == 0 and t[hit.end() :] == "="):
         return True
     return bool(LESS_ENV_RE.search(t))
+
+
+# AUD-SEC-588: biến mà git/ssh/trình soạn chạy như lệnh shell — gán giá trị ngoài danh sách an toàn → BUDGET (giá trị
+# là chữ shell guard không quét: `PAGER='gh pr merge 5 #' git log`).
+# `*PAGER` không ở đây: git/gh chỉ mở pager khi có TTY, lệnh Bash của agent không có (AUD-SEC-420).
+CMD_ENV_RE = re.compile(
+    r"(?:GIT_)?EDITOR|VISUAL|GIT_SEQUENCE_EDITOR|GIT_SSH(?:_COMMAND)?|(?:GIT_|SSH_)ASKPASS|GIT_PROXY_COMMAND"
+)
+SESSION_RUNNERS = frozenset({"tmux", "screen"})
+CMD_ENV_SAFE = frozenset({"", "cat", "less", "more", "true", ":", "vi", "vim", "nano"})
+
+
+def _cmd_env_why(c: List[str], name: str, args: List[str]) -> str:
+    for t in _assigned_tokens(c, name, args):
+        key, eq, val = t.partition("=")
+        if CMD_ENV_RE.fullmatch(key.rstrip("+")) and (not eq or _dequote(val) not in CMD_ENV_SAFE):
+            return f"gán biến chạy lệnh `{key.rstrip('+')}` (giá trị là lệnh shell guard không quét, AUD-SEC-588)"
+    return ""
+
+
+# AUD-SEC-608: script nội tuyến vừa chạy shell vừa đọc argv/stdin — lệnh thật nằm ngoài script, guard không mô hình.
+INTERP_SHELL_RE = re.compile(
+    r"os\.(?:system|popen|exec|spawn)|subprocess|pty\.spawn|child_process|\bsystem\s*\(|\bexec\s*\(|\bqx|`|%x|IO\.popen"
+)
+# argv: phần sau script là lệnh guard không đọc như lệnh; stdin từ heredoc/ống chữ thì lớp quét stdin đã thấy
+INTERP_INPUT_RE = re.compile(r"argv|ARGV|ARGF")
+# `tmux`/`screen` chạy lệnh trong phiên mới hay gửi phím (AUD-SEC-608)
+TMUX_RUN_SUBS = frozenset(
+    "new new-session new-window neww split-window splitw respawn-pane respawnp respawn-window respawnw run-shell run"
+    " send-keys send if-shell if pipe-pane pipep display-popup popup".split()
+)
+
+
+def _runner_why(name: str, args: List[str], n: List[str]) -> str:
+    if INTERP_RE.fullmatch(name) and any(
+        INTERP_SHELL_RE.search(s) and INTERP_INPUT_RE.search(s) for s in _inline_scripts(n)
+    ):
+        return "script nội tuyến chạy shell trên argv/stdin (AUD-SEC-608)"
+    runs = any(a in TMUX_RUN_SUBS for a in args) if name == "tmux" else any(a[:1] != "-" for a in args)
+    if name in SESSION_RUNNERS and runs:
+        return f"`{name}` chạy lệnh trong phiên khác (AUD-SEC-608)"
+    return ""
 
 
 def _exec_env_why(c: List[str], name: str, args: List[str]) -> str:
@@ -16635,6 +16677,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     FIND_READONLY_EXEC,
     GH_READERS,
     READER_EXEC_OPTS,  # AUD-SEC-727: `rg --pre`, `ugrep --filter`, `bat --pager`…
+    SESSION_RUNNERS,  # AUD-SEC-608: `tmux`/`screen` chạy lệnh trong phiên khác
     GH_LITERALS,
     PENDING_BARE_PLAIN_HEADS,
     PIPE_FILTERS,
