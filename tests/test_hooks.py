@@ -7996,6 +7996,55 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardRunnerDynTest(unittest.TestCase):
+    """AUD-SEC-743/745 (T-3896): vùng cờ dừng ở `--` của trình chạy (`uv run -- python3 "$X"-c …`) và lệnh con cấp một có
+    mở rộng/glob của công cụ ngoài git/gh (`kubectl delete$X`, `terraform destroy$X`, `npm publish$X`) → BUDGET."""
+
+    BUDGET = (
+        "uv run -- python3 \"$X\"-c 'import os'",
+        "npx -- node \"$X\"-e 'process.exit(0)'",
+        "poetry run -- python3 \"$X\"-c 'x'",
+        "pnpm exec -- node \"$X\"-e 'x'",
+        "npm exec -- node \"$X\"-e 'x'",
+        "kubectl delete$X pod x",
+        "kubectl delet? pod x",
+        "terraform destroy$X -auto-approve",
+        "npm publish$X",
+        "pip install$X evil",
+    )
+    ALLOW = (
+        "uv run -- python3 -m pytest",
+        "npm run test -- --watch",
+        "npx -- prettier --check .",
+        "kubectl get pods",
+        'kubectl get pod "$POD"',
+        "terraform plan",
+        "npm test",
+        "pip install -r requirements.txt",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_runner_and_tool_dyn_are_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_literal_runner_and_tool_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertNotEqual(self.decide(cmd).get("code"), "BUDGET", cmd)
+
+
 class GuardGitRedirectArgsTest(unittest.TestCase):
     """AUD-SEC-680 (T-3895): chuyển hướng đứng sau lệnh con git, trước lệnh con cấp hai/đối số, che đối số với luật của
     stash/config/remote/update-ref/tag — nay quét thêm bản đã bỏ chuyển hướng, cùng mã như dạng trơn."""

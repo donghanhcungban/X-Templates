@@ -23554,6 +23554,11 @@
 {"id": "aud744-ctl-bare-var-positional", "origin": "control", "refs": ["AUD-SEC-744"], "input": {"command": "gh pr view $PR --json title"}, "expect": {"allowed": true}},
 {"id": "aud680-stash-redirect-drop", "origin": "audit", "refs": ["AUD-SEC-680"], "input": {"command": "git stash 2>/dev/null drop"}, "expect": {"allowed": false, "code": "STASH_DROP"}},
 {"id": "aud680-config-redirect-hooks", "origin": "audit", "refs": ["AUD-SEC-680"], "input": {"command": "git config 2>/dev/null core.hooksPath /tmp"}, "expect": {"allowed": false, "code": "HOOK_BYPASS"}},
-{"id": "aud680-ctl-stash-list-redirect", "origin": "control", "refs": ["AUD-SEC-680"], "input": {"command": "git stash list 2>/dev/null"}, "expect": {"allowed": true}}
+{"id": "aud680-ctl-stash-list-redirect", "origin": "control", "refs": ["AUD-SEC-680"], "input": {"command": "git stash list 2>/dev/null"}, "expect": {"allowed": true}},
+{"id": "aud743-runner-dashdash-flag-dyn", "origin": "audit", "refs": ["AUD-SEC-743"], "input": {"command": "uv run -- python3 \"$X\"-c 'import os'"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud743-ctl-npm-run-dashdash", "origin": "control", "refs": ["AUD-SEC-743"], "input": {"command": "npm run test -- --watch"}, "expect": {"allowed": true}},
+{"id": "aud745-kubectl-sub1-dyn", "origin": "audit", "refs": ["AUD-SEC-745"], "input": {"command": "kubectl delete$X pod x"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud745-npm-publish-glob", "origin": "audit", "refs": ["AUD-SEC-745"], "input": {"command": "npm publis?"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud745-ctl-kubectl-get", "origin": "control", "refs": ["AUD-SEC-745"], "input": {"command": "kubectl get pods"}, "expect": {"allowed": true}}
  ]
 }
