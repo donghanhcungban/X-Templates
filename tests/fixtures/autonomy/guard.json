@@ -23584,6 +23584,13 @@
 {"id": "aud636-push-receive-pack", "origin": "audit", "refs": ["AUD-SEC-636"], "input": {"command": "git push --receive-pack='git reset --hard; git-receive-pack' /srv/r.git"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud636-submodule-foreach", "origin": "audit", "refs": ["AUD-SEC-636"], "input": {"command": "git submodule foreach 'git push --force origin main'"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud636-bisect-run-tail", "origin": "audit", "refs": ["AUD-SEC-636"], "input": {"command": "git bisect run git push --force origin main"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
-{"id": "aud636-ctl-rebase-plain", "origin": "control", "refs": ["AUD-SEC-636"], "input": {"command": "git rebase main"}, "expect": {"allowed": true}}
+{"id": "aud636-ctl-rebase-plain", "origin": "control", "refs": ["AUD-SEC-636"], "input": {"command": "git rebase main"}, "expect": {"allowed": true}},
+{"id": "aud591-gh-quoted-var-second-pos", "origin": "audit", "refs": ["AUD-SEC-591"], "input": {"command": "gh pr close 5 \"$X\""}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud591-ctl-gh-first-pos", "origin": "control", "refs": ["AUD-SEC-591"], "input": {"command": "gh pr close \"$PR\""}, "expect": {"allowed": true}},
+{"id": "aud592-gh-glued-unquoted", "origin": "audit", "refs": ["AUD-SEC-592"], "input": {"command": "gh pr close 5$X"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud593-gh-post-bare-var", "origin": "audit", "refs": ["AUD-SEC-593"], "input": {"command": "gh pr comment 5 $X"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud593-ctl-gh-post-body-value", "origin": "control", "refs": ["AUD-SEC-593"], "input": {"command": "gh pr comment 5 --body \"$(date)\""}, "expect": {"allowed": true}},
+{"id": "aud746-gh-method-dyn", "origin": "audit", "refs": ["AUD-SEC-746"], "input": {"command": "gh api --method DELETE$X repos/o/r"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud746-git-c-dyn", "origin": "audit", "refs": ["AUD-SEC-746"], "input": {"command": "git -c push.default=matching$X push origin"}, "expect": {"allowed": false, "code": "BUDGET"}}
  ]
 }
