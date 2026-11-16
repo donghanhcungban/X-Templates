@@ -56,8 +56,9 @@ AUTOLINK_RE = re.compile(r"<(https?://[^\s<>]+)>")
 BARE_URL_RE = re.compile(r"https?://[^\s<>\[\]\"`|]+")
 SKIP_HOSTS = {"localhost", "127.0.0.1", "example.com", "example.org", "example.net"}
 SKIP_SUFFIXES = (".invalid", ".example", ".test", ".localhost")
-RETRY_GET_CODES = {501}  # HEAD bị từ chối → thử lại bằng GET trước khi kết luận; cùng mọi 4xx trừ GONE_CODES
-GONE_CODES = {404, 410}  # HEAD 404/410 đủ kết luận "không còn" — không gọi GET
+# HEAD bị từ chối → thử lại bằng GET trước khi kết luận; cùng mọi 4xx, kể cả 404/410: NIST nvlpubs và support.google.com
+# trả HEAD 404 nhưng GET 200 (đo 2026-11-16) — chỉ GET 404/410 mới kết luận "không còn".
+RETRY_GET_CODES = {501}
 USER_AGENT = "xtemplates-check-links/1 (+https://github.com/)"
 Fetcher = Callable[[str, float], int]
 
@@ -341,8 +342,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def http_status(url: str, timeout: float, opener: urllib.request.OpenerDirector | None = None) -> int:
-    """Mã HTTP của URL (HEAD, rồi GET nếu HEAD trả 4xx khác 404/410 hoặc 501 — nhiều máy chủ từ chối HEAD bằng 400/403/
-    405 dù trang còn, PR #173). Timeout/lỗi mạng → `OSError` cho người gọi phân loại."""
+    """Mã HTTP của URL (HEAD, rồi GET nếu HEAD trả 4xx hoặc 501 — nhiều máy chủ từ chối HEAD bằng 400/403/404/405 dù
+    trang còn, PR #173). Timeout/lỗi mạng → `OSError` cho người gọi phân loại."""
     parts = urlsplit(url)
     reserved = "!$&'()*+,;=:@%/"  # giữ dấu phân cách và các byte đã mã hoá
     target = parts._replace(path=quote(parts.path, safe=reserved), query=quote(parts.query, safe=reserved + "?"))
@@ -355,7 +356,7 @@ def http_status(url: str, timeout: float, opener: urllib.request.OpenerDirector 
                 return int(resp.status)
         except urllib.error.HTTPError as e:
             code = e.code
-        if code not in RETRY_GET_CODES and not (400 <= code < 500 and code not in GONE_CODES):
+        if code not in RETRY_GET_CODES and not 400 <= code < 500:
             break
     return code
 

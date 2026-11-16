@@ -529,14 +529,23 @@ class LinkClassificationTest(unittest.TestCase):
                 self.assertEqual(self.cl.http_status("http://h", 1.0, op), want)
                 self.assertEqual(op.calls, ["HEAD", "GET"])
         for gone in (404, 410):
-            op = FakeOpener([("HEAD", http_err(gone))])
+            op = FakeOpener([("HEAD", http_err(gone)), ("GET", http_err(gone))])
             self.assertEqual(self.cl.http_status("http://h", 1.0, op), gone)
-            self.assertEqual(op.calls, ["HEAD"])
+            self.assertEqual(op.calls, ["HEAD", "GET"])
+
+    def test_head_404_confirmed_with_get(self):
+        """NIST nvlpubs và support.google.com trả HEAD 404 nhưng GET 200 (đo 2026-11-16): HEAD 404/410 chưa đủ kết luận
+        chết — xác nhận bằng GET; GET cũng 404/410 mới là chết."""
+        for head in (404, 410):
+            with self.subTest(head=head):
+                op = FakeOpener([("HEAD", http_err(head)), ("GET", 200)])
+                self.assertEqual(self.cl.http_status("http://h", 1.0, op), 200)
+                self.assertEqual(op.calls, ["HEAD", "GET"])
         self.assertEqual(self.cl.classify_status(401), "unverified")
         self.assertEqual(self.cl.classify_status(410), "dead")
 
     def test_link_classification_http_status_error_codes(self):
-        op = FakeOpener([("HEAD", http_err(404))])
+        op = FakeOpener([("HEAD", http_err(404)), ("GET", http_err(404))])
         self.assertEqual(self.cl.http_status("http://h", 1.0, op), 404)
         op = FakeOpener([("HEAD", http_err(403)), ("GET", http_err(403))])
         self.assertEqual(self.cl.http_status("http://h", 1.0, op), 403)

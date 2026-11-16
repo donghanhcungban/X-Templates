@@ -84,7 +84,7 @@ updated: 2026-11-04
 
 - Phiên bản công cụ (registry, xác minh 2026-10-13): npm `testcontainers` 12.2.0, `@pact-foundation/pact` 17.1.4; PyPI `testcontainers` 4.15.0 (2026-07-24), `pact-python` 3.4.1 (2026-09-17), `schemathesis` 4.31.0 (2026-10-12).
 - Pact specification (v1–v4; v4 là RFC #71): <https://docs.pact.io/implementation_guides/pact_specification> — xác minh 2026-10-13 (trang cập nhật 2022)
-- RFC 9457 Problem Details: <https://www.rfc-editor.org/rfc/rfc9457> — xác minh 2026-10-13
+- RFC 9457 Problem Details: <https://www.rfc-editor.org/info/rfc9457/> — xác minh 2026-10-13
 - OWASP API Security Top 10 2023: <https://api-security.owasp.org/> — xác minh 2026-10-13
 - Catalog `www-donghanhcungban-org/stored` 23 §3.3 (`check_authz_tests.py`, `ci_guard.py`, `run_smoke.sh`), 07 (record/replay) — đọc 2026-10-13.
 - Catalog `www-donghanhcungban-org/stored` 23 §4.4 (Dhcb-Tools: CI đối chiếu corpus chuẩn ghim commit — IDS buildingSMART 334 ca, BCF schema — với `known-gaps.txt`) — đọc 2026-10-16.

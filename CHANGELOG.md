@@ -224,6 +224,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- `scripts/check-links.py --external`: HEAD 404/410 không còn đủ kết luận link chết — xác nhận lại bằng GET (NIST nvlpubs và
+  support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
+  RFC 9457 sang URL đích sau chuyển hướng.
+
 - AUD-SEC-785/786/787: guard chặn (BUDGET) `git grep -O<lệnh>`/`--open-files-in-pager` (cả cụm `-nO`, viết tắt
   `--op`, cờ có mở rộng) và gán biến môi trường chạy lệnh `GIT_EXTERNAL_DIFF`, `LESSOPEN`, `LESSCLOSE` ở mọi lệnh
   (tiền tố, `env`, `export`, `declare`, `read`); giá trị rỗng vẫn cho chạy.
