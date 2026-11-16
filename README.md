@@ -314,7 +314,7 @@ hộ để tác giả duy trì và cập nhật nội dung (chuẩn, luật, phi
 
 - Quét mã VietQR bằng ứng dụng ngân hàng bất kỳ, hoặc chuyển khoản **Techcombank — số tài khoản `890977819110`**.
 - Liên hệ, góp ý, hợp tác: điện thoại / Zalo **[+84 977 819 110](https://zalo.me/0977819110)** ·
-  email **admin@donghanhcungban.org**. Lỗi và đề xuất tính năng xin mở [issue](https://github.com/seeker19110/X-Templates/issues).
+  email **admin@donghanhcungban.org**. Lỗi và đề xuất tính năng xin mở [issue](https://github.com/www-donghanhcungban-org/X-Templates/issues).
 - **Hỗ trợ triển khai:** tác giả hỗ trợ cài đặt và áp dụng X-Templates cho dự án của bạn — **trực tiếp tại TP. Hồ Chí
   Minh** hoặc **online** ở bất kỳ đâu. Liên hệ qua điện thoại/Zalo hoặc email ở trên để trao đổi nhu cầu.
 
