@@ -1502,7 +1502,9 @@ STRICT_PIPE_SHELL_RE = re.compile(
     rf"(?:[}})]\s*\|&?|>\()\s*(?:env\s+(?:-\S+\s+|\w+=\S*\s+)*)?{STRICT_SH}(?:\s+-[A-Za-z]*)*\s*(?:$|[;&|)\n]|-[A-Za-z]*s\b)"
 )
 STRICT_DYN_WORD_RE = re.compile(r"\$\(|\$'|`")  # trên vùng sống của từ (nháy đơn thật đã trống)
-STRICT_DYN_ESC_RE = re.compile(r"\\\$['({]")  # `\$'…'`, `\$(…)` trong nháy kép: shell trong mở rộng lại (AUD-SEC-235)
+# `\$'…'`, `\$(…)` trong nháy kép: shell trong mở rộng lại (AUD-SEC-235); `` \` `` cũng vậy — bash bỏ `\` rồi thân
+# `sh -c`/`eval` chạy thay lệnh backtick (AUD-SEC-606)
+STRICT_DYN_ESC_RE = re.compile(r"\\(?:\$['({]|`)")
 # thân heredoc có nháy, `cat`/`tee` không đối số tệp (`$(cat <<'X' f` đọc f — review lát B): thấy được
 STRICT_CAT_HEREDOC_RE = re.compile(r"\$\(\s*(?:cat|tee)\s+<<-?\s*(['\"])\w+\1[ \t]*\n[^)]*\)")
 STRICT_DYN_MAX = 64  # số đầu `sh -c`/`eval` và số tên biến xét tối đa mỗi lệnh; vượt → chặn (review lát B, hiệu năng)
@@ -2236,8 +2238,44 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = _dyn_head_why(cmd) or _reread_why(cmd) or _split_why(cmd) or _here_shell_why(cmd)
     why = why or _array_arg_why(cmd) or _script_run_why(cmd) or _reuse_why(cmd) or _fd_script_why(cmd)
     why = why or _home_dyn_why(cmd) or _run_named_why(cmd) or _implicit_load_why(cmd) or _patch_file_why(cmd)
-    why = why or _prefix_why(cmd)  # ADR-0076 P0 (lát 4)
+    why = why or _prefix_why(cmd) or _nested_quote_why(cmd)  # ADR-0076 P0 (lát 4); AUD-SEC-750
     return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
+
+
+NESTED_QUOTE_WHY = (
+    'nháy đơn trong nháy kép lồng trong `"$(…)"` (AUD-SEC-750) — bộ tách từ của guard đọc khác bash, có thể nuốt lệnh'
+    " đứng giữa hai thay lệnh; viết lại: tách lệnh, hoặc dựng chuỗi bằng `printf '%s' …`/heredoc nháy"
+)
+
+
+def _nested_quote_why(cmd: str) -> str:
+    """`'` nằm trong nháy kép mà nháy kép đó nằm trong `$(…)` của một nháy kép khác (`"$(echo "it's")"`). Quét tuyến tính
+    với ngăn xếp ngữ cảnh: `c` mã, `d` nháy kép, `s` thay lệnh/ngoặc; thân heredoc đã bỏ."""
+    text, stack, i = strip_heredocs(cmd), ["c"], 0
+    try:  # số `'` lẻ: shlex lỗi, nhánh tách thô của AUD-SEC-656 xử lý
+        shlex.split(text)
+    except ValueError:
+        return ""
+    while i < len(text):
+        ch, top = text[i], stack[-1]
+        if top == "d" and ch == "'" and "d" in stack[:-1]:
+            return NESTED_QUOTE_WHY
+        if ch == "\\":
+            i += 2
+            continue
+        if top != "d" and ch == "'":
+            end = text.find("'", i + 1)
+            i = len(text) if end < 0 else end + 1
+            continue
+        if ch == '"':
+            stack.pop() if top == "d" else stack.append("d")
+        elif text.startswith("$(", i) or top == "s" and ch == "(":
+            stack.append("s")
+            i += 1 if ch == "$" else 0
+        elif top == "s" and ch == ")":
+            stack.pop()
+        i += 1
+    return ""
 
 
 # ADR-0076 lát 2 (D-430/D-431): cổng tập con dương — mắt xích cuối của `_allowlist_why` nên chạy sau luật cũ:

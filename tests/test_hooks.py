@@ -7996,6 +7996,40 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardNestedQuoteTest(unittest.TestCase):
+    """AUD-SEC-750/606 (T-3898): `'` trong nháy kép lồng trong `"$(…)"` (số `'` chẵn: shlex nuốt lệnh giữa vào một token) và
+    backtick thoát trong thân `sh -c`/`eval` nháy kép (bash bỏ `\\` rồi chạy) → BUDGET."""
+
+    BUDGET = (
+        'echo "$(echo "\'")"; rm -rf /; echo "$(echo "\'")"',
+        'git commit -m "$(echo "don\'t")"; rm -rf /; git commit -m "$(echo "can\'t")"',
+        'echo "$(echo "it\'s")"; (rm -rf /); echo "$(echo "it\'s")"',
+        'sh -c "echo \\`git reset --hard\\`"',
+        'eval "echo \\`git reset --hard\\`"',
+    )
+    ALLOW = ('echo "it\'s fine"', 'echo "$(date)"', 'sh -c "echo hi"', "git commit -m \"$(printf '%s' x)\"")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_nested_quotes_are_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "deny", cmd)
+
+    def test_plain_quotes_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardIfsDigitTest(unittest.TestCase):
     """AUD-SEC-752 (T-3897): `IFS` chứa chữ số tách tham số "ra số" (`IFS=0; git push -d$? origin x` → `git push -d origin
     x`). Miễn trừ số chỉ giữ khi mọi lần nhắc `IFS` là gán chữ không có chữ số."""
