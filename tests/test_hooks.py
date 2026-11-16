@@ -7941,6 +7941,7 @@ class GuardReaderExecOptTest(unittest.TestCase):
         "git difftool --extcmd=rm HEAD",
         "git difftool --ext rm HEAD",
         "git difftool -yxrm HEAD",
+        "git difftool --ext$X rm HEAD",
         "git grep -3Orm x",
         "git grep -e -- -Orm",
     )
@@ -7952,6 +7953,7 @@ class GuardReaderExecOptTest(unittest.TestCase):
         "less +G f",
         "git difftool -y HEAD",
         "git difftool -t vimdiff HEAD",
+        "git difftool HEAD -- -x.txt",
         "git diff --no-ext-diff",
         "git grep --end-of-options -Orm -e x",
         "git grep -n foo",
