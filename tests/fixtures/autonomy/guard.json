@@ -23591,6 +23591,9 @@
 {"id": "aud593-gh-post-bare-var", "origin": "audit", "refs": ["AUD-SEC-593"], "input": {"command": "gh pr comment 5 $X"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud593-ctl-gh-post-body-value", "origin": "control", "refs": ["AUD-SEC-593"], "input": {"command": "gh pr comment 5 --body \"$(date)\""}, "expect": {"allowed": true}},
 {"id": "aud746-gh-method-dyn", "origin": "audit", "refs": ["AUD-SEC-746"], "input": {"command": "gh api --method DELETE$X repos/o/r"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud746-git-c-dyn", "origin": "audit", "refs": ["AUD-SEC-746"], "input": {"command": "git -c push.default=matching$X fetch origin"}, "expect": {"allowed": false, "code": "BUDGET"}}
+{"id": "aud746-git-c-dyn", "origin": "audit", "refs": ["AUD-SEC-746"], "input": {"command": "git -c push.default=matching$X fetch origin"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud600-xargs-gh-api", "origin": "audit", "refs": ["AUD-SEC-600"], "input": {"command": "echo '-X DELETE' | xargs gh api repos/o/r"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud600-ctl-xargs-gh-view", "origin": "control", "refs": ["AUD-SEC-600"], "input": {"command": "echo 5 | xargs gh pr view"}, "expect": {"allowed": true}},
+{"id": "aud604-gh-field-equals-force", "origin": "audit", "refs": ["AUD-SEC-604"], "input": {"command": "gh api -X PATCH repos/o/r/git/refs/heads/x -F=force=true"}, "expect": {"allowed": false, "code": "RULE_DENY"}}
  ]
 }
