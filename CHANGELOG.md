@@ -233,6 +233,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-636 (T-3904): lệnh git chạy lệnh lồng (`rebase --exec`, `submodule foreach`, `for-each-repo`) và giá trị cờ chạy
+  chương trình cục bộ (`--receive-pack`, `--exec`, `--upload-pack`, `clone -u`) → BUDGET; `bisect run` quét lệnh sau `run`.
 - AUD-SEC-588/608 (T-3903): gán biến mà git/ssh chạy như lệnh (`GIT_EDITOR`, `EDITOR`, `VISUAL`, `GIT_SEQUENCE_EDITOR`,
   `GIT_SSH_COMMAND`, `*ASKPASS`, `GIT_PROXY_COMMAND`) với giá trị ngoài danh sách an toàn, script nội tuyến chạy shell
   trên argv, `tmux`/`screen` chạy lệnh → BUDGET. `*PAGER` giữ nguyên (không TTY thì không chạy — AUD-SEC-420).

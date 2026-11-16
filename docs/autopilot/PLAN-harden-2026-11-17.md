@@ -13,7 +13,7 @@
 ## Task
 ### Lát A — biến/chương trình chạy lệnh ngầm
 - [x] `T-3903` 🟠 AUD-SEC-588/608: biến môi trường git chạy lệnh (`PAGER`, `GIT_SEQUENCE_EDITOR`, `GIT_SSH_COMMAND`, `GIT_EDITOR`…) và trình thông dịch nối argv/stdin chạy shell → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardExecEnvMoreTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
-- [ ] `T-3904` 🟠 AUD-SEC-636: lệnh git chạy lệnh lồng (`rebase --exec`, `bisect run`, `submodule foreach`, `for-each-repo`) → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardGitNestedRunTest` (sau: T-3903; files: .claude/hooks/guard.py, tests/test_hooks.py)
+- [x] `T-3904` 🟠 AUD-SEC-636: lệnh git chạy lệnh lồng (`rebase --exec`, `bisect run`, `submodule foreach`, `for-each-repo`) → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardGitNestedRunTest` (sau: T-3903; files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát B — cờ gh dựng lúc chạy
 - [ ] `T-3905` 🟠 AUD-SEC-591/592/593/746: mở rộng đứng riêng/dính ở vị trí cờ của lệnh gh có luật cờ, lệnh đăng chữ có `$X` riêng → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardGhDynFlagTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 - [ ] `T-3906` 🟠 AUD-SEC-600/604: `xargs` nối cờ vào lệnh gh; `-F=force=true` đọc như pflag — Gate: `python3 -m unittest tests.test_hooks.GuardGhXargsFieldTest` (sau: T-3905; files: .claude/hooks/guard.py, tests/test_hooks.py)

@@ -13162,8 +13162,11 @@ def _scan_command(
 ) -> Optional[str]:
     """Quét một lệnh đơn: thêm câu hỏi vào `asks`, ghi cờ commit (kèm thư mục commit) vào `res`; trả lý do deny nếu phải chặn.
     `dirs`: thư mục đã biết của quyết định (ứng viên khi `cwd` không biết — AUD-SEC-449)."""
-    plain = _git_unredirected(argv, normalize(argv))
+    n = normalize(argv)
+    plain = _git_unredirected(argv, n)
     deny = _scan_one(plain, root, res, asks, cwd, dirs) if plain else None
+    tail = n[3:] if n[:3] == ["git", "bisect", "run"] else []  # AUD-SEC-636: lệnh git bisect chạy cho từng commit
+    deny = deny or (_scan_command(tail, root, res, asks, cwd, dirs) if tail else None)
     return deny or _scan_one(argv, root, res, asks, cwd, dirs)
 
 
@@ -13745,6 +13748,38 @@ def _git_difftool_cmd(args: List[str]) -> bool:
     return False
 
 
+# AUD-SEC-636: lệnh con git chạy lệnh lồng (shell/git khác) hay chương trình cục bộ theo giá trị cờ. Cờ dài nhận viết
+# tắt ≥ 4 ký tự như parse-options (chiều chặt).
+GIT_NESTED_SUBS = {"submodule": "foreach"}
+GIT_RUN_OPTS = {
+    "rebase": ("--exec",),
+    "push": ("--receive-pack", "--exec"),
+    "send-pack": ("--receive-pack", "--exec"),
+    "fetch": ("--upload-pack",),
+    "pull": ("--upload-pack",),
+    "clone": ("--upload-pack",),
+    "ls-remote": ("--upload-pack", "--exec"),
+    "archive": ("--exec",),
+}
+GIT_RUN_SHORT = {"rebase": "x", "clone": "u"}  # cờ ngắn ăn lệnh (trong cụm: tới trước chữ ăn giá trị)
+
+
+def _git_nested_run(sub: str, args: List[str]) -> bool:
+    if sub == "bisect" and args[:1] == ["run"]:  # argv sau `run` quét như lệnh (`_git_bisect_tail`); shell → BUDGET
+        tail = args[1:]
+        return not tail or posixpath.basename(tail[0]) in SHELLS or any(re.search(r"[;&|`$()<>]", a) for a in tail)
+    if sub == "for-each-repo" or GIT_NESTED_SUBS.get(sub, "\0") in args:
+        return True
+    longs, short = GIT_RUN_OPTS.get(sub, ()), GIT_RUN_SHORT.get(sub, "")
+    for a in itertools.takewhile(lambda a: a not in OPTS_END, args):
+        key = a.partition("=")[0]
+        if key[:2] == "--" and len(key) >= 4 and any(o.startswith(key) for o in longs):
+            return True
+        if short and a[:1] == "-" and a[1:2] != "-" and short in a:
+            return True
+    return False
+
+
 # AUD-SEC-786/787: biến môi trường mà công cụ đọc chạy như lệnh — `GIT_EXTERNAL_DIFF=rm git diff` (như `-c diff.external`),
 # `LESSOPEN='|rm %s' less f` (less chạy cả khi không có TTY). Gán ở bất kỳ lệnh nào (tiến trình con kế thừa) → chặn;
 # giá trị rỗng thì cho (git/less coi như không đặt).
@@ -13829,6 +13864,8 @@ def _dyn_exec_why(name: str, args: List[str]) -> str:
         return "`git grep -O`/`--open-files-in-pager` chạy chương trình với tệp khớp (AUD-SEC-785)"
     if name == "git" and args[:1] == ["difftool"] and _git_difftool_cmd(args[1:]):
         return "`git difftool -x`/`--extcmd` chạy chương trình với tệp diff (AUD-SEC-793)"
+    if name == "git" and args and _git_nested_run(args[0], args[1:]):
+        return f"`git {args[0]}` chạy lệnh lồng guard không quét (AUD-SEC-636)"
     if name not in SED_NAMES and name not in AWK_NAMES:
         return ""
     if _stdin_program(args):
