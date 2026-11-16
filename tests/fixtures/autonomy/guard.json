@@ -23543,6 +23543,14 @@
 {"id": "aud797-ctl-env-unset-joined", "origin": "control", "refs": ["AUD-SEC-797"], "input": {"command": "env -uLESSOPEN less f"}, "expect": {"allowed": true}},
 {"id": "aud790-subst-prefix-assign", "origin": "audit", "refs": ["AUD-SEC-790"], "input": {"command": "d=/; d=$(cat f) true; rm -rf $d"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
 {"id": "aud790-arith-prefix-assign", "origin": "audit", "refs": ["AUD-SEC-790"], "input": {"command": "d=/; d=$((1)) true; rm -rf $d"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
-{"id": "aud790-ctl-subst-assign", "origin": "control", "refs": ["AUD-SEC-790"], "input": {"command": "d=build; d=$(cat f) true; rm -rf $d"}, "expect": {"allowed": true}}
+{"id": "aud790-ctl-subst-assign", "origin": "control", "refs": ["AUD-SEC-790"], "input": {"command": "d=build; d=$(cat f) true; rm -rf $d"}, "expect": {"allowed": true}},
+{"id": "aud741-git-core-dashed-flag", "origin": "audit", "refs": ["AUD-SEC-741"], "input": {"command": "/usr/lib/git-core/git-push -d$X origin feat/other"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud741-ctl-git-core-status", "origin": "control", "refs": ["AUD-SEC-741"], "input": {"command": "git-status"}, "expect": {"allowed": true}},
+{"id": "aud742-config-sub2-dyn", "origin": "audit", "refs": ["AUD-SEC-742"], "input": {"command": "git config set$X core.hooksPath /dev/null"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud742-alias-sub2-dyn", "origin": "audit", "refs": ["AUD-SEC-742"], "input": {"command": "git -c alias.s=stash s drop$X"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud742-ctl-config-get", "origin": "control", "refs": ["AUD-SEC-742"], "input": {"command": "git config --get user.name"}, "expect": {"allowed": true}},
+{"id": "aud744-bare-var-shell-zone", "origin": "audit", "refs": ["AUD-SEC-744"], "input": {"command": "bash $X -c 'git push --force origin main'"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud744-bare-var-flag-value", "origin": "audit", "refs": ["AUD-SEC-744"], "input": {"command": "gh pr -b x -t $X y merge 12 --auto"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud744-ctl-bare-var-positional", "origin": "control", "refs": ["AUD-SEC-744"], "input": {"command": "gh pr view $PR --json title"}, "expect": {"allowed": true}}
  ]
 }

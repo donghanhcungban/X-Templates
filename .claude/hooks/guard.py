@@ -2263,7 +2263,7 @@ GATE_DYN, GATE_GLOB = "\0", "\1"
 GATE_FLAG_DYN_RE = re.compile("-[\\w-]*[\0\1]|[\0\1]+-")  # P2 | P3 trên khung của từ
 # nhóm 1: `$?`/`$#`/`$$` luôn ra số; `$!` RỖNG khi chưa có job nền (bash: `-d$!` → `-d`), `$-`/`$_`/`$0`/`$@` rỗng được
 GATE_VAR_RE = re.compile(r"\$(?:([?#$])|[A-Za-z_]\w*|[0-9@*!-])")
-GIT_SUB2 = frozenset({"stash", "remote", "worktree", "reflog"})
+GIT_SUB2 = frozenset({"stash", "remote", "worktree", "reflog", "config"})  # `config`: AUD-SEC-742 (`set$X`)
 
 
 def _ruled_word_why(cmd: str, only_p4: bool = False) -> str:
@@ -2309,12 +2309,30 @@ def _gate_bare_substitution(word: str, more: bool) -> bool:
 def _gate_bad_word(words: List[str]) -> str:
     """Từ đầu tiên ngoài ngữ pháp cổng của lệnh đơn `words` (từ lệnh đứng đầu); rỗng = qua."""
     name = posixpath.basename(_dequote(words[0])) if words else ""
+    if name.startswith("git-") and len(name) > 4:  # AUD-SEC-741: `git-push …` = `git push …` (git-core)
+        name, words = "git", [words[0], name[4:], *words[1:]]
     interp = name not in GATE_NAMES and bool(INTERP_RE.fullmatch(name))
     if name not in GATE_NAMES and not interp:
         return ""
     skels = [_gate_skeleton(w) for w in words[1:]]
     bad = _gate_flag_zone(words[1:], skels, interp)
+    bad = bad or _gate_bare_dyn(words[1:], skels, interp or name in SHELLS)
     return bad or _git_sub2(words[1:], skels) if name == "git" else bad
+
+
+def _gate_bare_dyn(args: List[str], skels: List[str], shell_like: bool) -> str:
+    """AUD-SEC-744: từ chỉ gồm mở rộng, không nháy (`$X` rỗng thì biến mất, nhiều từ thì tách) còn từ sau nó, ở vị trí
+    giá trị cờ (`python3 -c $X '…'`, `gh pr -t $X y merge 12`) hay vùng cờ của shell/trình thông dịch (`bash $X -c
+    '…'`): từ sau nó dời vào vị trí cờ/giá trị. Số học `$((…))`, `$?` không rỗng; vị trí đối số thường giữ cách đọc cũ."""
+    flag = False
+    for a, s in zip(args[:-1], skels[:-1]):
+        lit = GATE_DYN not in s and GATE_GLOB not in s
+        bare = not lit and not s.strip(GATE_DYN + GATE_GLOB) and "$" in a and not a.startswith("$((")
+        if bare and not any(q in a for q in "\"'") and (flag or shell_like):
+            return a
+        shell_like = shell_like and not (lit and s[:1] != "-" and not flag)
+        flag = lit and s[:1] == "-" and s != "--"
+    return ""
 
 
 def _gate_skeleton(word: str) -> str:
@@ -2350,7 +2368,8 @@ def _git_sub2(args: List[str], skels: List[str]) -> str:
     i = 0
     while i < len(plain) and plain[i].startswith("-"):
         i += 1 + (plain[i] in GIT_OPTS_WITH_VALUE)
-    if i >= len(plain) or plain[i] not in GIT_SUB2:
+    # AUD-SEC-742: lệnh con không dựng sẵn có thể là alias (`-c alias.s=stash`, alias trong tệp cấu hình) — xét cấp hai
+    if i >= len(plain) or plain[i] not in GIT_SUB2 and plain[i] in GIT_BUILTINS:
         return ""
     k = next((k for k in range(i + 1, len(plain)) if not plain[k].startswith("-")), i)
     return args[k] if k > i and (GATE_DYN in skels[k] or GATE_GLOB in skels[k]) else ""
