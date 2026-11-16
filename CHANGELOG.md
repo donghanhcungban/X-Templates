@@ -224,6 +224,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-795/797 (review #596): `env -f`/`--file` (uutils env nạp biến từ tệp; `-f` từng không ăn giá trị nên
+  `env -f /dev/null <lệnh>` cho qua mọi lệnh) → BUDGET; gỡ biến dạng dính `env -uLESSOPEN`/`--uns=` không còn bị chặn oan.
 - AUD-SEC-785/786/787: guard chặn (BUDGET) `git grep -O<lệnh>`/`--open-files-in-pager` (cả cụm `-nO`, viết tắt
   `--op`, cờ có mở rộng) và gán biến môi trường chạy lệnh `GIT_EXTERNAL_DIFF`, `LESSOPEN`, `LESSCLOSE` ở mọi lệnh
   (tiền tố, `env`, `export`, `declare`, `read`); giá trị rỗng vẫn cho chạy.

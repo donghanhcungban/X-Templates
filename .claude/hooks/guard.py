@@ -5057,7 +5057,9 @@ def _skip_env_args(a: List[str], dirs: Optional[List[str]] = None) -> None:
             dirs.append(val)
 
 
-ENV_LONG_OPTS = {"--split-string": "S", "--chdir": "C", "--unset": "u", "--argv0": "a"}
+# `-f`/`--file F` (uutils env ≥ 0.10, mặc định Ubuntu 26.04): nạp biến từ tệp guard không đọc — ăn một giá trị để tên
+# lệnh sau nó đọc đúng (`env -f /dev/null git push --force` từng thành lệnh `/dev/null`), rồi chặn BUDGET (AUD-SEC-795).
+ENV_LONG_OPTS = {"--split-string": "S", "--chdir": "C", "--unset": "u", "--argv0": "a", "--file": "f"}
 # Mọi tuỳ chọn dài của GNU env (coreutils 9.x) — để nhận viết tắt duy nhất như getopt_long (`--ch=` → `--chdir`)
 ENV_LONG_ALL = (
     *ENV_LONG_OPTS,
@@ -5090,8 +5092,21 @@ def _env_opt(opt: str) -> Tuple[str, Optional[str]]:
     name = _env_long_name(name)
     if name in ENV_LONG_OPTS:
         return ENV_LONG_OPTS[name], (rest if eq else None)
-    m = re.fullmatch(r"-[^-CSua]*([CSua])(.*)", opt, re.S)
+    m = re.fullmatch(r"-[^-CSuaf]*([CSuaf])(.*)", opt, re.S)
     return (m[1], m[2] or None) if m else ("", None)
+
+
+def _env_file_why(c: List[str]) -> str:
+    """`env -f F`/`--file=F` ở bất kỳ `env` nào của argv (cả sau trình bọc khác): biến nạp từ tệp guard không đọc."""
+    for i, t in enumerate(c):
+        if posixpath.basename(t) != "env":
+            continue
+        for opt in c[i + 1 :]:
+            if not opt.startswith("-") or opt == "--":
+                break
+            if _env_opt(opt)[0] == "f":
+                return "`env -f`/`--file` nạp biến môi trường từ tệp guard không đọc (AUD-SEC-795)"
+    return ""
 
 
 def _skip_wrapper_args(name: str, a: List[str]) -> None:
@@ -13473,6 +13488,7 @@ def _dyn_exec_check(placed: "PlacedCmds") -> None:
         n = normalize(c)
         name, args = (n[0], n[1:]) if n else ("", [])
         why = _dyn_exec_why(name, args) or _special_var_why(c, name, args) or _exec_env_why(c, name, args)
+        why = why or _env_file_why(c)
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
 
@@ -13570,7 +13586,8 @@ EXEC_ENV_UNSET = ("-u", "--unset")
 
 
 def _exec_env_token(t: str, prev: str) -> bool:
-    if prev in EXEC_ENV_UNSET or t.startswith("--unset="):
+    key, val = _env_opt(t) if t[:1] == "-" else ("", None)
+    if prev in EXEC_ENV_UNSET or key == "u" and val:  # `-u X`, `-uX`, `--unset=X`, `--uns=X` (AUD-SEC-797)
         return False
     hit = EXEC_ENV_NAME_RE.search(t)
     if hit and not (hit.start() == 0 and t[hit.end() :] == "="):

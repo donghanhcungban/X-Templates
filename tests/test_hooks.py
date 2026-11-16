@@ -7996,6 +7996,54 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardEnvFileTest(unittest.TestCase):
+    """AUD-SEC-795 (review #596): `env -f F` (uutils env) nạp biến từ tệp guard không đọc, và `-f` không ăn giá trị nên
+    `env -f /dev/null <lệnh>` từng đọc tên lệnh là `/dev/null` — cho qua mọi lệnh. Nay chặn BUDGET."""
+
+    BUDGET = (
+        "env -f /dev/null git push --force origin main",
+        "env -f /dev/null touch MARK_A",
+        "env -f vars git diff",
+        "env --file=vars git diff",
+        "env --fi vars git diff",
+        "env -if vars git diff",
+        "env -i -f vars git diff",
+        "env -fvars git diff",
+        "nice env -f vars git diff",
+    )
+    ALLOW = (
+        "env -i git status",
+        "env -u X git status",
+        "env FOO=1 python3 x.py",
+        "git log -f x",
+        # AUD-SEC-797: gỡ biến chạy lệnh dạng dính/viết tắt
+        "env -uLESSOPEN less f",
+        "env -iuLESSOPEN less f",
+        "env --uns=LESSOPEN less f",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_env_file_is_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_env_without_file_still_runs(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardFunctionKeywordTest(unittest.TestCase):
     """AUD-SEC-611 (T-3722): `function TÊN { … }` — `_strip_prefixes` bỏ `{`/`}` nhưng không bỏ `function TÊN`, nên argv của
     lệnh đầu thân hàm bắt đầu bằng `function` và mọi luật theo tên lệnh bỏ qua nó (`function g { rm -rf /; }; g`). Dạng
