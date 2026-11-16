@@ -13477,7 +13477,36 @@ def _dyn_exec_check(placed: "PlacedCmds") -> None:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
 
 
+# AUD-SEC-727: công cụ đọc chạy chương trình theo giá trị cờ (`rg --pre rm x .autopilot` xoá từng tệp) — guard không quét
+# chương trình đó như lệnh nên chặn (BUDGET). ag/ack đọc cờ bằng getopt_long/Getopt::Long: nhận tên viết tắt (`--pag`).
+READER_EXEC_OPTS: Dict[str, Tuple[str, ...]] = {
+    "rg": ("--pre", "--hostname-bin"),
+    "ugrep": ("--filter", "--pager"),
+    "ug": ("--filter", "--pager"),
+    "bat": ("--pager",),
+    "batcat": ("--pager",),
+    "ag": ("--pager",),
+    "ack": ("--pager",),
+}
+READER_EXEC_ABBREV = frozenset({"ag", "ack"})
+
+
+def _reader_exec_opt(name: str, args: List[str]) -> str:
+    """Cờ chạy chương trình của công cụ đọc trong `args` (dừng ở `--`); không có → ''."""
+    opts = READER_EXEC_OPTS.get(name, ())
+    for a in args:
+        if a == "--":
+            break
+        key = a.partition("=")[0]
+        if key in opts or name in READER_EXEC_ABBREV and len(key) >= 4 and any(o.startswith(key) for o in opts):
+            return key
+    return ""
+
+
 def _dyn_exec_why(name: str, args: List[str]) -> str:
+    opt = _reader_exec_opt(name, args)
+    if opt:
+        return f"`{name} {opt}` chạy chương trình theo giá trị cờ (AUD-SEC-727)"
     if name not in SED_NAMES and name not in AWK_NAMES:
         return ""
     if _stdin_program(args):
@@ -14177,12 +14206,33 @@ FOR_NUM_SAMPLE = 8
 FOR_NUM_RE = re.compile(r"-?[0-9]+")
 
 
+def _assign_only(c: List[str]) -> bool:
+    """Lệnh (đã bỏ chuyển hướng; `$` = đích bị cắt) chỉ gồm gán, kể cả sau từ khoá shell và `export`/`declare`."""
+    c = [t for t in c if t not in SHELL_KEYWORDS and t != "$"]
+    c = [t for t in c[1:] if t[:1] not in "-+"] if c[:1] and c[0] in DECLARE_CMDS else c
+    return bool(c) and all(ASSIGN_ANY_RE.fullmatch(t) for t in c)
+
+
 def _record_assigns(c: List[str], env: Dict[str, str], pick: int = 0, home0: Optional[str] = None) -> None:
     """`x='…'`, `export x=…`, `declare -x x=…`: gán đứng riêng (không kèm lệnh) có hiệu lực cho các lệnh sau; `for x in
     a b`: x lấy từ thứ `pick` của danh sách. `x+=…` nối vào giá trị đã ghi (`c=r; c+=m; $c` → `rm`); giá trị cũ không
     biết → bỏ ghi nhận (biến thành không biết, AUD-SEC-125). `home0` (lệnh nhắc HOME — AUD-SEC-414): `~` trong giá trị
     mở NGAY lúc gán, theo HOME đã ghi nhận hay home thật `home0` (`x=~; HOME=/tmp/y; rm -rf $x` xoá home thật — review
-    #429)."""
+    #429). Chuyển hướng (cả fd đứng trước) không làm mất gán: `>o d=/`, `{fd}>o d=/`, `>o export d=/` vẫn gán trong
+    shell (AUD-SEC-780). Token đã mất thông tin liền kề nên `d=x 2>o` (fd) và `d=x 2 >o` (lệnh `2`, không gán) như
+    nhau; đích bị cắt (`>$(…)`, `> >(…)`) che từ lệnh có thể theo sau — lệnh chỉ có gán mà mơ hồ như thế → BUDGET
+    (review T-3790)."""
+    plain = _no_redirects(c)
+    if not plain:
+        return
+    if any(_is_redirect(t) for t in c) and _assign_only(plain):
+        fd = any(FD_NAME_RE.fullmatch(c[i - 1]) for i in range(1, len(c)) if _is_redirect(c[i]))
+        if fd or "$" in plain:
+            raise ScanTooComplex(
+                f"gán cùng chuyển hướng có fd hay đích không đọc chắc: {' '.join(c)[:80]} — bỏ chuyển hướng khỏi lệnh"
+                " chỉ có gán, hoặc đưa vào thay lệnh (`x=$(cmd 2>/dev/null)`)"
+            )
+    c = plain
     c = [t for t in c if t not in SHELL_KEYWORDS] if c[0] in SHELL_KEYWORDS else c  # `then x=…`, `do x=…`, `{ x=…`
     words = _for_values(c)
     if words:
@@ -16232,13 +16282,14 @@ CLOUD_COPIERS = ("aws", "gsutil", "rclone", "gcloud", "azcopy")
 # D-434: tên luật có rẽ nhánh nhưng KHÔNG kích hoạt cổng — trình thông dịch không phải shell (ADR-0076: `python3
 # scripts/xt.py …` không qua cổng) và lệnh chỉ đọc/in (bảng thụ động của D-432): không thuộc bảng ghi tệp, chạy lệnh từ
 # đối số, ra mạng hay ghi biến theo tên nào của guard (`GuardGateNamesTest.ACTIVE_TABLES`). Ngoại lệ đã biết, có từ trước
-# ADR-0076 (guard cho qua, không thuộc bảng ghi/chạy nào): `rg --pre CMD` chạy lệnh, `less -o FILE` ghi tệp. Lệnh đọc mà có
-# dạng ghi (`sort -o`, `uniq in out`, `touch`, `tee`, trình soạn thảo, formatter) ở lại `GATE_NAMES`; `printf` cũng vậy
+# ADR-0076 (guard cho qua, không thuộc bảng ghi/chạy nào): `less -o FILE` ghi tệp. Công cụ đọc có cờ chạy chương
+# trình (`READER_EXEC_OPTS`: `rg --pre`, `ugrep --filter`, `bat --pager`…) ở `GATE_NAMES` để cờ có mở rộng (`--pre$E`)
+# qua cổng (AUD-SEC-727). Lệnh đọc mà có dạng ghi (`sort -o`, `uniq in out`, `touch`, `tee`, trình soạn thảo, formatter) ở lại `GATE_NAMES`; `printf` cũng vậy
 # (D-439: `printf -v VAR` ghi biến như `read`/`let`).
 GATE_PASSIVE: FrozenSet[str] = frozenset(
-    "python python3 node perl ruby php cat tac head tail wc grep egrep fgrep zgrep ugrep rg ag ack diff cmp jq echo"
+    "python python3 node perl ruby php cat tac head tail wc grep egrep fgrep zgrep diff cmp jq echo"
     " date true false nproc pwd ls whoami hostname uname id test [ [[ basename dirname readlink realpath stat file"
-    " du md5sum sha1sum sha224sum sha256sum sha384sum sha512sum b2sum cksum less more bat ps pgrep cut type which"
+    " du md5sum sha1sum sha224sum sha256sum sha384sum sha512sum b2sum cksum less more ps pgrep cut type which"
     " printenv tr :".split()
 )
 # Tên lệnh có luật — mọi tên luật rẽ nhánh, gồm cả `GATE_PASSIVE`: tập để hỏi "tên này có luật không" (đọc lại hậu tố của
@@ -16294,6 +16345,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     RUN_F_FLAG_HEADS,
     FIND_READONLY_EXEC,
     GH_READERS,
+    READER_EXEC_OPTS,  # AUD-SEC-727: `rg --pre`, `ugrep --filter`, `bat --pager`…
     GH_LITERALS,
     PENDING_BARE_PLAIN_HEADS,
     PIPE_FILTERS,
