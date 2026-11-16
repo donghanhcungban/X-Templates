@@ -13487,8 +13487,10 @@ READER_EXEC_OPTS: Dict[str, Tuple[str, ...]] = {
     "batcat": ("--pager",),
     "ag": ("--pager",),
     "ack": ("--pager",),
+    # AUD-SEC-792 (review #595): lesskey đặt `#env LESSOPEN=…` — less nhận tên dài viết tắt; `-k` ở `_less_key_short`
+    "less": ("--lesskey-content", "--lesskey-src", "--lesskey-file"),
 }
-READER_EXEC_ABBREV = frozenset({"ag", "ack"})
+READER_EXEC_ABBREV = frozenset({"ag", "ack", "less"})
 
 
 def _reader_exec_opt(name: str, args: List[str]) -> str:
@@ -13497,6 +13499,8 @@ def _reader_exec_opt(name: str, args: List[str]) -> str:
     for a in args:
         if a == "--":
             break
+        if name == "less" and a[:1] == "-" and a[1:2] != "-" and "k" in a:  # `-k F`, `-Rk F`, `-kF`
+            return "-k"
         key = a.partition("=")[0]
         if key in opts or name in READER_EXEC_ABBREV and len(key) >= 4 and any(o.startswith(key) for o in opts):
             return key
@@ -13529,15 +13533,61 @@ def _git_grep_pager(args: List[str]) -> bool:
     return False
 
 
+# AUD-SEC-793 (review #595): `git difftool -x <lệnh>`/`--extcmd[=]<lệnh>` (viết tắt `--ext`) chạy lệnh với hai tệp diff.
+# Cụm cờ ngắn: `-x` ăn phần còn lại; `-t`/`--tool` chỉ chọn công cụ đã cấu hình (khoá cấu hình xét ở luật `-c`).
+GIT_DIFFTOOL_EXT = "--extcmd"
+
+
+def _git_difftool_cmd(args: List[str]) -> bool:
+    for a in args:
+        if a in OPTS_END:
+            return False
+        key = a.partition("=")[0]
+        if GIT_DYN_FLAG_RE.search(key) and a[:1] == "-":
+            return True
+        if (
+            key[:2] == "--"
+            and len(key) >= 4
+            and GIT_DIFFTOOL_EXT.startswith(key)
+            or key[:2] != "--"
+            and a[:1] == "-"
+            and "x" in a
+        ):
+            return True
+    return False
+
+
 # AUD-SEC-786/787: biến môi trường mà công cụ đọc chạy như lệnh — `GIT_EXTERNAL_DIFF=rm git diff` (như `-c diff.external`),
 # `LESSOPEN='|rm %s' less f` (less chạy cả khi không có TTY). Gán ở bất kỳ lệnh nào (tiến trình con kế thừa) → chặn;
 # giá trị rỗng thì cho (git/less coi như không đặt).
-EXEC_ENV_TOKEN_RE = re.compile(r"(?:GIT_EXTERNAL_DIFF|LESSOPEN|LESSCLOSE)(?:\+?=(.*))?", re.S)
+# Review #595 (AUD-SEC-791/792): bash ghi biến bằng nhiều đường (`export X; for X in …`, `declare -n r=X`, `printf -vX`,
+# `${X:=…}`, `select X`, `env -S 'X=…'`) và less nạp LESSOPEN qua lesskey (`LESSKEY_CONTENT='#env…'`) — không liệt kê
+# đường ghi: tên NHẮC Ở BẤT KỲ token nào của lệnh không chỉ đọc (`_reuse_reader`) → chặn; trừ gán rỗng `X=`, `unset X`,
+# `env -u X`/`--unset[=]X`. `LESS` chỉ tính khi giá trị có thể là cờ lesskey (`-k…`, `--les…`).
+EXEC_ENV_NAME_RE = re.compile(r"(?:GIT_EXTERNAL_DIFF|LESSOPEN|LESSCLOSE|LESSKEY\w*)(?![A-Za-z0-9_])")
+LESS_ENV_RE = re.compile(r"(?<![A-Za-z0-9_])LESS\+?=\S*(?:k|--les)")
+EXEC_ENV_UNSET = ("-u", "--unset")
+
+
+def _exec_env_token(t: str, prev: str) -> bool:
+    if prev in EXEC_ENV_UNSET or t.startswith("--unset="):
+        return False
+    hit = EXEC_ENV_NAME_RE.search(t)
+    if hit and not (hit.start() == 0 and t[hit.end() :] == "="):
+        return True
+    return bool(LESS_ENV_RE.search(t))
 
 
 def _exec_env_why(c: List[str], name: str, args: List[str]) -> str:
-    hit = [m for t in _assigned_tokens(c, name, args) for m in [EXEC_ENV_TOKEN_RE.fullmatch(t)] if m and m[1] != ""]
-    return "ghi biến môi trường chạy lệnh (`GIT_EXTERNAL_DIFF`/`LESSOPEN`/`LESSCLOSE`, AUD-SEC-786/787)" if hit else ""
+    """Gán tiền tố/`env` luôn xét; phần lệnh thật bỏ qua khi là lệnh chỉ đọc (cả sau trình bọc: `env grep X f`)."""
+    body = _strip_prefixes(c)
+    head = len(c) - len(body) + 1  # đối số của lệnh thật là đuôi nguyên văn của `c` (`env -S'…'` dựng argv mới: không)
+    reader = name == "unset" or bool(body) and _reuse_reader(body) and head > 0 and c[head:] == body[1:]
+    scan = c[:head] if reader else c
+    hit = any(_exec_env_token(t, p) for t, p in zip(scan, ["", *scan]))
+    return (
+        "nhắc biến môi trường chạy lệnh (`GIT_EXTERNAL_DIFF`/`LESSOPEN`/`LESSKEY*`, AUD-SEC-786/787/791)" if hit else ""
+    )
 
 
 def _dyn_exec_why(name: str, args: List[str]) -> str:
@@ -13546,6 +13596,8 @@ def _dyn_exec_why(name: str, args: List[str]) -> str:
         return f"`{name} {opt}` chạy chương trình theo giá trị cờ (AUD-SEC-727)"
     if name == "git" and args[:1] == ["grep"] and _git_grep_pager(args[1:]):
         return "`git grep -O`/`--open-files-in-pager` chạy chương trình với tệp khớp (AUD-SEC-785)"
+    if name == "git" and args[:1] == ["difftool"] and _git_difftool_cmd(args[1:]):
+        return "`git difftool -x`/`--extcmd` chạy chương trình với tệp diff (AUD-SEC-793)"
     if name not in SED_NAMES and name not in AWK_NAMES:
         return ""
     if _stdin_program(args):
@@ -16328,13 +16380,13 @@ CLOUD_COPIERS = ("aws", "gsutil", "rclone", "gcloud", "azcopy")
 # scripts/xt.py …` không qua cổng) và lệnh chỉ đọc/in (bảng thụ động của D-432): không thuộc bảng ghi tệp, chạy lệnh từ
 # đối số, ra mạng hay ghi biến theo tên nào của guard (`GuardGateNamesTest.ACTIVE_TABLES`). Ngoại lệ đã biết, có từ trước
 # ADR-0076 (guard cho qua, không thuộc bảng ghi/chạy nào): `less -o FILE` ghi tệp. Công cụ đọc có cờ chạy chương
-# trình (`READER_EXEC_OPTS`: `rg --pre`, `ugrep --filter`, `bat --pager`…) ở `GATE_NAMES` để cờ có mở rộng (`--pre$E`)
+# trình (`READER_EXEC_OPTS`: `rg --pre`, `ugrep --filter`, `bat --pager`, `less --lesskey-*`…) ở `GATE_NAMES` để cờ có mở rộng (`--pre$E`)
 # qua cổng (AUD-SEC-727). Lệnh đọc mà có dạng ghi (`sort -o`, `uniq in out`, `touch`, `tee`, trình soạn thảo, formatter) ở lại `GATE_NAMES`; `printf` cũng vậy
 # (D-439: `printf -v VAR` ghi biến như `read`/`let`).
 GATE_PASSIVE: FrozenSet[str] = frozenset(
     "python python3 node perl ruby php cat tac head tail wc grep egrep fgrep zgrep diff cmp jq echo"
     " date true false nproc pwd ls whoami hostname uname id test [ [[ basename dirname readlink realpath stat file"
-    " du md5sum sha1sum sha224sum sha256sum sha384sum sha512sum b2sum cksum less more ps pgrep cut type which"
+    " du md5sum sha1sum sha224sum sha256sum sha384sum sha512sum b2sum cksum more ps pgrep cut type which"
     " printenv tr :".split()
 )
 # Tên lệnh có luật — mọi tên luật rẽ nhánh, gồm cả `GATE_PASSIVE`: tập để hỏi "tên này có luật không" (đọc lại hậu tố của

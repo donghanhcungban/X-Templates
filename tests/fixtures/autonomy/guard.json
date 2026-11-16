@@ -23526,6 +23526,16 @@
 {"id": "aud786-ctl-git-external-diff-empty", "origin": "control", "refs": ["AUD-SEC-786"], "input": {"command": "GIT_EXTERNAL_DIFF= git diff"}, "expect": {"allowed": true}},
 {"id": "aud787-lessopen", "origin": "audit", "refs": ["AUD-SEC-787"], "input": {"command": "LESSOPEN='|rm %s' less f"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud787-lessclose-env", "origin": "audit", "refs": ["AUD-SEC-787"], "input": {"command": "env LESSCLOSE='rm %s' less f"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud787-ctl-less-plain", "origin": "control", "refs": ["AUD-SEC-787"], "input": {"command": "less README.md"}, "expect": {"allowed": true}}
+{"id": "aud787-ctl-less-plain", "origin": "control", "refs": ["AUD-SEC-787"], "input": {"command": "less README.md"}, "expect": {"allowed": true}},
+{"id": "aud791-for-loop-env", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-791"], "input": {"command": "export GIT_EXTERNAL_DIFF; for GIT_EXTERNAL_DIFF in rm; do git diff; done"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud791-nameref-env", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-791"], "input": {"command": "declare -n r=LESSOPEN; export r='|rm %s'; less f"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud791-env-split-string", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-791"], "input": {"command": "env -S'GIT_EXTERNAL_DIFF=rm git diff'"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud791-ctl-grep-name", "origin": "control", "refs": ["AUD-SEC-791"], "input": {"command": "grep -rn GIT_EXTERNAL_DIFF scripts"}, "expect": {"allowed": true}},
+{"id": "aud791-ctl-env-unset", "origin": "control", "refs": ["AUD-SEC-791"], "input": {"command": "env -u LESSOPEN less f"}, "expect": {"allowed": true}},
+{"id": "aud792-lesskey-content-env", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-792"], "input": {"command": "LESSKEY_CONTENT='#env;LESSOPEN=|rm -rf .autopilot %s' less f.txt"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud792-lesskey-content-opt", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-792"], "input": {"command": "less --lesskey-con='#env' f.txt"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud792-ctl-less-env-r", "origin": "control", "refs": ["AUD-SEC-792"], "input": {"command": "LESS=-R less f"}, "expect": {"allowed": true}},
+{"id": "aud793-difftool-extcmd", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-793"], "input": {"command": "git difftool -y -x rm HEAD"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud793-ctl-difftool-tool", "origin": "control", "refs": ["AUD-SEC-793"], "input": {"command": "git difftool -t vimdiff HEAD"}, "expect": {"allowed": true}}
  ]
 }

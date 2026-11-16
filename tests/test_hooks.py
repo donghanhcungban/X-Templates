@@ -7918,8 +7918,44 @@ class GuardReaderExecOptTest(unittest.TestCase):
         "export LESSOPEN='|rm %s'; less f",
         "LESSCLOSE='rm %s' less f",
         "read LESSOPEN",
+        # AUD-SEC-791 (review #595): đường ghi biến khác gán chữ
+        "export GIT_EXTERNAL_DIFF; for GIT_EXTERNAL_DIFF in rm; do git diff; done",
+        "declare -n r=GIT_EXTERNAL_DIFF; r=rm; export GIT_EXTERNAL_DIFF; git diff",
+        "printf -vGIT_EXTERNAL_DIFF rm; export GIT_EXTERNAL_DIFF; git diff",
+        ": ${GIT_EXTERNAL_DIFF:=rm}; export GIT_EXTERNAL_DIFF; git diff",
+        "export GIT_EXTERNAL_DIFF; select GIT_EXTERNAL_DIFF in rm; do git diff; break; done <<< 1",
+        "env --split-string='GIT_EXTERNAL_DIFF=rm git diff'",
+        "env -S'GIT_EXTERNAL_DIFF=rm git diff'",
+        "export LESSOPEN; for LESSOPEN in '|rm %s'; do less f; done",
+        "declare -n r=LESSOPEN; export r='|rm %s'; less f",
+        # AUD-SEC-792: lesskey đặt LESSOPEN
+        "LESSKEY_CONTENT='#env;LESSOPEN=|rm -rf .autopilot %s' less f.txt",
+        "less --lesskey-content='#env;LESSOPEN=|rm %s' f.txt",
+        "less --lesskey-con='#env' f.txt",
+        "less -k keyfile f.txt",
+        "less -Rkkeyfile f.txt",
+        "LESS='--lesskey-content=#env' less f",
+        "LESS=-kfile less f",
+        # AUD-SEC-793: `git difftool -x`/`--extcmd`
+        "git difftool -y -x rm HEAD",
+        "git difftool --extcmd=rm HEAD",
+        "git difftool --ext rm HEAD",
+        "git difftool -yxrm HEAD",
+        "git difftool --ext$X rm HEAD",
+        "git grep -3Orm x",
+        "git grep -e -- -Orm",
     )
     ALLOW = (
+        "grep -rn GIT_EXTERNAL_DIFF .claude/hooks/guard.py",
+        "env -u LESSOPEN less f",
+        "unset LESSOPEN GIT_EXTERNAL_DIFF",
+        "LESS=-R less f",
+        "less +G f",
+        "git difftool -y HEAD",
+        "git difftool -t vimdiff HEAD",
+        "git difftool HEAD -- -x.txt",
+        "git diff --no-ext-diff",
+        "git grep --end-of-options -Orm -e x",
         "git grep -n foo",
         "git grep -o -e foo -e bar -- src",
         "git grep -e -O foo",
@@ -11750,10 +11786,10 @@ class GuardGateNamesTest(unittest.TestCase):
         # D-434: `python3 scripts/xt.py …` không qua cổng; cờ có mở rộng (`python3 -$X '…'`) chặn bằng luật hẹp D-435
         "trình thông dịch không phải shell": frozenset({"python", "python3", "node", "perl", "ruby", "php"}),
         # đọc tệp/luồng, ghi stdout; ngoại lệ có từ trước ghi ở comment `GATE_PASSIVE` (`less -o`); rg/ugrep/ag/ack/bat
-        # ở `GATE_NAMES` vì cờ chạy chương trình (`READER_EXEC_OPTS`, AUD-SEC-727)
+        # ở `GATE_NAMES` vì cờ chạy chương trình (`READER_EXEC_OPTS`, AUD-SEC-727); `less` cũng vậy (lesskey, AUD-SEC-792)
         "đọc, lọc, so, tìm, xem": frozenset(
             {"cat", "tac", "head", "tail", "wc", "grep", "egrep", "fgrep", "zgrep", "diff"}
-            | {"cmp", "jq", "cut", "tr", "less", "more"}
+            | {"cmp", "jq", "cut", "tr", "more"}
         ),
         # in chữ hay giá trị; `printf` ở `GATE_NAMES` (D-439: `printf -v` ghi biến)
         "in chữ, không ghi": frozenset({"echo", "true", "false", ":", "date"}),

@@ -2889,7 +2889,9 @@ class GuardDebt429Test(unittest.TestCase):
             "AUD-SEC-41",
         )
         cmd = "GIT_EXTERNAL_DIFF=sh git log -p -- s.sh; bash s.sh"  # AUD-SEC-786: biến chạy lệnh → BUDGET trước
-        self.assertEqual(decide(cmd)["decision"], "deny")
+        res = decide(cmd)
+        self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+        self.assertIn("AUD-SEC-786", res["reason"])
         cmd = "git -c diff.external=sh log -p -- s.sh; bash s.sh"  # `-c` chạy chương trình: luật cũ chặn trước
         self.assertEqual(decide(cmd)["decision"], "deny")
         self.assertTrue(guard._run_named_why(cmd))
