@@ -104,6 +104,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- Repo khung và các dự án đích chuyển từ tài khoản GitHub `seeker19110` sang `www-donghanhcungban-org` (link cũ tự chuyển
+  hướng): `FRAMEWORK_REPO` của `xt.py`, lệnh `git clone` ở README, `docs/ops/registry.json`, `TARGETS.md`, nguồn dẫn
+  trong `framework/` và `BLUEPRINT.md`, chủ bản quyền ở `LICENSE`/`NOTICE`. Ghi chép lịch sử (ADR, CHANGELOG cũ,
+  research, báo cáo) giữ nguyên. Fork đặt `XT_FRAMEWORK_REPO` như trước.
+
 - Steward xét PR theo số tăng dần, mặc định merge khi check xanh không bắt buộc review (ADR-0079, D-486). Dự án đích nâng khung, workflow steward và ruleset để nhận chính sách mới; check CI giữ nguyên.
 
 - **Tương thích:** Bộ cài, CLI và các workflow đi kèm dùng CPython 3.15.x. Repo và CI ghim 3.15.2.

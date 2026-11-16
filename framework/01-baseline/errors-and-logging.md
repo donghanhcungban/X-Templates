@@ -96,4 +96,4 @@ Lưu ý license: Sentry server là FSL (không OSI, chuyển Apache-2.0 sau 2 n�
 - The Twelve-Factor App XI Logs, III Config: <https://12factor.net/logs> — xác minh 2026-10-13
 - Command Line Interface Guidelines (errors, exit codes, stdout/stderr): <https://clig.dev/> — xác minh 2026-10-13
 - Phiên bản thư viện (xác minh 2026-10-13 qua registry): pino 10.4.0 (MIT), winston 3.19.0 (MIT), structlog 26.1.0.
-- Khung cũ X-stored `quality-supplements.md` N2 §7 (Sentry: `beforeSend`, tách env), commit `1b80fe4`; catalog `seeker19110/stored` 12 §3b (504 = có thể đã chạy), 21 §8 (outbox, outcome_unknown), đọc 2026-10-13.
+- Khung cũ X-stored `quality-supplements.md` N2 §7 (Sentry: `beforeSend`, tách env), commit `1b80fe4`; catalog `www-donghanhcungban-org/stored` 12 §3b (504 = có thể đã chạy), 21 §8 (outbox, outcome_unknown), đọc 2026-10-13.
