@@ -104,6 +104,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- ADR-0080 (D-494): pha harden chạy hai nhịp lặp tới `release-check` GO — **vét việc** (PLAN-harden từ sổ audit đang
+  có; vòng chỉ Gate máy + CI, không audit, không gọi reviewer trừ khi `pr next` trả `review`; chờ CI/merge không ngừng
+  lượt; không làm lát ngoài vòng sống) rồi **cổng ký** (audit delta + trả nợ review theo lô trên diff tích luỹ; FAIL →
+  PLAN kế). Skill `/complete` đổi thứ tự bước 2–5; bảng điều phối: reviewer theo phán đoán phiên chính chỉ còn ở pha build.
+
 - Repo khung và các dự án đích chuyển từ tài khoản GitHub `seeker19110` sang `www-donghanhcungban-org` (link cũ tự chuyển
   hướng): `FRAMEWORK_REPO` của `xt.py`, lệnh `git clone` ở README, `docs/ops/registry.json`, `TARGETS.md`, nguồn dẫn
   trong `framework/` và `BLUEPRINT.md`, chủ bản quyền ở `LICENSE`/`NOTICE`. Ghi chép lịch sử (ADR, CHANGELOG cũ,
