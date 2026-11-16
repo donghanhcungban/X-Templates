@@ -8012,7 +8012,7 @@ class GuardGhDynFlagTest(unittest.TestCase):
         "gh issue comment 5 $X",
         "gh pr edit 5 $X",
         "gh api --method DELETE$X repos/o/r",
-        "git -c push.default=matching$X push origin",
+        "git -c push.default=matching$X fetch origin",  # không phụ thuộc nhánh hiện tại (job test-main chạy trên main)
     )
     ALLOW = (
         'gh pr close "$PR"',
