@@ -21,7 +21,7 @@
 ### Lát 3 — trình chạy và công cụ đối ngoại
 - [x] `T-3896` 🔴 AUD-SEC-743/745: cờ sau `--` của trình chạy và lệnh con có mở rộng của công cụ ngoài git/gh → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardRunnerDynTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 4 — IFS
-- [ ] `T-3897` 🔴 AUD-SEC-752: lệnh nhắc `IFS` bỏ miễn trừ tham số dạng số (`$?`, `$#`, `$$`, `$((…))`) — Gate: `python3 -m unittest tests.test_hooks.GuardIfsDigitTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
+- [x] `T-3897` 🔴 AUD-SEC-752: lệnh nhắc `IFS` bỏ miễn trừ tham số dạng số (`$?`, `$#`, `$$`, `$((…))`) — Gate: `python3 -m unittest tests.test_hooks.GuardIfsDigitTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 5 — nháy lồng
 - [ ] `T-3898` 🔴 AUD-SEC-750/606: nháy đơn trong nháy kép lồng thay lệnh và thoát `\$`/backtick trong chuỗi lồng → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardNestedQuoteTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 6 — hàm và nhóm

@@ -2575,7 +2575,7 @@ def _split_why(cmd: str) -> str:
     if not _split_trigger(cmd, 0):
         return ""
     v, bodies = _split_view(cmd)
-    if not (v.why or _unsafe_dollar(v) or any(map(_here_body_unsafe, bodies))):
+    if not (v.why or _unsafe_dollar(v, _ifs_digit_free(cmd)) or any(map(_here_body_unsafe, bodies))):
         return ""
     return SPLIT_WHY + (SPLIT_FOR_HINT if SPLIT_FOR_SUBST_RE.search(_code_views(v)[1]) else "")
 
@@ -2696,13 +2696,27 @@ def _split_view(cmd: str) -> Tuple[_CodeView, List[str]]:
     return _CodeView(_fold_heredocs("\n".join(lines), True)), bodies
 
 
-def _unsafe_dollar(v: _CodeView) -> bool:
-    """Có `$` không nằm trực tiếp trong nháy kép, trừ tham số ra số, mở `$((…))` số học, mở `$'…'`."""
+# AUD-SEC-752: gán `IFS` chữ nguyên văn không có chữ số (`IFS=`, `IFS=,`, `IFS=$'\n'`) — tham số ra số (`$?`, `$((…))`)
+# không bị tách. Nhắc `IFS` kiểu khác (giá trị có số/mở rộng/thoát số `$'\060'`, `n=IFS`) → không biết, bỏ miễn trừ.
+IFS_WORD_RE = re.compile(r"IFS")
+IFS_DIGIT_FREE_RE = re.compile(
+    r"(?<![\w$])IFS=(?:'[^'\d]*'|\"[^\"\d$`\\]*\"|\$'(?:[^'\\\d]|\\[abefnrtv'\\])*'|[^\s;&|()<>'\"$`\\\d]*)(?=[\s;&|)]|$)"
+)
+
+
+def _ifs_digit_free(cmd: str) -> bool:
+    """Mọi lần nhắc `IFS` (có thể không lần nào) là gán chữ không có chữ số."""
+    return len(IFS_DIGIT_FREE_RE.findall(cmd)) == len(IFS_WORD_RE.findall(cmd))
+
+
+def _unsafe_dollar(v: _CodeView, numeric_ok: bool = True) -> bool:
+    """Có `$` không nằm trực tiếp trong nháy kép, trừ mở `$'…'` và — khi `numeric_ok` (IFS không thể chứa chữ số,
+    AUD-SEC-752) — tham số ra số, mở `$((…))` số học."""
     live = _code_views(v)[0]
-    arith = {a for a, _ in _arith_spans(live)}
+    arith = {a for a, _ in _arith_spans(live)} if numeric_ok else set()
     s, i = v.s, v.s.find("$")
     while i >= 0:
-        num = SPLIT_NUM_RE.match(s, i)
+        num = SPLIT_NUM_RE.match(s, i) if numeric_ok else None
         if num:
             i = s.find("$", num.end())
             continue
