@@ -23540,6 +23540,9 @@
 {"id": "aud795-env-file-devnull", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-795"], "input": {"command": "env -f /dev/null git push --force origin main"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud795-env-file-long", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-795"], "input": {"command": "env --file=vars git diff"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud795-ctl-env-i", "origin": "control", "refs": ["AUD-SEC-795"], "input": {"command": "env -i git status"}, "expect": {"allowed": true}},
-{"id": "aud797-ctl-env-unset-joined", "origin": "control", "refs": ["AUD-SEC-797"], "input": {"command": "env -uLESSOPEN less f"}, "expect": {"allowed": true}}
+{"id": "aud797-ctl-env-unset-joined", "origin": "control", "refs": ["AUD-SEC-797"], "input": {"command": "env -uLESSOPEN less f"}, "expect": {"allowed": true}},
+{"id": "aud790-subst-prefix-assign", "origin": "audit", "refs": ["AUD-SEC-790"], "input": {"command": "d=/; d=$(cat f) true; rm -rf $d"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+{"id": "aud790-arith-prefix-assign", "origin": "audit", "refs": ["AUD-SEC-790"], "input": {"command": "d=/; d=$((1)) true; rm -rf $d"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+{"id": "aud790-ctl-subst-assign", "origin": "control", "refs": ["AUD-SEC-790"], "input": {"command": "d=build; d=$(cat f) true; rm -rf $d"}, "expect": {"allowed": true}}
  ]
 }

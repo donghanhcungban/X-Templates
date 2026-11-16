@@ -737,3 +737,10 @@
 - Chọn: Giữ bảo toàn formatter và nhận dạng hàng ký tiềm năng ở biên Write/MCP
 - Lý do (tiêu chí chất lượng cuối): Hai lớp bảo vệ bổ sung cho nhau. Guard phát hiện thêm nội dung tiềm năng, G7 giữ đúng tiêu chí chữ ký chuẩn và quy trình ký của người.
 - Đường lùi: Revert lát guard, giữ cơ chế bảo toàn của dev-task.sh.
+
+### D-495 · 2026-11-16T16:25:06+00:00 · Duyệt PLAN-harden-2026-11-16 đợt 1 (14 mục 🔴 của guard, 9 lát)?
+
+- Phương án: (1) Đợt 1 chỉ 🔴, gom theo gốc lỗi, mỗi lát một PR; 🟠 và nợ 🟢 ở đợt 2–3 (ADR-0080) · (2) Một PLAN 150 task theo next-step
+- Chọn: Đợt 1 chỉ 🔴, gom theo gốc lỗi, mỗi lát một PR; 🟠 và nợ 🟢 ở đợt 2–3 (ADR-0080)
+- Lý do (tiêu chí chất lượng cuối): Theo ADR-0080/D-494: vét việc theo mức rủi ro; PLAN 150 task quá dài để mỗi task có Gate máy riêng; gom theo gốc lỗi để một test hồi quy phủ cả họ. Hướng D-415 (không đọc chắc → BUDGET) giữ bản sửa nhỏ và đúng chiều chặt.
+- Đường lùi: Bỏ PLAN này, lập lại theo next-step.

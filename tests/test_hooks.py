@@ -7996,6 +7996,41 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardPrefixAssignSubstTest(unittest.TestCase):
+    """AUD-SEC-790 (T-3893): `d=$(cat f) true` — token cắt ở `(` nên guard từng ghi `d=$` như gán riêng, trong khi bash giữ
+    giá trị cũ của `d` (gán tiền tố). Nay gán bằng thay lệnh không ghi nhận: giữ giá trị cũ."""
+
+    DENY = (
+        "d=.autopilot; d=$(cat f) true; rm -rf $d",
+        'd=.autopilot; d=$(cat f) true; rm -rf "$d"',
+        "d=.autopilot; d=$(cat f) x=1 true; rm -rf $d",
+        "d=.autopilot; d=$(cat f)x true; rm -rf $d",
+        "d=.autopilot; d=a$(cat f) true; rm -rf $d",
+        "d=.autopilot; d=$((1)) true; rm -rf $d",
+    )
+    ALLOW = ("d=$(cat f); echo $d", "d=build; d=$(cat f) true; rm -rf $d", "x=$(date +%s); echo $x")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_subst_assign_keeps_old_value(self):
+        for cmd in self.DENY:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "deny", cmd)
+
+    def test_plain_subst_assign_runs(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardEnvFileTest(unittest.TestCase):
     """AUD-SEC-795 (review #596): `env -f F` (uutils env) nạp biến từ tệp guard không đọc, và `-f` không ăn giá trị nên
     `env -f /dev/null <lệnh>` từng đọc tên lệnh là `/dev/null` — cho qua mọi lệnh. Nay chặn BUDGET."""

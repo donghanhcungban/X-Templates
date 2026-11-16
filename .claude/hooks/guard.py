@@ -14399,7 +14399,10 @@ def _expand_tokens(tokens: List[str], pick: int, split: bool, tilde: bool = Fals
     home0 = posixpath.expanduser("~") if any("HOME" in t for t in tokens) else None
     for t in tokens:
         if _is_punct(t) and not _is_redirect(t):
-            if cur:
+            # AUD-SEC-790: `d=$(cat f) true` — token cắt ở `(` thành `d=$`; giá trị là thay lệnh (không biết) và có thể là
+            # gán tiền tố (bash giữ giá trị cũ) → không ghi nhận, giữ giá trị cũ (chiều chặt).
+            subst = t in ("(", "((") and bool(cur) and cur[-1].endswith("$") and bool(ASSIGN_ANY_RE.fullmatch(cur[-1]))
+            if cur and not subst:
                 _record_assigns(cur, env, pick, home0)
             cur, local = [], {}
             out.append(t)
