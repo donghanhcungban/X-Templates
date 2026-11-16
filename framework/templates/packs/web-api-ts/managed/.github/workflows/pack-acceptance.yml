@@ -45,6 +45,8 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - name: Quét lockfile (advisory mức vừa trở lên)
+        run: pnpm audit --audit-level moderate
       - run: pnpm install --frozen-lockfile
       - name: Bộ nghiệm thu (lệnh `test` của xt.yaml)
         env:

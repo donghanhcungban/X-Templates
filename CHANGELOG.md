@@ -8,6 +8,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- AUD-DEP-022: workflow của gói `web-api-ts` quét lockfile pnpm trước khi cài phụ thuộc.
+
 - `autonomy-bench` phủ AUD-CI-033 bằng request HTTP giả, gồm URL Unicode và URL đã mã hoá.
 
 - `autonomy-bench` phủ AUD-HAR-407…410: thiếu bằng chứng ruleset, nguồn check, lỗi cấu hình review và tài liệu chính sách merge.
