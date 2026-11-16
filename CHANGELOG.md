@@ -233,6 +233,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-609/648 (T-3900/T-3901): test khoá các dạng thay lệnh giữa đối số (đóng nhờ P4, tham số, nháy lồng) và dòng
+  §5 "lỏng" của GO-NO-GO (thiếu `|`, thụt dòng — chặn ở Write từ #580). Sổ audit không còn 🔴 mở (T-3902).
 - AUD-SEC-660/661 (T-3899): biến dùng trong thân hàm mà gán lại sau định nghĩa (`g() { rm -rf $d; }; d=/; g`, cả `~`
   với `HOME=`), thân hàm chạy shell/`source`/`xargs`/`eval`, và nhóm `{ … }` có shell nhận stdin → BUDGET.
 - AUD-SEC-750/606 (T-3898): nháy đơn trong nháy kép lồng trong `"$(…)"` với số `'` chẵn (bộ tách từ nuốt lệnh đứng

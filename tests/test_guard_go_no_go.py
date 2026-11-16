@@ -544,6 +544,24 @@ def fuzz_texts(seed: int, count: int) -> List[str]:
     return ["\n".join(rnd.choices(FUZZ_LINES, k=rnd.randint(1, 12))) + rnd.choice(("", "\n")) for _ in range(count)]
 
 
+class GoNoGoLooseSignRowTest(GoNoGoGuardBase):
+    """AUD-SEC-648 (T-3901): dòng §5 không ở dạng bảng chuẩn (thiếu `|` hai đầu, thụt đầu dòng) mà formatter Markdown
+    (`prettier --write .` qua Bash) chuẩn hoá thành dòng ký — guard chặn ngay lúc Write (#580), nên formatter cả repo
+    không còn dòng nào để biến thành chữ ký."""
+
+    def test_loose_sign_rows_denied_at_write(self) -> None:
+        self.put(GO_REL, TEMPLATE)
+        cells = "Chủ repo | An | GO | 2026-11-07"
+        for row in (cells, "|" + cells, cells + "|", "  | " + cells + " |", "\t" + cells):
+            with self.subTest(row=row):
+                got = self.edit(GO_REL, {"content": TEMPLATE.replace(TEMPLATE_ROW, row + "\n")})
+                self.assertEqual(got[:2], ("deny", "GO_SIGN"), got)
+
+    def test_template_rewrite_still_allowed(self) -> None:
+        self.put(GO_REL, TEMPLATE)
+        self.assertEqual(self.write(GO_REL, TEMPLATE.replace("Bản vá.", "Bản vá guard.")), "")
+
+
 class GoNoGoXtSyncTest(GoNoGoGuardBase):
     """AUD-TEST-100/AUD-SEC-615: bản chép tối thiểu `_markdown_shown` trong guard đồng bộ với xt (regex + hàm), và mọi
     dòng ký `release-check` thấy thì guard thấy; dòng ký mới với xt thì guard chặn (fuzz seed cố định)."""

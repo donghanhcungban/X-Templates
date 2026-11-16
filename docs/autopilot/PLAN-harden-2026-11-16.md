@@ -27,8 +27,8 @@
 ### Lát 6 — hàm và nhóm
 - [x] `T-3899` 🔴 AUD-SEC-660/661: thân hàm dùng biến chưa biết, shell trong nhóm/hàm đọc stdin → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardFuncScopeTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 7 — thay tiến trình giữa đối số
-- [ ] `T-3900` 🔴 AUD-SEC-609: thay tiến trình/thay lệnh giữa đối số và từ dính quanh thay lệnh → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardMidArgSubstTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
+- [x] `T-3900` 🔴 AUD-SEC-609: thay tiến trình/thay lệnh giữa đối số và từ dính quanh thay lệnh → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardMidArgSubstTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát 8 — chữ ký GO-NO-GO
-- [ ] `T-3901` 🔴 AUD-SEC-648: dòng §5 dạng không chuẩn không thành chữ ký sau `format` — đối chiếu bản sửa #566, đóng hoặc sửa phần còn lại — Gate: `python3 -m unittest tests.test_hooks.DevTaskTest tests.test_guard_go_no_go` (files: .claude/hooks/guard.py, scripts/dev-task.sh, tests/)
+- [x] `T-3901` 🔴 AUD-SEC-648: dòng §5 dạng không chuẩn không thành chữ ký sau `format` — đối chiếu bản sửa #566, đóng hoặc sửa phần còn lại — Gate: `python3 -m unittest tests.test_hooks.DevTaskTest tests.test_guard_go_no_go` (files: .claude/hooks/guard.py, scripts/dev-task.sh, tests/)
 ### Lát 9 — sổ
-- [ ] `T-3902` Sổ audit không còn 🔴 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| 🔴 \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3893, T-3894, T-3895, T-3896, T-3897, T-3898, T-3899, T-3900, T-3901)
+- [x] `T-3902` Sổ audit không còn 🔴 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| 🔴 \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3893, T-3894, T-3895, T-3896, T-3897, T-3898, T-3899, T-3900, T-3901)
