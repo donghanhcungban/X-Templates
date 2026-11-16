@@ -233,6 +233,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-680 (T-3895): chuyển hướng đứng sau lệnh con git (`git stash 2>/dev/null drop`, `git config 2>/dev/null
+  core.hooksPath …`) không còn che đối số — guard quét thêm bản đã bỏ chuyển hướng, cùng mã như dạng trơn.
 - AUD-SEC-741/742/744 (T-3894): cổng tập con của guard đọc `git-<lệnh con>` (git-core) như `git <lệnh con>`; `git config`
   và lệnh con không dựng sẵn (có thể là alias) xét lệnh con cấp hai có mở rộng; `$X` trần không nháy ở vị trí giá trị cờ
   hay vùng cờ của shell/trình thông dịch (`bash $X -c …`, `gh pr -t $X y merge …`) → BUDGET.

@@ -23551,6 +23551,9 @@
 {"id": "aud742-ctl-config-get", "origin": "control", "refs": ["AUD-SEC-742"], "input": {"command": "git config --get user.name"}, "expect": {"allowed": true}},
 {"id": "aud744-bare-var-shell-zone", "origin": "audit", "refs": ["AUD-SEC-744"], "input": {"command": "bash $X -c 'git push --force origin main'"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud744-bare-var-flag-value", "origin": "audit", "refs": ["AUD-SEC-744"], "input": {"command": "gh pr -b x -t $X y merge 12 --auto"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud744-ctl-bare-var-positional", "origin": "control", "refs": ["AUD-SEC-744"], "input": {"command": "gh pr view $PR --json title"}, "expect": {"allowed": true}}
+{"id": "aud744-ctl-bare-var-positional", "origin": "control", "refs": ["AUD-SEC-744"], "input": {"command": "gh pr view $PR --json title"}, "expect": {"allowed": true}},
+{"id": "aud680-stash-redirect-drop", "origin": "audit", "refs": ["AUD-SEC-680"], "input": {"command": "git stash 2>/dev/null drop"}, "expect": {"allowed": false, "code": "STASH_DROP"}},
+{"id": "aud680-config-redirect-hooks", "origin": "audit", "refs": ["AUD-SEC-680"], "input": {"command": "git config 2>/dev/null core.hooksPath /tmp"}, "expect": {"allowed": false, "code": "HOOK_BYPASS"}},
+{"id": "aud680-ctl-stash-list-redirect", "origin": "control", "refs": ["AUD-SEC-680"], "input": {"command": "git stash list 2>/dev/null"}, "expect": {"allowed": true}}
  ]
 }

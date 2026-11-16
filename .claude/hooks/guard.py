@@ -13013,6 +13013,18 @@ def _git_config_read_ask(config: str) -> str:
     return ""
 
 
+def _git_unredirected(argv: List[str], n: List[str]) -> Optional[List[str]]:
+    """AUD-SEC-680: lệnh git có chuyển hướng sau lệnh con (`git stash 2>/dev/null drop`) → argv đã bỏ chuyển hướng (fd
+    một chữ số đứng liền trước bỏ theo — như luật push) để mọi luật git (stash/config/remote/ref, cả ngoài `git_rules`)
+    thấy đúng đối số; quét thêm, không thay bản gốc. Không có chuyển hướng hay đuôi đã đổi khi chuẩn hoá → None."""
+    k = len(argv) - len(n) + 2
+    if n[:1] != ["git"] or n[1:2] and n[1] not in GIT_BUILTINS or k < 2 or argv[k:] != n[2:]:
+        return None
+    if not any(_is_redirect(t) for t in n[2:]):
+        return None
+    return [*argv[:k], *_drop_redirect_ops(n[2:], PUSH_FD_DIGITS)]
+
+
 def _scan_command(
     argv: List[str],
     root: str,
@@ -13023,6 +13035,20 @@ def _scan_command(
 ) -> Optional[str]:
     """Quét một lệnh đơn: thêm câu hỏi vào `asks`, ghi cờ commit (kèm thư mục commit) vào `res`; trả lý do deny nếu phải chặn.
     `dirs`: thư mục đã biết của quyết định (ứng viên khi `cwd` không biết — AUD-SEC-449)."""
+    plain = _git_unredirected(argv, normalize(argv))
+    deny = _scan_one(plain, root, res, asks, cwd, dirs) if plain else None
+    return deny or _scan_one(argv, root, res, asks, cwd, dirs)
+
+
+def _scan_one(
+    argv: List[str],
+    root: str,
+    res: Dict[str, object],
+    asks: List[str],
+    cwd: Optional[str] = None,
+    dirs: FrozenSet[str] = frozenset(),
+) -> Optional[str]:
+    """Thân của `_scan_command` cho một cách đọc argv."""
     env = _track_env(res, argv)
     n = normalize(argv)
     if not n:  # chỉ chuyển hướng: `exec 3> .env`, `> .env` (review #186 lần 2) — vẫn là ghi
