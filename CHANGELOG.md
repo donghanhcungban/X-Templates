@@ -8,6 +8,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- `NOTICE` ghi phạm vi giấy phép MIT, thành phần bên thứ ba (axe-core, MPL-2.0) và tuyên bố nhãn hiệu; README trỏ tới
+  `NOTICE`, `CONTRIBUTING.md` thêm mục giấy phép đóng góp (inbound = outbound). Fixture `pip-audit` bỏ mô tả advisory
+  chép nguyên văn; research bỏ danh mục Shape of AI (CC BY-NC-SA) và tên nhánh phiên cloud.
+
 - `autonomy-bench` phủ AUD-CI-033 bằng request HTTP giả, gồm URL Unicode và URL đã mã hoá.
 
 - `autonomy-bench` phủ AUD-HAR-407…410: thiếu bằng chứng ruleset, nguồn check, lỗi cấu hình review và tài liệu chính sách merge.
