@@ -76,5 +76,5 @@ Quy mô quyết định khối lượng: blueprint `web-app` 70 MUST ở S, 473 
 ## Nguồn
 
 - Quy ước định dạng: [`conventions.md`](conventions.md).
-- Ý tưởng "checklist máy đọc được, GO/NO-GO theo bằng chứng": `seeker19110/stored` mục 09 (deployment-checklist,
+- Ý tưởng "checklist máy đọc được, GO/NO-GO theo bằng chứng": `www-donghanhcungban-org/stored` mục 09 (deployment-checklist,
   production-readiness-checklist), đọc 2026-10-13.

@@ -2,8 +2,8 @@
   "schema": 1,
   "products": [
     {
-      "repo": "seeker19110/hotel-manager",
-      "owner": "seeker19110",
+      "repo": "www-donghanhcungban-org/hotel-manager",
+      "owner": "www-donghanhcungban-org",
       "type": null,
       "risk": null,
       "core": "3.32.0",
@@ -14,8 +14,8 @@
       "exceptions": []
     },
     {
-      "repo": "seeker19110/X-Company",
-      "owner": "seeker19110",
+      "repo": "www-donghanhcungban-org/X-Company",
+      "owner": "www-donghanhcungban-org",
       "type": null,
       "risk": null,
       "core": "3.32.0",
@@ -26,8 +26,8 @@
       "exceptions": []
     },
     {
-      "repo": "seeker19110/xboss",
-      "owner": "seeker19110",
+      "repo": "www-donghanhcungban-org/xboss",
+      "owner": "www-donghanhcungban-org",
       "type": null,
       "risk": null,
       "core": "3.32.0",
@@ -38,8 +38,8 @@
       "exceptions": []
     },
     {
-      "repo": "seeker19110/dhcb",
-      "owner": "seeker19110",
+      "repo": "www-donghanhcungban-org/dhcb",
+      "owner": "www-donghanhcungban-org",
       "type": null,
       "risk": null,
       "core": "3.32.0",
