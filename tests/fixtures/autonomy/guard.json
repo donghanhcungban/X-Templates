@@ -23510,6 +23510,13 @@
 {"id": "adr76-p0-ctl-env-assign", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "env FOO=$BAR npm test"}, "expect": {"allowed": true}},
 {"id": "aud781-ctl-quoted-build-priority", "origin": "control", "refs": ["AUD-SEC-781"], "input": {"command": "nice -n \"$priority\" make"}, "expect": {"allowed": true}},
 {"id": "aud782-ctl-nested-build-timeout", "origin": "control", "refs": ["AUD-SEC-782"], "input": {"command": "nice -n \"${priority}\" timeout -k \"$delay\" 10 make"}, "expect": {"allowed": true}},
-{"id": "aud783-ctl-descriptor-like-text", "origin": "control", "refs": ["AUD-SEC-783"], "input": {"command": "printf \"%s\" \"{build_log}\" >o"}, "expect": {"allowed": false, "code": "BUDGET"}}
+{"id": "aud783-ctl-descriptor-like-text", "origin": "control", "refs": ["AUD-SEC-783"], "input": {"command": "printf \"%s\" \"{build_log}\" >o"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud780-redirect-before-assign", "origin": "audit", "refs": ["AUD-SEC-780"], "input": {"command": ">o d=/; rm -rf $d"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+{"id": "aud780-redirect-export", "origin": "audit", "refs": ["AUD-SEC-780"], "input": {"command": ">o export d=/; rm -rf $d"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+{"id": "aud780-ctl-assign-redirect-benign", "origin": "control", "refs": ["AUD-SEC-780"], "input": {"command": "x=1 >log; echo $x"}, "expect": {"allowed": true}},
+{"id": "aud727-rg-pre", "origin": "audit", "refs": ["AUD-SEC-727"], "input": {"command": "rg --pre rm x .autopilot"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud727-ugrep-filter", "origin": "audit", "refs": ["AUD-SEC-727"], "input": {"command": "ugrep --filter=txt:rm x ."}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud727-ag-pager-abbrev", "origin": "audit", "refs": ["AUD-SEC-727"], "input": {"command": "ag --pag rm x"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud727-ctl-rg-pre-glob", "origin": "control", "refs": ["AUD-SEC-727"], "input": {"command": "rg --pre-glob '*.gz' x"}, "expect": {"allowed": true}}
  ]
 }

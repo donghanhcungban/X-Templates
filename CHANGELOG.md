@@ -224,6 +224,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-780: guard ghi nhận gán đứng cùng chuyển hướng (`>o d=/`, `>o export d=/`) như bash; lệnh chỉ có gán
+  mà có fd trước chuyển hướng (`2>o`, `{fd}>o`) hay đích bị cắt (`>$(…)`) bị chặn BUDGET.
+- AUD-SEC-727: guard chặn (BUDGET) cờ chạy chương trình của công cụ đọc: `rg --pre`/`--hostname-bin`,
+  `ugrep --filter`/`--pager`, `bat`/`ag`/`ack --pager`; rg/ugrep/ag/ack/bat rời `GATE_PASSIVE` nên cờ có mở rộng
+  (`--pre$E`) qua cổng tập con — cờ dính mở rộng/glob và thay lệnh làm đối số của các lệnh này nay BUDGET như
+  AUD-SEC-740; viết lại `-A "$N"`, `-g '*.py'`, `"$(…)"`.
+
 - AUD-HAR-393: hook `pre-push` dùng chung chỉ áp dụng chính sách ở repo đã cài khung.
 
 - AUD-SEC-648: guard bảo vệ thêm dạng hàng ký mà formatter có thể chuẩn hóa. Cổng G7 vẫn chỉ xác nhận dòng ký chuẩn.

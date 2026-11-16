@@ -7873,6 +7873,65 @@ class GuardGluedSeparatorTest(unittest.TestCase):
         self.assertIsInstance(quoted[1], self.g.LitWord)
 
 
+class GuardReaderExecOptTest(unittest.TestCase):
+    """AUD-SEC-727 (T-3768): công cụ đọc chạy chương trình theo giá trị cờ (`rg --pre rm x .autopilot` xoá từng tệp) —
+    guard không quét chương trình đó nên chặn BUDGET; cờ đọc thường và `--` trước cờ vẫn cho qua."""
+
+    BUDGET = (
+        "rg --pre rm x .autopilot",
+        "rg --pre=rm x .",
+        "/usr/bin/rg -n --pre rm x .",
+        "rg --hostname-bin ./h --hyperlink-format default x",
+        "ugrep --filter=txt:rm x .",
+        "ug --pager=rm -Q x",
+        "bat --pager 'rm -rf .' x",
+        "batcat --pager=rm x",
+        "ag --pag rm x",
+        "ack --pager=rm x",
+        "echo x | xargs rg --pre rm x",
+        "bash -c 'rg --pre rm x .'",
+        # review T-3768 B2: cờ có mở rộng (`E` rỗng → `--pre`) qua cổng tập con vì rg/ag/bat/ugrep ở `GATE_NAMES`
+        "rg --pre$E rm x .autopilot",
+        'rg --pre"$E" rm x .',
+        "rg $E--pre rm x .",
+        "ag --pag$E rm x",
+        "bat --pager$E rm x",
+        "ugrep --filter$E=txt:rm x .",
+    )
+    ALLOW = (
+        "rg -n foo scripts",
+        "rg --pre-glob '*.gz' x",
+        "rg -- --pre x",
+        "bat --paging=never x",
+        "ag -Q x",
+        'rg -n "$P" scripts',
+        'bat "$f"',
+        "ag --p x",  # tiền tố dưới 4 ký tự: getopt_long báo mơ hồ, không chạy gì
+        "grep --pre x",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_reader_exec_option_is_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_plain_reader_options_still_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardFunctionKeywordTest(unittest.TestCase):
     """AUD-SEC-611 (T-3722): `function TÊN { … }` — `_strip_prefixes` bỏ `{`/`}` nhưng không bỏ `function TÊN`, nên argv của
     lệnh đầu thân hàm bắt đầu bằng `function` và mọi luật theo tên lệnh bỏ qua nó (`function g { rm -rf /; }; g`). Dạng
@@ -8004,6 +8063,75 @@ class GuardFunctionKeywordTest(unittest.TestCase):
         self.assertEqual(strip(["function", "g", "{", "git", "status"]), ["git", "status"])
         self.assertEqual(strip(["function", "a", "function", "b", "{", "ls"]), ["ls"])
         self.assertEqual(strip(["function"]), ["function"])  # một mình: không có tên để bỏ
+
+
+class GuardAssignRedirectTest(unittest.TestCase):
+    """AUD-SEC-780 (T-3790): lệnh chỉ có gán + chuyển hướng vẫn gán trong shell (`>o d=/`), nên `_record_assigns` phải bỏ
+    chuyển hướng (cả fd đứng trước) trước khi xét gán — trước đây cả dòng cho qua."""
+
+    DENY = (
+        ">o d=/; rm -rf $d",
+        "d=/ >o; rm -rf $d",
+        ">o export d=/; rm -rf $d",
+        ">o c=push; git $c origin feat/me --force",
+    )
+    # fd đứng trước chuyển hướng (token không biết `2>o` hay `2 >o` — lệnh `2`, không gán) và đích bị cắt (che từ lệnh
+    # có thể theo sau) trong lệnh chỉ có gán: BUDGET (review T-3790 A1/A2)
+    BUDGET = (
+        "2>o d=/; rm -rf $d",
+        "d=/ 2>&1; rm -rf $d",
+        "{fd}>o d=/; rm -rf $d",
+        "d=.autopilot; d=x 2 >/dev/null; rm -rf $d",
+        "d=.claude; d=x 2 >/dev/null; rm -rf $d",
+        "b=main; b=feat/me 2 >/dev/null; git push origin :$b",
+        "d=.autopilot >$(echo /dev/null); rm -rf $d",
+        "d=.autopilot > >(cat); rm -rf $d",
+        "d=.autopilot < <(true); rm -rf $d",
+    )
+    ALLOW = (
+        "d=build >o; rm -rf $d",
+        "x=1 >log; echo $x",
+        ">o",
+        'out=$(git status 2>&1); echo "$out"',
+        "git status 2>/dev/null",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_assignment_with_redirect_is_recorded(self):
+        for cmd in self.DENY:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "RULE_DENY"), res)
+
+    def test_ambiguous_fd_or_cut_target_is_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_harmless_assignment_with_redirect_still_runs(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+    def test_record_assigns_ignores_redirect_only_command(self):
+        env: dict = {}
+        self.g._record_assigns([">", "o"], env)
+        self.assertEqual(env, {})
+        self.g._record_assigns([">", "o", "d=/"], env)
+        self.assertEqual(env, {"d": "/"})
+        self.g._record_assigns(["git", "status", "2", ">", "o"], env)  # không chỉ có gán: không BUDGET
+        with self.assertRaises(self.g.ScanTooComplex):
+            self.g._record_assigns(["2", ">", "o", "d=x"], env)
 
 
 class GuardRemoteDeleteTest(unittest.TestCase):
@@ -11593,10 +11721,11 @@ class GuardGateNamesTest(unittest.TestCase):
     PASSIVE_PIN = {
         # D-434: `python3 scripts/xt.py …` không qua cổng; cờ có mở rộng (`python3 -$X '…'`) chặn bằng luật hẹp D-435
         "trình thông dịch không phải shell": frozenset({"python", "python3", "node", "perl", "ruby", "php"}),
-        # đọc tệp/luồng, ghi stdout; ngoại lệ có từ trước ghi ở comment `GATE_PASSIVE` (`rg --pre`, `less -o`)
+        # đọc tệp/luồng, ghi stdout; ngoại lệ có từ trước ghi ở comment `GATE_PASSIVE` (`less -o`); rg/ugrep/ag/ack/bat
+        # ở `GATE_NAMES` vì cờ chạy chương trình (`READER_EXEC_OPTS`, AUD-SEC-727)
         "đọc, lọc, so, tìm, xem": frozenset(
-            {"cat", "tac", "head", "tail", "wc", "grep", "egrep", "fgrep", "zgrep", "ugrep", "rg", "ag", "ack", "diff"}
-            | {"cmp", "jq", "cut", "tr", "less", "more", "bat"}
+            {"cat", "tac", "head", "tail", "wc", "grep", "egrep", "fgrep", "zgrep", "diff"}
+            | {"cmp", "jq", "cut", "tr", "less", "more"}
         ),
         # in chữ hay giá trị; `printf` ở `GATE_NAMES` (D-439: `printf -v` ghi biến)
         "in chữ, không ghi": frozenset({"echo", "true", "false", ":", "date"}),
@@ -11619,6 +11748,7 @@ class GuardGateNamesTest(unittest.TestCase):
         *("FETCHERS", "CLOUD_COPIERS", "REMOTE_COPY", "REMOTE_SHELLS", "STREAM_SENDERS", "GIT_DIR_COPIERS"),
         *("DB_CLIENTS", "PKG_ADD", "PKG_WRAPPERS", "ASK_CMDS", "DESTROY_CMDS", "AGENT_SELF_APPROVE"),
         *("GIT_DASHED_REWRITERS", "DECLARE_CMDS", "VAR_WRITER_CMDS", "HOME_VAR_HEADS", "GIT_CFG_VAR_HEADS"),
+        "READER_EXEC_OPTS",
     )
 
     @classmethod
