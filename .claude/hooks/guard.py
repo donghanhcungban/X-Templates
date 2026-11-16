@@ -2395,7 +2395,83 @@ def _gate_bad_word(words: List[str]) -> str:
     bad = _gate_flag_zone(words[1:], skels, interp)
     bad = bad or _gate_bare_dyn(words[1:], skels, interp or name in SHELLS) or _gate_tool_sub1(name, words[1:], skels)
     bad = bad or _gate_runner_tail(name, words[1:])
+    bad = bad or (_gh_dyn_word(words[1:], skels) if name == "gh" else "")
+    bad = bad or (_git_cfg_dyn(words[1:]) if name == "git" else "")
     return bad or _git_sub2(words[1:], skels) if name == "git" else bad
+
+
+# AUD-SEC-591/592/593/746 (D-415): lệnh `gh` — bash có thể dựng cờ từ mở rộng ở vị trí đối số. Lệnh đăng chữ không có đối
+# số vị trí nào mở rộng được an toàn (cờ `--body-file`/`--title` dựng từ biến); lệnh khác giữ đối số vị trí đầu (`"$PR"`).
+GH_POST_SUBS = frozenset(
+    {("pr", "create"), ("pr", "comment"), ("pr", "edit"), ("issue", "comment"), ("issue", "create")}
+)
+GH_POST_SUBS |= frozenset({("issue", "edit"), ("pr", "review"), ("release", "create"), ("release", "edit")})
+GH_ANYPOS_SUBS = frozenset({("cache", "delete")})  # `"$X"` = `--all` xoá mọi cache (GH_DESTROY_FLAGS)
+
+
+def _unquoted_dollar(word: str) -> bool:
+    kind = _CodeView(word).kind
+    return any(c == "$" and kind[i] == "c" for i, c in enumerate(word))
+
+
+def _gh_words(args: List[str], skels: List[str], plain: List[str]) -> Iterator[Tuple[int, str, str, str]]:
+    """(số thứ tự đối số vị trí — 0 nếu là giá trị cờ, từ, khung, cờ nó là giá trị) tới `--`. Từ dạng cờ nguyên văn
+    không bao giờ là giá trị (`--squash --match-head-commit X`: cờ bool không ăn `--match…`)."""
+    pos, flag = 0, ""
+    for a, s, p in zip(args, skels, plain):
+        if p in OPTS_END:
+            return  # sau `--` mọi từ là đối số vị trí — mở rộng không thành cờ
+        literal_flag = p[:1] == "-" and GATE_DYN not in s and GATE_GLOB not in s
+        if flag and not literal_flag:
+            yield 0, a, s, flag
+            flag = ""
+        elif literal_flag:
+            flag = "" if "=" in p else p
+        else:
+            pos += 1
+            yield pos, a, s, ""
+
+
+def _gh_pos_dyn(a: str, s: str, k: int, post: bool, ruled: bool, anypos: bool) -> bool:
+    """Đối số vị trí thứ `k` (sau tên lệnh) có thể thành cờ: mở rộng không nháy dính chữ; thuần mở rộng ngoài đối số đầu
+    (lệnh đăng chữ: không nháy ở mọi vị trí). Không nháy thuần ở lệnh có luật cờ: `_gh_dyn_name` xét (D-411)."""
+    if a.startswith("$((") or GATE_DYN not in s and GATE_GLOB not in s:
+        return False
+    bare = _unquoted_dollar(a)
+    if s.strip(GATE_DYN + GATE_GLOB):
+        return bare
+    if bare and ruled:
+        return False
+    return post and bare or not (k == 1 and not anypos)
+
+
+def _gh_dyn_word(args: List[str], skels: List[str]) -> str:
+    """Tên lệnh theo `_gh_path` (bỏ cờ toàn cục `-R`, `--hostname`…); xét từ sau tên lệnh cuối."""
+    plain = [_dequote(a) for a in args]
+    path = _gh_path(plain)
+    path = path if path and plain[path[0]] in GH_GROUPS else path[:1]  # như `_gh_dyn_name`: `api` không phải nhóm
+    if not path:
+        return ""
+    heads = tuple(plain[k] for k in path)[:2]
+    ctx = (heads in GH_POST_SUBS, heads[:1] in GH_FLAG_RULED or heads in GH_FLAG_RULED, heads in GH_ANYPOS_SUBS)
+    rest = path[-1] + 1
+    for pos, a, s, value_of in _gh_words(args[rest:], skels[rest:], plain[rest:]):
+        if value_of:  # giá trị cờ: chỉ `-X/--method` phải nguyên văn (AUD-SEC-746)
+            if value_of in ("-X", "--method") and (GATE_DYN in s or GATE_GLOB in s):
+                return a
+        elif _gh_pos_dyn(a, s, pos, *ctx):
+            return a
+    return ""
+
+
+def _git_cfg_dyn(args: List[str]) -> str:
+    """Giá trị `git -c k=v` có mở rộng không nháy (`-c push.default=matching$X`): bash tách được thêm cờ/tuỳ chọn."""
+    for k, a in enumerate(args[:-1]):
+        if _dequote(a) == "-c" and _unquoted_dollar(args[k + 1]):
+            return args[k + 1]
+        if _dequote(a)[:1] != "-":
+            break
+    return ""
 
 
 # AUD-SEC-743: trình chạy chạy lệnh đứng sau `--` (`uv run -- python3 …`, `npx -- node …`) — phần sau `--` đầu tiên xét

@@ -7996,6 +7996,56 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardGhDynFlagTest(unittest.TestCase):
+    """AUD-SEC-591/592/593/746 (T-3905): mở rộng ở vị trí có thể thành cờ của lệnh `gh` — từ thuần mở rộng ngoài đối số
+    vị trí đầu (lệnh đăng chữ: mọi vị trí), mở rộng không nháy dính chữ; giá trị `git -c` có mở rộng không nháy → BUDGET."""
+
+    BUDGET = (
+        'gh pr close 5 "$X"',
+        'gh api repos/o/r "$X"',
+        'gh cache delete "$X"',
+        'gh pr close 5 "$(echo -d)"',
+        "gh pr close 5$X",
+        "gh api repos/$R",
+        "gh pr comment 5 $X",
+        "gh pr create $X",
+        "gh issue comment 5 $X",
+        "gh pr edit 5 $X",
+        "gh api --method DELETE$X repos/o/r",
+        "git -c push.default=matching$X fetch origin",  # không phụ thuộc nhánh hiện tại (job test-main chạy trên main)
+    )
+    ALLOW = (
+        'gh pr close "$PR"',
+        'gh pr view "$PR"',
+        'gh pr comment 5 --body "$(date)"',
+        'gh api repos/o/r/pulls/"$N"',
+        'gh run view "$ID" --log-failed',
+        'gh pr checks "$PR"',
+        'git -c user.name="$N" log -1',
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_dynamic_flag_positions_are_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_value_and_first_positional_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertNotEqual(self.decide(cmd).get("code"), "BUDGET", cmd)
+
+
 class GuardGitNestedRunTest(unittest.TestCase):
     """AUD-SEC-636 (T-3904): lệnh git chạy lệnh lồng (`rebase --exec`, `bisect run`, `submodule foreach`,
     `for-each-repo`) và giá trị chạy lệnh cục bộ (`--receive-pack`/`--exec`/`--upload-pack`/`clone -u`) → BUDGET."""

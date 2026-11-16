@@ -233,6 +233,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-591/592/593/746 (T-3905): lệnh `gh` — mở rộng thuần ngoài đối số vị trí đầu (`gh pr close 5 "$X"`), mở rộng
+  không nháy dính chữ (`5$X`, `repos/$R`), biến không nháy ở lệnh đăng chữ, giá trị `-X/--method` có mở rộng; giá trị
+  `git -c` có mở rộng không nháy → BUDGET. Biến không nháy ở lệnh gh có luật cờ giữ luật D-411 (strict hỏi người).
 - AUD-SEC-636 (T-3904): lệnh git chạy lệnh lồng (`rebase --exec`, `submodule foreach`, `for-each-repo`) và giá trị cờ chạy
   chương trình cục bộ (`--receive-pack`, `--exec`, `--upload-pack`, `clone -u`) → BUDGET; `bisect run` quét lệnh sau `run`.
 - AUD-SEC-588/608 (T-3903): gán biến mà git/ssh chạy như lệnh (`GIT_EDITOR`, `EDITOR`, `VISUAL`, `GIT_SEQUENCE_EDITOR`,
