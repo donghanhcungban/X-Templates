@@ -2865,6 +2865,28 @@ class GitHooksTest(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(ran.read_text(encoding="utf-8"), want)
 
+    def test_pre_push_in_shared_hooks_only_applies_to_installed_repo(self):
+        self.init_repo()
+        shared = self.target / "shared-hooks"
+        self.assertEqual(self.git("config", "--global", "core.hooksPath", str(shared)).returncode, 0)
+        self.install()
+        hook = shared / "pre-push"
+        other = self.target / "unmanaged"
+        subprocess.run(["git", "init", "-q", str(other)], env=self.env, check=True, timeout=10)
+        new_main_ref = f"refs/heads/work {'1' * 40} refs/heads/main {'0' * 40}\n"
+        for root, expected in ((self.target, 1), (other, 0)):
+            with self.subTest(root=root):
+                result = subprocess.run(
+                    ["bash", str(hook)],
+                    input=new_main_ref,
+                    capture_output=True,
+                    text=True,
+                    cwd=root,
+                    env=self.env,
+                    timeout=10,
+                )
+                self.assertEqual(result.returncode, expected, result.stderr)
+
     def test_pre_push_blocks_main_force_and_delete(self):
         self.init_repo()
         self.install()
