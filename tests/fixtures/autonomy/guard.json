@@ -23571,6 +23571,8 @@
 {"id": "aud660-ctl-func-local-assign", "origin": "control", "refs": ["AUD-SEC-660"], "input": {"command": "function g { d=tmp; echo $d; }; g"}, "expect": {"allowed": true}},
 {"id": "aud661-group-shell-stdin", "origin": "audit", "refs": ["AUD-SEC-661"], "input": {"command": "{ bash; } <<< 'git push --force origin main'"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud661-func-shell-pipe", "origin": "audit", "refs": ["AUD-SEC-661"], "input": {"command": "g() { bash; }; echo 'git push --force origin main' | g"}, "expect": {"allowed": false, "code": "BUDGET"}},
-{"id": "aud661-ctl-group-redirect-out", "origin": "control", "refs": ["AUD-SEC-661"], "input": {"command": "{ echo a; echo b; } > out.txt"}, "expect": {"allowed": true}}
+{"id": "aud661-ctl-group-redirect-out", "origin": "control", "refs": ["AUD-SEC-661"], "input": {"command": "{ echo a; echo b; } > out.txt"}, "expect": {"allowed": true}},
+{"id": "aud648-write-loose-sign-row", "origin": "audit", "refs": ["AUD-SEC-648"], "input": {"tool": "edit", "path": "GO-NO-GO.md", "tool_input": {"content": "## 5. Ký\n\n| Vai trò | Tên | Quyết định | Ngày |\n|---|---|---|---|\nChủ repo | An | GO | 2026-11-07\n"}}, "expect": {"allowed": false, "code": "GO_SIGN"}},
+{"id": "aud648-write-indented-sign-row", "origin": "audit", "refs": ["AUD-SEC-648"], "input": {"tool": "edit", "path": "GO-NO-GO.md", "tool_input": {"content": "## 5. Ký\n\n| Vai trò | Tên | Quyết định | Ngày |\n|---|---|---|---|\n  | Chủ repo | An | GO | 2026-11-07 |\n"}}, "expect": {"allowed": false, "code": "GO_SIGN"}}
  ]
 }

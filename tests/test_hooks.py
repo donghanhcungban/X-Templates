@@ -7996,6 +7996,47 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardMidArgSubstTest(unittest.TestCase):
+    """AUD-SEC-609 (T-3900): thay tiến trình/thay lệnh giữa đối số che phần sau, từ dính quanh thay lệnh — khoá các dạng
+    của sổ (đóng nhờ P4 ADR-0076, tham số, nháy lồng T-3898)."""
+
+    DENY = (
+        "git push origin x <(echo) --force",
+        "rm -rf x $(echo) /",
+        "gh pr close 5 <(echo) -d",
+        "git -C $(echo .)/sub reset --hard",
+        "git reset -q $(echo)--hard",
+        "git pu$(echo)sh origin x --force",
+        "timeout $(echo 5)s git reset --hard",
+        'echo "$(echo "x")" && git push origin x <(echo) --force',
+    )
+    ALLOW = (
+        'git push origin "$(git branch --show-current)"',
+        'echo "$(date)"',
+        'git log "$(git merge-base HEAD main)"..HEAD',
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_mid_arg_substitution_denied(self):
+        for cmd in self.DENY:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "deny", cmd)
+
+    def test_quoted_substitution_runs(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertNotEqual(self.decide(cmd).get("code"), "BUDGET", cmd)
+
+
 class GuardFuncScopeTest(unittest.TestCase):
     """AUD-SEC-660/661 (T-3899): thân hàm quét lúc định nghĩa nên biến gán sau đó (trước lời gọi) không được biết; shell
     trong nhóm/thân hàm đọc stdin của nhóm/lời gọi → BUDGET (D-415)."""
