@@ -2316,8 +2316,44 @@ def _gate_bad_word(words: List[str]) -> str:
         return ""
     skels = [_gate_skeleton(w) for w in words[1:]]
     bad = _gate_flag_zone(words[1:], skels, interp)
-    bad = bad or _gate_bare_dyn(words[1:], skels, interp or name in SHELLS)
+    bad = bad or _gate_bare_dyn(words[1:], skels, interp or name in SHELLS) or _gate_tool_sub1(name, words[1:], skels)
+    bad = bad or _gate_runner_tail(name, words[1:])
     return bad or _git_sub2(words[1:], skels) if name == "git" else bad
+
+
+# AUD-SEC-743: trình chạy chạy lệnh đứng sau `--` (`uv run -- python3 …`, `npx -- node …`) — phần sau `--` đầu tiên xét
+# như một lệnh đơn mới ở cổng (vùng cờ của trình chạy dừng ở `--` nên cờ có mở rộng của lệnh trong đó từng lọt).
+GATE_RUNNERS = frozenset("uv uvx npx npm pnpm yarn bun bunx poetry pipx pdm hatch rye".split())
+# AUD-SEC-745: công cụ có luật theo lệnh con cấp một ngoài git/gh (đối ngoại, huỷ hạ tầng, cài/đăng gói) — lệnh con có
+# mở rộng/glob (`kubectl delete$X`, `kubectl delet?`, `npm publish$X`) → BUDGET (D-415).
+GATE_SUB1_EXTRA = frozenset({"pip", "pip3", "pipx", "uv"})  # cộng `ASK_CMDS`/`DESTROY_CMDS` (định nghĩa sau) lúc gọi
+
+
+def _gate_runner_tail(name: str, args: List[str]) -> str:
+    plain = [_dequote(a) for a in args]
+    if name not in GATE_RUNNERS or "--" not in plain:
+        return ""
+    tail = args[plain.index("--") + 1 :]
+    return _gate_bad_word(tail) if tail else ""
+
+
+def _gate_tool_sub1(name: str, args: List[str], skels: List[str]) -> str:
+    """Lệnh con cấp một của công cụ đối ngoại/huỷ/cài gói có mở rộng/glob: từ không phải cờ có mở rộng trước lệnh con
+    nguyên văn — trừ mở rộng thuần đứng ngay sau cờ (giá trị cờ: `kubectl -n "$NS" get`)."""
+    if name not in GATE_SUB1_EXTRA and name not in ASK_CMDS and name not in DESTROY_CMDS:
+        return ""
+    flag = False
+    for a, s in zip(args, skels):
+        if s[:1] == "-":
+            flag = True
+            continue
+        if GATE_DYN in s or GATE_GLOB in s:
+            if not (flag and not s.strip(GATE_DYN + GATE_GLOB)):
+                return a
+        elif not flag:
+            return ""
+        flag = False
+    return ""
 
 
 def _gate_bare_dyn(args: List[str], skels: List[str], shell_like: bool) -> str:
