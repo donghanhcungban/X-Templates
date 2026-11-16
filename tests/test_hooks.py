@@ -7996,6 +7996,53 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardGitDynPositionTest(unittest.TestCase):
+    """AUD-SEC-741/742/744 (T-3894): `git-<lệnh con>` không kích cổng tập con; `config` và lệnh con qua alias có cấp hai mở
+    rộng; `$X` trần không nháy (rỗng thì biến mất) làm lệch vị trí đối số → BUDGET."""
+
+    BUDGET = (
+        "/usr/lib/git-core/git-push -d$X origin feat/other",
+        "git-clean -fd$X",
+        "git-stash drop$X",
+        "git config set$X core.hooksPath /dev/null",
+        "git config remove-section$X remote.origin",
+        "git -c alias.s=stash s drop$X",
+        "python3 -c $X 'import os'",
+        "bash $X -c 'git push --force origin main'",
+        "gh pr -b x -t $X y merge 12 --auto",
+    )
+    ALLOW = (
+        "git-status",
+        "git config --get user.name",
+        'git config user.email "$E"',
+        "git checkout $B",
+        'bash scripts/x.sh "$X" more',
+        "python3 -c 'print(1)'",
+        "git stash list",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_dynamic_positions_are_budget(self):
+        for cmd in self.BUDGET:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+
+    def test_literal_positions_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
 class GuardPrefixAssignSubstTest(unittest.TestCase):
     """AUD-SEC-790 (T-3893): `d=$(cat f) true` — token cắt ở `(` nên guard từng ghi `d=$` như gán riêng, trong khi bash giữ
     giá trị cũ của `d` (gán tiền tố). Nay gán bằng thay lệnh không ghi nhận: giữ giá trị cũ."""

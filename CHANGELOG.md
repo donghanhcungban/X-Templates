@@ -233,6 +233,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-741/742/744 (T-3894): cổng tập con của guard đọc `git-<lệnh con>` (git-core) như `git <lệnh con>`; `git config`
+  và lệnh con không dựng sẵn (có thể là alias) xét lệnh con cấp hai có mở rộng; `$X` trần không nháy ở vị trí giá trị cờ
+  hay vùng cờ của shell/trình thông dịch (`bash $X -c …`, `gh pr -t $X y merge …`) → BUDGET.
 - AUD-SEC-790 (T-3893): gán bằng thay lệnh (`d=$(cat f) true`, `d=$((1)) true`) không còn ghi đè giá trị biến mà guard
   biết — bash giữ giá trị cũ khi đó là gán tiền tố, nên `d=.autopilot; d=$(cat f) true; rm -rf $d` bị chặn.
 - AUD-SEC-795/797 (review #596): `env -f`/`--file` (uutils env nạp biến từ tệp; `-f` từng không ăn giá trị nên
