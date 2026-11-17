@@ -1183,9 +1183,10 @@ class GoNoGoNulNameTest(GoNoGoGuardBase):
             got = list(pool.map(lambda t: self.write(GO_REL, t), texts))
         self.assertEqual(got, want)
         self.assertEqual(want[:2], ["deny", ""])
-        payload: Dict[str, object] = {"tool_input": {"content": "a\x00", "file_path": str(self.root / GO_REL)}}
+        tool_input: Dict[str, str] = {"content": "a\x00", "file_path": str(self.root / GO_REL)}
+        payload: Dict[str, object] = {"tool_input": tool_input}
         guard._rule_decision("edit", payload, str(self.root))
-        self.assertNotIn(guard.GO_NUL_MARK, payload["tool_input"])  # type: ignore[operator]
+        self.assertNotIn(guard.GO_NUL_MARK, tool_input)
 
     def test_nul_in_other_file_not_go_sign(self) -> None:
         got = self.edit("docs/notes.md", {"content": "a\x00b\n"})
