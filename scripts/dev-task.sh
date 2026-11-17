@@ -527,22 +527,40 @@ go_skippable() {
     case "$line" in *"find: "*": Permission denied") ;; *) return 1 ;; esac
     p="${line#*find: }"; p="${p%: Permission denied}" # tên chương trình là argv[0]: `find` hay `/usr/bin/find`
     case "$p" in "'"*"'") p="${p:1:${#p}-2}" ;; esac # GNU bọc nháy đơn, busybox không
-    [ -d "$ROOT/$p" ] && [ ! -x "$ROOT/$p" ] || return 1
+    go_untraversable "$p" || return 1
   done <"$1"
+}
+# $1=đường find báo (tương đối ROOT) → 0 nếu đường đó HOẶC một thư mục tổ tiên (dưới ROOT) có thật và thiếu `x`: thư mục có
+# `r` mất `x` (0o600/0o644) vẫn liệt kê được tên con nên find báo `./pgdata/sub`, mà `[ -d ]` không stat được đường đó.
+go_untraversable() {
+  local p="$1"
+  while [ -n "$p" ] && [ "$p" != "." ] && [ "$p" != "/" ]; do
+    if [ -d "$ROOT/$p" ] && [ ! -x "$ROOT/$p" ]; then return 0; fi
+    case "$p" in */*) p="${p%/*}" ;; *) break ;; esac
+  done
+  return 1
 }
 # AUD-SEC-628: formatter khai báo không theo từng file (`prettier --write .`) vẫn chuẩn hoá được dòng §5 → chụp mọi
 # `GO-NO-GO*.md` (tên không phân biệt hoa thường) dưới gốc dự án trước khi chạy formatter, khôi phục file nào đổi/mất.
 go_snapshot() { # $1=thư mục chụp (rỗng, đã tồn tại)
-  local i=0 f rc=0
+  local i=0 f rc=0 unx=() skipped=0
+  # Thư mục user này không đi xuyên được (thiếu `x`) cắt ngay trong find khi find hỗ trợ `-executable`/`-fprint0` (GNU), danh
+  # sách cắt ghi vào "$1/unx" để đếm: tên có dấu/nháy không qua escape của thông báo lỗi (`LC_ALL=C` → `\303\240`) nên không
+  # cần khớp tên. find không hỗ trợ → giữ đường cũ (go_skippable): tên lạ không khớp → dừng formatter (fail-closed).
+  if ( cd "$ROOT" && find . -maxdepth 0 -executable -fprint0 /dev/null ) >/dev/null 2>&1; then # chỉ xét mã thoát: không cần LC_ALL
+    unx=(-type d '!' -executable -prune -fprint0 "$1/unx" -o)
+  fi
   # AUD-HAR-399: cả symlink mang tên GO-NO-GO (`GO-NO-GO-v9.md → draft.md`): `cp`/`cmp` đi theo liên kết nên chụp và khôi phục
   # đúng đích; liên kết treo không có gì để chụp → bỏ khỏi danh sách.
-  ( cd "$ROOT" || exit 2; LC_ALL=C find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o \( -type f -o -type l \) -iname 'go-no-go*.md' -print0 2>"$1/err" ) >"$1/all" || rc=$?
+  ( cd "$ROOT" || exit 2; LC_ALL=C find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o ${unx[@]+"${unx[@]}"} \( -type f -o -type l \) -iname 'go-no-go*.md' -print0 2>"$1/err" ) >"$1/all" || rc=$?
   # AUD-HAR-417: thư mục không đọc được (dữ liệu docker mode 700 của user khác, chmod 000) — formatter chạy cùng user cũng
   # không đọc được nên bỏ qua; find lỗi khác (hay lỗi không lời) vẫn dừng formatter. LC_ALL=C: thông báo find tiếng Anh.
   if [ "$rc" -ne 0 ]; then
     if ! go_skippable "$1/err"; then cat -- "$1/err" >&2; return 1; fi
-    log "$TASK: bỏ qua $(wc -l <"$1/err" | tr -d ' ') thư mục không đọc được khi tìm GO-NO-GO"
+    skipped=$(wc -l <"$1/err" | tr -d ' ')
   fi
+  if [ -s "$1/unx" ]; then skipped=$((skipped + $(tr -cd '\0' <"$1/unx" | wc -c | tr -d ' '))); fi
+  if [ "$skipped" -gt 0 ]; then log "$TASK: bỏ qua $skipped thư mục không đọc được khi tìm GO-NO-GO"; fi
   while IFS= read -r -d '' f; do
     if [ -f "$ROOT/$f" ]; then printf '%s\0' "$f"; fi
   done <"$1/all" >"$1/list"

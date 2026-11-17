@@ -23,6 +23,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import install
 import xt_adapter as ad
 
+sys.path.insert(0, str(ROOT / "tests"))
+from nonet import guard_loader, isolate_network
+
 ENV = ROOT / ".env"
 LEDGER = ROOT / ".autopilot" / "state.json"
 NOTES = ROOT / "docs" / "notes-khong-co.md"
@@ -113,11 +116,15 @@ def verdict(host: str, out: str, code: int) -> bool:
 
 
 class AdapterHostTest(unittest.TestCase):
+    def setUp(self):
+        isolate_network(self)  # AUD-TEST-109/112: không gọi gh thật qua merge-check
+        self.loader = guard_loader(ad.load_guard)  # adapter nạp guard mới mỗi lần: mock ở guard đã import không tới
+
     def test_every_host_blocks_and_allows(self):
         for host in ad.HOSTS:
             for name, raw, deny in payloads(host):
                 with self.subTest(host=host, case=name):
-                    out, code = ad.run(host, raw)
+                    out, code = ad.run(host, raw, self.loader)
                     self.assertEqual(code, 0)
                     self.assertEqual(verdict(host, out, code), deny, out)
                     if deny:
@@ -142,7 +149,9 @@ class AdapterHostTest(unittest.TestCase):
 
     def test_patch_checks_every_file(self):
         patch = "*** Begin Patch\n*** Update File: README.md\n*** Add File: .env\n*** End Patch\n"
-        out, _ = ad.run("codex", {"tool_name": "apply_patch", "tool_input": {"command": patch}, "cwd": str(ROOT)})
+        out, _ = ad.run(
+            "codex", {"tool_name": "apply_patch", "tool_input": {"command": patch}, "cwd": str(ROOT)}, self.loader
+        )
         self.assertTrue(verdict("codex", out, 0))
         cores = ad.to_core("codex", "apply_patch", {"command": patch}, str(ROOT), str(ROOT))
         self.assertEqual([c["path"] for c in cores], [str(ROOT / "README.md"), str(ROOT / ".env")])

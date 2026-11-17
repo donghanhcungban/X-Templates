@@ -324,11 +324,15 @@ class DoctorHooksTest(DoctorCase):
             ):
                 with self.subTest(rel):
                     p = self.write(rel, text)
-                    self.assertNotIn("sandbox", self.codes("error", deep=False))
-                    p.unlink()
+                    try:
+                        self.assertNotIn("sandbox", self.codes("error", deep=False))
+                    finally:
+                        p.unlink(missing_ok=True)
             p = self.write(".codex/config.toml", 'sandbox_mode = "danger-full-access"\n')
-            self.assertIn("sandbox", self.codes("error", deep=False))
-            p.unlink()
+            try:
+                self.assertIn("sandbox", self.codes("error", deep=False))
+            finally:
+                p.unlink(missing_ok=True)
             self.write("opencode.json", "{}")
             msgs = [f.msg for f in self.findings(deep=False) if f.code == "sandbox"]
             self.assertTrue(any("OpenCode" in m for m in msgs), msgs)
@@ -370,15 +374,19 @@ class DoctorHooksTest(DoctorCase):
         for text, want in codex.items():
             with self.subTest(text=text):
                 p = self.write(".codex/config.toml", text)
-                self.assertEqual(xt._sandbox_sources(self.base), want)
-                p.unlink()
+                try:
+                    self.assertEqual(xt._sandbox_sources(self.base), want)
+                finally:
+                    p.unlink(missing_ok=True)
         on = [".gemini/settings.json tools.sandbox"]
         gemini: list[tuple[object, list[str]]] = [("false", []), ("0", []), (" ", []), ("FALSE", []), ("docker", on)]
         for value, want in [*gemini, (True, on), (False, []), (1, []), ({"a": 1}, [])]:
             with self.subTest(value=value):
                 p = self.write(".gemini/settings.json", json.dumps({"tools": {"sandbox": value}}))
-                self.assertEqual(xt._sandbox_sources(self.base), want)
-                p.unlink()
+                try:
+                    self.assertEqual(xt._sandbox_sources(self.base), want)
+                finally:
+                    p.unlink(missing_ok=True)
         self.write(".codex/config.toml", 'sandbox_mode = "workspace-write"\n')
         real = Path.read_text
 
