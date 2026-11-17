@@ -2784,18 +2784,38 @@ FOR_ARRAY_RE = re.compile(r'"\$(?:[@*]|\{[@*]\}|\{[A-Za-z_]\w*\[[@*]\]\})"')
 def _lit_names(cmds: List[Tuple[List[str], List[str]]], cmd: str) -> Set[str]:
     """Biến guard tính chắc giá trị: mọi lần gán là gán CHỮ đứng riêng (không sau từ khoá `then`/`do`, không trong hàm)
     hay `for` trên danh sách chữ, và lần gán đầu đứng trước lần dùng đầu (D-503). Chữ dạng gán ở đối số lệnh khác
-    (`echo HOME=1`) không phải gán."""
+    (`echo HOME=1`) không phải gán. Lệnh có `&&`/`||` ở tầng mã: chỉ gán ở lệnh đơn đầu tiên là chắc — gán đứng sau có
+    thể không chạy (`false && HOME=/x; rm -rf "${HOME%/x}"`)."""
     if FUNC_DEF_RE.search(cmd):
         return set()
+    cond = _cond_segs(cmd, cmds)
     used: Set[str] = set()
     cand: Set[str] = set()
     bad: Set[str] = set()
-    for seg, words in cmds:
-        lit = _lit_assigns(seg, words)
+    for k, (seg, words) in enumerate(cmds):
+        lit = set() if k in cond else _lit_assigns(seg, words)
         for name in _seg_assigned(seg):
             (cand if name in lit and name not in used else bad).add(name)
         used |= set().union(*map(_var_refs, seg))
     return cand - bad
+
+
+def _cond_segs(cmd: str, cmds: List[Tuple[List[str], List[str]]]) -> Set[int]:
+    """Chỉ số lệnh đơn có thể không chạy: đứng sau `||`, sau `&&` mà lệnh trái không phải `true`/`:` hay chính nó có thể
+    không chạy. Chuỗi không phẳng (ống, nhóm, thay lệnh) có `&&`/`||` → mọi lệnh sau lệnh đầu."""
+    view = _CodeView(cmd)
+    code = "".join(c if k == "c" else " " for c, k in zip(cmd, view.kind))
+    if not view.why and not re.search(r"&&|\|\|", code):
+        return set()
+    seps = re.findall(r"&&|\|\||[;\n]", code.strip(" \t\n;"))
+    bare = re.sub(r"\$\{[^{}]*\}?", "", code)  # `${X/X}` không phải nhóm (thân `${…}` đã trắng, `}` có thể còn)
+    if view.why or re.search(r"\$\(|`|<<|(?<!\|)\|(?!\|)|[(){}]", bare) or len(seps) != len(cmds) - 1:
+        return set(range(1, len(cmds)))
+    out: Set[int] = set()
+    for k, sep in enumerate(seps, 1):
+        sure = sep == "&&" and k - 1 not in out and cmds[k - 1][1] in (["true"], [":"])
+        out |= {k} if sep == "||" or sep == "&&" and not sure else set()
+    return out
 
 
 def _lit_assigns(seg: List[str], words: List[str]) -> Set[str]:
@@ -2914,11 +2934,15 @@ def _opaque_value_why(cmd: str) -> str:
     if _last_arg_splice(cmd) is not None:  # bản thay quét ở `_scan_last_arg`
         names.discard("_")
         weak.discard("_")
-    lit = _lit_names(cmds, cmd)
+    lit, moved = _lit_names(cmds, cmd), False
     for seg, words in cmds:
-        for w, mode in _opaque_checked(seg, words):
+        checked = _opaque_checked(seg, words)
+        if moved and any(mode == DD_FULL for _, mode in checked):  # đích tương đối theo thư mục mờ
+            return OPAQUE_VALUE_WHY.format(clean_text(" ".join(words))[:80])
+        for w, mode in checked:
             if _dd_word_bad(w, weak if mode == DD_FULL else names, lit, mode):
                 return OPAQUE_VALUE_WHY.format(clean_text(w)[:80])
+        moved = moved or any(mode == DD_NAMES and _opaque_ref(_var_refs(w), weak) for w, mode in checked)
     return ""
 
 

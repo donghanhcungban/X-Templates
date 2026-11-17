@@ -249,6 +249,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `echo x > "$(echo)"out.txt`, `gh pr close 5 "$(…)"`, `… | xargs git branch -D|tag -d|checkout --|<alias>`,
   `xargs -0 bash -c`; mã đổi: `: ~; rm -rf "$_"` thành RULE_DENY, `sh -c 'gh pr $0 …'` thành BUDGET. Nới có tính:
   `git <status|add|…> "$REPLY"`, `cp f "$_"` khi `$_` tính được, `$(pwd)`/`$(git branch --show-current)`/`$(mktemp)`.
+  `cd`/`pushd` vào biến từ `read`/`mapfile`/`select`/thay lệnh rồi lệnh có luật → BUDGET (`cd "$d" && ls` vẫn chạy);
+  gán sau `&&`/`||` không còn tính là gán chữ chắc (`false && HOME=/tmp/h; rm -rf "${HOME%/h}/x"`).
 
 - T-3935 (AUD-TEST-109/112, AUD-HAR-417/422): sáu lớp test guard/hook/adapter không còn gọi `gh api …/pulls/N` thật
   (`tests/nonet.py`: merge-check giả + shim `gh`/`curl` lỗi, kể cả bản guard adapter nạp mới); ghim bằng

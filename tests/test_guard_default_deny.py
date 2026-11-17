@@ -57,6 +57,14 @@ DENY = {
         "X=abc; git reset ${X@E}",
         'true && : @H; rm -rf "$_"',  # lệnh trước `$_` đứng sau `&&`: có thể không chạy
         'true && : @H; cd "$_"; rm -rf zz',  # `cd` vào `$_` không tính được
+        'read d; cd "$d"; rm -rf zz',  # `cd` vào biến mờ rồi lệnh có luật (đích tương đối)
+        'read -r d < f.txt; cd "$d" && rm -rf build',
+        'D=$(cat f); pushd "$D"; rm -rf build',
+        'select d in a; do break; done; cd "$d"; git clean -fdx',
+        'false && HOME=/x; rm -rf "${HOME%/x}"',  # gán sau `&&`/`||` có thể không chạy: không phải gán chắc
+        'false && HOME=/tmp/h; rm -rf "${HOME%/h}/x"',
+        '[ -n "$Z" ] && HOME=/tmp/h; rm -rf "${HOME%/h}"',
+        'false || X=/tmp/a/x; rm -rf "${X%/x}"',
     ),
     "b-runner": (
         "uv run --with rm git push --force",
@@ -89,6 +97,12 @@ ALLOW = (
     'mkdir -p build/out; cp README.md "$_/x"',
     'true && mkdir -p build/out && chmod 755 "$_"',
     'mkdir -p d && cd "$_"',
+    'cd "$d" && ls',
+    'read d; cd "$d" && ls',
+    'mkdir -p x && cd "$_" && rm -rf build',
+    "cd build && rm -rf out",
+    'X=build/x && rm -rf "${X%/x}"',  # gán ở lệnh đơn đầu: chắc chạy
+    'true && X=build/x; rm -rf "${X%/x}"',  # sau `true &&`: chắc chạy
     'cd "${CLAUDE_PROJECT_DIR:-.}" && git status',
     'git -C "${CLAUDE_PROJECT_DIR:-.}" status --short',
     'while IFS= read -r; do git add -- "$REPLY"; done < files.txt',
@@ -296,6 +310,16 @@ class DefaultDenyHelperTest(unittest.TestCase):
         self.assertIn("D-503", guard._runner_dyn_why('nix develop -c "$G" push'))
         self.assertEqual(guard._runner_tails(["mytool", "rm", "git", "push"]), [["rm", "git", "push"], ["git", "push"]])
         self.assertEqual(guard._runner_tails(["git", "push"]), [])
+
+    def test_cond_segs(self):
+        def cond(cmd: str) -> set:
+            return guard._cond_segs(cmd, guard._simple_cmds(cmd) or [])
+
+        self.assertEqual(cond("a; b"), set())
+        self.assertEqual(cond("true && X=1; false || Y=2; c && Z=3; d"), {3, 5})
+        self.assertEqual(cond("a | b && X=1"), {1, 2})
+        self.assertEqual(cond("true && X=a; git push origin ${X/a}"), set())
+        self.assertEqual(cond("echo `x` && X=1"), {1})
 
     def test_func_names(self):
         self.assertEqual(guard._func_names("function g { :; }; f() { :; }; ( ) x"), {"g", "f"})
