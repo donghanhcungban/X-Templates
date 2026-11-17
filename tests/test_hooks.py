@@ -7963,6 +7963,13 @@ class GuardReaderExecOptTest(unittest.TestCase):
     )
     ALLOW = (
         "grep -rn GIT_EXTERNAL_DIFF .claude/hooks/guard.py",
+        # AUD-SEC-796: tên biến trong đối số của lệnh không đặt biến từ đối số
+        "git grep LESSOPEN",
+        "git grep -n LESSKEY_CONTENT",
+        'git commit -m "harden LESSOPEN env preprocessor"',
+        "pytest -k LESSOPEN",
+        "egrep LESSOPEN f",
+        "bat LESSKEY.md",
         "env -u LESSOPEN less f",
         "unset LESSOPEN GIT_EXTERNAL_DIFF",
         "LESS=-R less f",
