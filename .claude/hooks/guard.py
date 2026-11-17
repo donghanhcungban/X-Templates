@@ -3251,8 +3251,35 @@ def _scan_last_arg(
     gắn tham số vị trí vào đối số chữ (`_bound_bodies`, T-3937) quét như shell lồng."""
     variant = _last_arg_splice(cmd) if "$" in cmd else None
     bodies = [b for b in map(_bind_positional, _positional_calls(cmd)) if b] if "$" in cmd else []
-    deny = _scan_scripts([variant], root, cwd, depth, asks, 0, budget, rw) if variant else ""
+    variants = [v for v in [variant, _xargs_fed(cmd) if "xargs" in cmd else None] if v]
+    deny = _scan_scripts(variants, root, cwd, depth, asks, 0, budget, rw) if variants else ""
     return deny or (_scan_scripts(bodies, root, cwd, depth, asks, 1, budget, rw) if bodies else "")
+
+
+# T-3937: `echo a b | xargs mv x.json` — nguồn chữ trơn (`echo`, `printf '%s\n'`, `ls` không mở rộng/glob) nối vào argv
+# lệnh sau xargs (`-I{}`: thay `{}`) rồi quét như lệnh trơn (`mv x.json a b`); nguồn khác giữ luật xargs hiện tại
+XARGS_FED_RE = re.compile(
+    r"\s*(echo|printf\s+'%s\\n'|ls)\s+([\w./:@%+,=-]+(?:\s+[\w./:@%+,=-]+)*)\s*\|\s*(xargs\s[^|;&<>`$()]*)", re.S
+)
+
+
+XARGS_FED_CMDS = DD_WRITERS | {"rm", "shred", "unlink", "rmdir"}
+
+
+def _xargs_fed(cmd: str) -> Optional[str]:
+    m = XARGS_FED_RE.fullmatch(cmd)
+    cmds = _simple_cmds(m[3]) if m else None
+    if not m or not cmds:
+        return None
+    seg = cmds[0][0]
+    rest = _xargs_rest(seg[: len(seg) - len(cmds[0][1])], seg) or []
+    if not rest or posixpath.basename(_dequote(rest[0])) not in XARGS_FED_CMDS:
+        return None  # git/gh qua xargs: luật riêng (UNRESOLVED_TARGET…) giữ nguyên
+    words = m[2].split()
+    if "{}" not in rest:
+        return " ".join([*rest, *words])
+    items = [" ".join(words)] if m[1] == "echo" else words  # `-I`: mỗi dòng một lệnh; `echo` in một dòng
+    return "; ".join(" ".join(shlex.quote(item) if t == "{}" else t for t in rest) for item in items)
 
 
 # T-3937 (fuzz cổng ký lần 4): `bash -c 'rm -rf "$1"' _ ~` — tham số vị trí của thân `sh -c` lấy từ đối số sau thân.
@@ -6918,11 +6945,28 @@ class _CwdFlags:
         self.cdpath = bool(os.environ.get("CDPATH"))
         self.cdable = "cdable_vars" in os.environ.get("BASHOPTS", "")
         self.home = False
+        self.pwd = False
 
     def see(self, argv: List[str]) -> None:
         self.cdpath = self.cdpath or _sets_cdpath(argv)
         self.home = self.home or _sets_home(argv)
+        self.pwd = self.pwd or any(t == "PWD" or t.startswith(("PWD=", "PWD+=")) for t in argv)
         self.cdable = self.cdable or any("cdable_vars" in t for t in argv)
+
+
+CD_VAR_RE = re.compile(r"\$(?:\{(HOME|PWD)\}|(HOME|PWD)(?!\w))([^$`]*)", re.S)
+
+
+def _cd_vars(n: List[str], cwd: Optional[str], flags: _CwdFlags, pwd: bool = True) -> List[str]:
+    """T-3937: đích `cd "$HOME…"`/`cd "$PWD…"` (cả `$(pwd)` — `tokenize` đã đổi thành `$PWD`) giải như `~…`/thư mục
+    hiện tại khi lệnh không gán lại HOME/PWD (`cd "$HOME" && rm -rf zz` = `cd ~ && rm -rf zz`); còn lại giữ nguyên."""
+    args = _cd_operands(n[1:])[0] if n else []
+    m = CD_VAR_RE.fullmatch(args[0]) if len(args) == 1 else None
+    name = m and (m[1] or m[2])
+    if not m or name == "HOME" and flags.home or name == "PWD" and (flags.pwd or cwd is None or not pwd):
+        return n
+    value = ("~" if name == "HOME" else str(cwd)) + m[3]
+    return [value if t == args[0] else t for t in n]
 
 
 def _exact_prefix(
@@ -6939,10 +6983,11 @@ def _exact_prefix(
     for argv, after in cmds:
         ok = argv[:1] in (["cd"], ["pushd"]) and _joins(after, ("&&",)) and not _cd_physical(argv)
         n = argv if ok and not _is_cd_back(argv) else []
-        targets = [_cd_target(n, h, flags.cdpath) for h in heres] if n else [None]
+        ns = [_cd_vars(n, h, flags, False) for h in heres] if n else []  # tiền tố chính xác: chỉ `$HOME`
+        targets = [_cd_target(m, h, flags.cdpath) for m, h in zip(ns, heres)] if n else [None]
         if None in targets:
             break
-        raws = [posixpath.join(h or "/", posixpath.expanduser(_cd_operands(n[1:])[0][0])) for h in heres]
+        raws = [posixpath.join(h or "/", posixpath.expanduser(_cd_operands(m[1:])[0][0])) for m, h in zip(ns, heres)]
         if not all(map(_enterable_dir, raws)):
             if flags.cdable:  # `cd` hỏng thử `cd "$T"`: không biết
                 break
@@ -6956,11 +7001,15 @@ def _cd_step(n: List[str], c: Optional[str], flags: _CwdFlags) -> List[Optional[
     """Thư mục sau `cd`/`pushd`/`popd` `n` chạy ở `c`: đích theo chữ và theo realpath của đường thô (`cd -P`, `set -P`
     — symlink giải trước `..`); không biết (biến, `cd -`, `popd`, `pushd +N`, CDPATH, `cdable_vars` khi đích chưa có)
     → None."""
-    t = None if n[0] == "popd" or _is_cd_back(n) else _cd_target(n, c, flags.cdpath, flags.home)
+    back = n[0] == "popd" or _is_cd_back(n)
+    m = n if back else _cd_vars(n, c, flags)
+    t = None if back else _cd_target(m, c, flags.cdpath, flags.home)
     if t is None:
         return [None]
-    raw = posixpath.join(c or "/", posixpath.expanduser(_cd_operands(n[1:])[0][0]))
-    return [t, _realpath_safe(raw), *([None] if flags.cdable and not _enterable_dir(raw) else [])]
+    raw = posixpath.join(c or "/", posixpath.expanduser(_cd_operands(m[1:])[0][0]))
+    # `$PWD` đã giải: giữ cả ứng viên không biết (review #186 — `cd $PWD` như biến, D-106)
+    unknown = flags.cdable and not _enterable_dir(raw) or m is not n and any("PWD" in w for w in n)
+    return [t, _realpath_safe(raw), *([None] if unknown else [])]
 
 
 def _cd_moves(

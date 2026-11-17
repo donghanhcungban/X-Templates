@@ -467,3 +467,7 @@
 {"id": "W10|plain", "root": "plain", "cmd": "echo x >> .autopilot/state.json"}
 {"id": "W11|plain", "root": "plain", "cmd": "dd of=.claude/settings.json if=/dev/null"}
 {"id": "W12|plain", "root": "plain", "cmd": "install /dev/null .claude/settings.json"}
+{"id": "d503s4-cd-home-var", "root": "signoff4 decision", "cmd": "cd \"$HOME\" && rm -rf zz"}
+{"id": "d503s4-cd-pwd-parent", "root": "signoff4 decision", "cmd": "cd \"$PWD/..\" && rm -rf zz"}
+{"id": "d503s4-cd-pwd-subst-parent", "root": "signoff4 decision", "cmd": "cd \"$(pwd)/..\" && rm -rf zz"}
+{"id": "d503s4-xargs-echo-protected", "root": "signoff4 decision", "cmd": "echo .claude/settings.json | xargs mv x.json"}

@@ -222,6 +222,34 @@ class SignOff4HelperTest(unittest.TestCase):
         self.assertTrue(guard._cd_moved('"$d"', {"d"}, set()))
         self.assertTrue(guard._cd_moved('"${HOME%/*}"', set(), set()))
 
+    def test_cd_home_pwd_resolved(self):
+        """Quyết định phiên chính (T-3937): `cd "$HOME"`/`"$PWD/.."`/`"$(pwd)/.."` giải như `cd ~`/`cd ..`."""
+        for cmd in ('cd "$HOME" && rm -rf zz', 'cd "$PWD/.." && rm -rf zz', 'cd "$(pwd)/.." && rm -rf zz'):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(decide(cmd)["decision"], "deny")
+        for cmd in ('d=build; cd "$d" && rm -rf out', 'cd "$PWD/build" && rm -rf out', 'cd "$HOME" && ls'):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(decide(cmd)["decision"], "")
+        flags = guard._CwdFlags()
+        self.assertEqual(guard._cd_vars(["cd", "$PWD/x"], None, flags), ["cd", "$PWD/x"])
+        flags.see(["PWD=/"])
+        self.assertEqual(guard._cd_vars(["cd", "$PWD"], "/a", flags), ["cd", "$PWD"])
+        self.assertEqual(guard._cd_vars(["cd", "${HOME}/x"], "/a", flags), ["cd", "~/x"])
+        self.assertEqual(guard._cd_vars([], "/a", flags), [])
+
+    def test_xargs_literal_feed_rescanned(self):
+        """Quyết định phiên chính (T-3937): nguồn chữ trơn của xargs nối vào argv rồi quét như lệnh trơn."""
+        for cmd in ("echo .claude/settings.json | xargs mv x.json", "ls .claude/settings.json | xargs sed -i s/a/b/"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(decide(cmd)["decision"], "deny")
+        for cmd in ("echo docs/autopilot/PLAN-a.md | xargs -I{} cp {} /tmp/", "ls docs/a.md | xargs sed -i s/a/b/"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(decide(cmd)["decision"], "")
+        self.assertEqual(guard._xargs_fed("printf '%s\\n' a b | xargs -I{} cp {} d/"), "cp a d/; cp b d/")
+        self.assertIsNone(guard._xargs_fed("echo a | xargs"))
+        self.assertIsNone(guard._xargs_fed("echo origin/main | xargs git tag"))  # git: luật riêng giữ nguyên
+        self.assertIsNone(guard._xargs_fed("echo $X | xargs rm"))
+
     def test_runner_name(self):
         self.assertFalse(guard._runner_name_dyn("uv", ["run", "--frozen"]))
         self.assertTrue(guard._runner_name_dyn("direnv", ["exec", ".", '"$C"']))
