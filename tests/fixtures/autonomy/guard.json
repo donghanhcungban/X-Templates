@@ -23787,11 +23787,11 @@
   {"id": "d503-ctl-xargs-rm-f", "origin": "control", "refs": ["D-503"], "input": {"command": "find . -name '*.pyc' | xargs rm -f"}, "expect": {"allowed": true}},
   {"id": "d503-ctl-npm-test-text", "origin": "control", "refs": ["D-503"], "input": {"command": "npm test -- -t \"git reset --hard\""}, "expect": {"allowed": true}},
   {"id": "d503-ctl-commit-heredoc-subst", "origin": "control", "refs": ["D-503"], "input": {"command": "git commit -m \"$(cat <<'EOF'\nfix: x\nEOF\n)\""}, "expect": {"allowed": true}},
-  {"id": "d503-cd-read-relative-rm", "origin": "audit", "refs": ["D-503"], "input": {"command": "read -r d < f.txt; cd \"$d\" && rm -rf build"}, "expect": {"allowed": false, "code": "BUDGET"}},
-  {"id": "d503-cd-subst-var-rm", "origin": "audit", "refs": ["D-503"], "input": {"command": "D=$(cat f); pushd \"$D\"; rm -rf build"}, "expect": {"allowed": false, "code": "BUDGET"}},
-  {"id": "d503-cond-assign-home", "origin": "audit", "refs": ["D-503"], "input": {"command": "false && HOME=/tmp/h; rm -rf \"${HOME%/h}/x\""}, "expect": {"allowed": false, "code": "BUDGET"}},
-  {"id": "d503-cond-assign-home-pin", "origin": "audit", "refs": ["D-503"], "input": {"command": "false && HOME=/x; rm -rf \"${HOME%/x}\""}, "expect": {"allowed": false, "code": "RULE_DENY"}},
-  {"id": "d503-ctl-cd-read-ls", "origin": "control", "refs": ["D-503"], "input": {"command": "read d; cd \"$d\" && ls"}, "expect": {"allowed": true}},
+  {"id": "d503-cd-read-relative-rm", "origin": "audit", "refs": ["D-503", "AUD-SEC-855"], "input": {"command": "read -r d < f.txt; cd \"$d\" && rm -rf build"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "d503-cd-subst-var-rm", "origin": "audit", "refs": ["D-503", "AUD-SEC-855"], "input": {"command": "D=$(cat f); pushd \"$D\"; rm -rf build"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "d503-cond-assign-home", "origin": "audit", "refs": ["D-503", "AUD-SEC-856"], "input": {"command": "false && HOME=/tmp/h; rm -rf \"${HOME%/h}/x\""}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "d503-cond-assign-home-pin", "origin": "audit", "refs": ["D-503", "AUD-SEC-856"], "input": {"command": "false && HOME=/x; rm -rf \"${HOME%/x}\""}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "d503-ctl-cd-read-ls", "origin": "control", "refs": ["D-503", "AUD-SEC-855"], "input": {"command": "read d; cd \"$d\" && ls"}, "expect": {"allowed": true}},
   {"id": "d503-ctl-cd-last-arg-rm", "origin": "control", "refs": ["D-503"], "input": {"command": "mkdir -p x && cd \"$_\" && rm -rf build"}, "expect": {"allowed": true}},
   {"id": "d503-ctl-cd-literal-rm", "origin": "control", "refs": ["D-503"], "input": {"command": "cd build && rm -rf out"}, "expect": {"allowed": true}}
  ]
