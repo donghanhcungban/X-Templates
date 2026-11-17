@@ -332,6 +332,16 @@ class SignOff5HelperTest(unittest.TestCase):
     def test_dq_unescaped(self):
         self.assertEqual(guard._dq_unescaped(["rm \\$X", "ls"]), ["rm \\$X", "rm $X", "ls"])
 
+    def test_heredoc_shell_why_branches(self):
+        """AUD-SEC-310/392: `_heredoc_shell_why` là lớp phòng thủ cuối của heredoc không nháy vào shell. Các bước quét sớm
+        hơn (D-503) nay chặn phần lớn dạng này trước khi tới đây, nên ghim thẳng hàm: thân có mở rộng → lý do; thân
+        không mở rộng, heredoc có nháy hay không có shell đọc stdin → rỗng."""
+        self.assertIn("AUD-SEC-310", guard._heredoc_shell_why("bash <<EOF\necho $(cat f)\nEOF"))
+        self.assertIn("AUD-SEC-310", guard._heredoc_shell_why("sh <<EOF\nrm -rf $X\nEOF"))
+        self.assertEqual(guard._heredoc_shell_why("bash <<EOF\necho ok\nEOF"), "")
+        self.assertEqual(guard._heredoc_shell_why("bash <<'EOF'\necho $(cat f)\nEOF"), "")
+        self.assertEqual(guard._heredoc_shell_why("cat <<EOF\necho $(cat f)\nEOF"), "")
+
 
 if __name__ == "__main__":
     unittest.main()
