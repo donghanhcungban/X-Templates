@@ -84,4 +84,5 @@
 > 829/15 778 tổ hợp lọt theo 9 gốc + hồi quy. Tiêu chí: bộ fuzz → 0 lọt, tập con tất định ghim thành test.
 
 - [ ] `T-3937` 🔴 AUD-SEC-857…862, 🟠 AUD-SEC-863…867, 🟢 AUD-SEC-868, AUD-TEST-119 — Gate: `python3 -m unittest tests.test_guard_d503_invariant tests.test_guard_signoff4` (files: .claude/hooks/guard.py, tests/)
+- [ ] `T-3939` GHSA-fc5q-39xc-vjpf (picomatch, chưa có bản vá, chỉ qua devDependency vitest) làm `pack-npm-audit` đỏ: ngoại lệ có hạn theo BASE-DEP-004 (D-504) — Gate: `python3 -m unittest tests.test_packs` (files: framework/templates/packs/web-api-ts/starter/, tests/)
 - [ ] `T-3938` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3937; files: docs/ops/AUDIT-STATUS.md)
