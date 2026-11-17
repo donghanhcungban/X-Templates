@@ -12481,16 +12481,27 @@ def _stage_clean_head(base: Path) -> str:
     if not head:
         raise StageError("không có commit — trình duyệt cần một bản xác định")
     # sổ là siêu dữ liệu về bản trình, `.autopilot/` là sổ máy; file chưa track tính dù cấu hình ẩn (review #327)
-    spec = ["--untracked-files=all", "--", ".", f":(exclude){STAGE_LEDGER}", ":(exclude).autopilot"]
-    try:
-        r = subprocess.run(
-            ["git", "status", "--porcelain", *spec], cwd=base, capture_output=True, text=True, timeout=30
-        )
-    except subprocess.TimeoutExpired:
-        raise StageError("`git status` quá 30 s — không xác định được cây sạch") from None
+    spec = ["--", ".", f":(exclude){STAGE_LEDGER}", ":(exclude).autopilot"]
+    r = _stage_git(base, "status", "--porcelain", "--untracked-files=all", *spec)
     if r.returncode != 0 or r.stdout.strip():
         raise StageError("cây có thay đổi chưa commit — commit rồi trình bản đó")
+    # AUD-HAR-336: `status` không thấy tệp assume-unchanged/skip-worktree đã sửa — cùng luật hàng `tree` của release-check
+    idx = _stage_git(base, "ls-files", "-v", "-z", *spec)
+    hidden = _index_hidden(idx.stdout)
+    if idx.returncode != 0 or hidden:
+        raise StageError(
+            f"index có tệp assume-unchanged/skip-worktree hoặc không đọc được (`git ls-files -v` exit {idx.returncode}"
+            f"{': ' + ', '.join(hidden[:5]) if hidden else ''}) — `git update-index --no-assume-unchanged`/"
+            "`--no-skip-worktree`, commit rồi trình"
+        )
     return head
+
+
+def _stage_git(base: Path, *args: str) -> "subprocess.CompletedProcess[str]":
+    try:
+        return subprocess.run(["git", *args], cwd=base, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        raise StageError(f"`git {args[0]}` quá 30 s — không xác định được cây sạch") from None
 
 
 def cmd_stage(args: argparse.Namespace) -> int:
@@ -12653,8 +12664,8 @@ def _release_verify(base: Path) -> Dict[str, str]:
         return _release_row(
             "verify",
             "FAIL",
-            "không liệt kê được worktree của repo (`git rev-parse`/`git worktree list`) — không biết vòng của cây chính"
-            " đã `loop verify --all` chưa",
+            f"không liệt kê được worktree của repo ({WORKTREE_LIST_HINT}) — không biết vòng của cây chính đã"
+            " `loop verify --all` chưa",
         )
     here = state_dir(base.resolve()) / "state.json"
     live = []
@@ -12673,14 +12684,39 @@ def _release_verify(base: Path) -> Dict[str, str]:
         blocked = _loop_block_reason(st, f.parent.parent)
         if blocked:  # AUD-HAR-377: vòng bị chặn chờ người quyết — verify xanh cũ không đủ để GO
             return _release_row("verify", "FAIL", blocked if f == here else f"{f}: {blocked}")
-    if files[0] == here:
-        why = final_check(base)
-        if why:
-            return _release_row("verify", "FAIL", why)
+    return _release_verify_record(base, files, files[0] == here)
+
+
+def _release_verify_record(base: Path, files: List[Path], own: bool) -> Dict[str, str]:
+    """Bản ghi `loop verify` cho cây đang kiểm: sổ của chính nó (`own`, đứng đầu `files`) hay sổ worktree khác. Không
+    tính được vân tay (worktree `--orphan`, chưa commit) → FAIL, không "khớp" (AUD-HAR-403); bản ghi ĐỎ trên đúng vân
+    tay này ở sổ nào cũng thắng bản xanh ở sổ khác (AUD-HAR-402)."""
+    fp = tree_fingerprint(base)
+    if fp is None:
+        return _release_row(
+            "verify", "FAIL", "không tính được dấu vân tay cây này (chưa có commit/HEAD?) — không so được `loop verify`"
+        )
+    why = final_check(base) if own else None
+    if why:
+        return _release_row("verify", "FAIL", why)
+    red = next((f for f in files[1 if own else 0 :] if _verify_red_on(f.parent, fp)), None)
+    if red is not None:
+        return _release_row(
+            "verify",
+            "FAIL",
+            f"`loop verify` ĐỎ trên đúng cây này ở {red.parent.parent} — đỏ ở sổ nào cũng thắng (AUD-HAR-402); sửa"
+            " rồi chạy lại `loop verify --all` ở đó",
+        )
+    if own:
         return _release_row(
             "verify", "PASS", "`loop verify --all` xanh và khớp dấu vân tay cây hiện tại (LOOP-DESIGN-022, D-084)"
         )
     return _release_verify_elsewhere(base, files)
+
+
+def _verify_red_on(ledger: Path, fp: str) -> bool:
+    rec = _read_json_obj(ledger / VERIFIED_FILE) or {}
+    return rec.get("fingerprint") == fp and rec.get("ok") is not True
 
 
 def _release_verify_elsewhere(base: Path, files: List[Path]) -> Dict[str, str]:
@@ -12708,14 +12744,36 @@ class _ReleaseTreeError(RuntimeError):
 
 
 def _release_git_stdout(base: Path, command: str, *args: str) -> str:
+    """stdout của git cho `release-check`; môi trường bỏ biến trỏ repo/cây/index khác (`_perf_env`, AUD-HAR-374 —
+    `GIT_WORK_TREE` trỏ clone sạch)."""
+    return _release_git_run(base, _perf_env(), command, *args)
+
+
+def _release_git_run(base: Path, env: Dict[str, str], command: str, *args: str) -> str:
+    """Lỗi nêu đúng lệnh git hỏng (AUD-HAR-337)."""
     quote = ("-c", "core.quotePath=false") if command == "status" else ()
     try:
-        result = _git(base, *quote, command, *args)
+        result = _git(base, *quote, command, *args, env=env)
     except OSError as exc:
         raise _ReleaseTreeError(f"không chạy được `git {command}`") from exc
     if result.returncode:
-        raise _ReleaseTreeError(f"không đọc được cây làm việc (`git {command}` exit {result.returncode})")
+        raise _ReleaseTreeError(f"`git {command}` lỗi (exit {result.returncode}) — git không chứng minh được cây")
     return result.stdout
+
+
+def _release_fresh_status(base: Path, args: Sequence[str]) -> str:
+    """`git status` trên index tạm dựng từ HEAD (AUD-HAR-374): index tạm không có stat, cờ fsmonitor hay untracked
+    cache nên git so NỘI DUNG mọi tệp với HEAD — hook fsmonitor nói dối, sửa cùng kích thước rồi trả mtime không giấu
+    được thay đổi."""
+    with tempfile.TemporaryDirectory(prefix="xt-release-index-") as tmp:
+        env = {**_perf_env(), "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        _release_git_run(base, env, "read-tree", "HEAD")
+        return _release_git_run(base, env, "status", *args)
+
+
+def _index_hidden(index: str) -> List[str]:
+    """Mục `git ls-files -v -z` có cờ giấu thay đổi: chữ thường = assume-unchanged, `S` = skip-worktree (cả sparse)."""
+    return [e for e in index.split("\0") if re.match(r"[Sa-z] ", e)]
 
 
 def _release_tree(base: Path) -> Tuple[Dict[str, str], Optional[str], bool]:
@@ -12734,27 +12792,30 @@ def _release_tree(base: Path) -> Tuple[Dict[str, str], Optional[str], bool]:
     pin = ("--untracked-files=all", "--ignore-submodules=none")
     try:
         status = _release_git_stdout(base, "status", "--porcelain", *pin, *spec)
+        fresh = _release_fresh_status(base, ("--porcelain", *pin, *spec))
         index = _release_git_stdout(base, "ls-files", "-v", "-z", *spec)
     except _ReleaseTreeError as exc:
         return _release_row("tree", "FAIL", str(exc)), head, False
-    # git ls-files -v: chữ thường = assume-unchanged, S = skip-worktree (kể cả sparse checkout).
-    if re.search(r"(?:^|\x00)[Sa-z] ", index):
+    hidden = _index_hidden(index)
+    if hidden:  # AUD-HAR-335: nêu tệp + cờ như hàng tệp chưa commit
         return (
             _release_row(
                 "tree",
                 "FAIL",
-                "index có assume-unchanged hoặc skip-worktree — chạy release-check từ checkout đầy đủ, sạch",
+                f"index có {len(hidden)} tệp assume-unchanged (chữ thường) hoặc skip-worktree (`S`):"
+                f" {', '.join(hidden[:5])} — chạy release-check từ checkout đầy đủ, sạch",
             ),
             head,
             False,
         )
-    files = [ln[3:] for ln in status.splitlines() if ln.strip()]
+    files = list(dict.fromkeys(ln[3:] for ln in (status + fresh).splitlines() if ln.strip()))
     if files:
         return (
             _release_row(
                 "tree",
                 "FAIL",
-                f"cây làm việc có {len(files)} file chưa commit ({', '.join(files[:5])}) — chứng nhận chỉ gắn với commit",
+                f"cây làm việc có {len(files)} file chưa commit ({', '.join(files[:5])}) — chứng nhận chỉ gắn với commit"
+                " (máy so cả submodule và tệp chưa track: `git status --ignore-submodules=none --untracked-files=all`)",
             ),
             head,
             True,
@@ -13440,11 +13501,12 @@ def subject_fingerprint(base: Path) -> Optional[str]:
 
 
 def _release_subject(
-    base: Path, arts: List[Dict[str, Any]], head: Optional[str], *, tree_readable: bool
+    base: Path, arts: List[Dict[str, Any]], head: Optional[str], *, tree_readable: bool, tree_clean: bool = False
 ) -> Tuple[Dict[str, Any], str]:
     """Ứng viên được chứng nhận: HEAD, vân tay cây, digest gộp của artifact (None khi không khai hay có artifact lỗi) và
     `content` = `subject_fingerprint` — vân tay nội dung trừ file ký/sổ máy đọc: không đổi qua commit ký và squash,
-    đổi khi mã đổi; chữ ký §5 gắn vào nó (D-389, AUD-HAR-219, D-393). Chỉ thêm khoá nên `RELEASE_SCHEMA` giữ 3."""
+    đổi khi mã đổi; chữ ký §5 gắn vào nó (D-389, AUD-HAR-219, D-393). Chỉ thêm khoá nên `RELEASE_SCHEMA` giữ 3.
+    `tree_clean` (hàng `tree` PASS) mà vân tay thấy diff/tệp chưa track → cây đổi giữa các lần đọc git (AUD-HAR-338)."""
     ok = bool(arts) and not any(a["problem"] for a in arts)
     lines = "".join(f"{a['path']}\0{a['sha256']}\n" for a in sorted(arts, key=lambda a: str(a["path"])))
     digest = hashlib.sha256(lines.encode()).hexdigest() if ok else None
@@ -13457,10 +13519,15 @@ def _release_subject(
 
     try:
         raw_head = git("rev-parse", "--verify", "HEAD")
-        tree = tree_hash(base, raw_head, git, [f":(exclude){STAGE_LEDGER}"])[0]
+        tree, dirty = tree_hash(base, raw_head, git, [f":(exclude){STAGE_LEDGER}"])
         content = _subject_fingerprint(base, git)
         if raw_head.strip() != head or git("rev-parse", "--verify", "HEAD") != raw_head:
             raise _ReleaseTreeError("HEAD đổi trong lúc kiểm — chạy lại release-check trên checkout ổn định")
+        if dirty and tree_clean:
+            raise _ReleaseTreeError(
+                "cây đổi giữa các lần đọc git (`status` sạch, vân tay thấy diff/tệp chưa track) — chạy lại"
+                " release-check trên checkout ổn định"
+            )
     except (OSError, _ReleaseTreeError) as exc:
         return subject, str(exc)
     subject.update(tree=tree, content=content)
@@ -13778,7 +13845,9 @@ def release_check(base: Path, blueprint: str, status: str, unchecked_must: str =
         _release_verify(base),
     ]
     tree_row, head, tree_readable = _release_tree(base)
-    subject, subject_error = _release_subject(base, arts, head, tree_readable=tree_readable)
+    subject, subject_error = _release_subject(
+        base, arts, head, tree_readable=tree_readable, tree_clean=tree_row["result"] == "PASS"
+    )
     if subject_error:
         tree_row = _release_row("tree", "FAIL", subject_error)
     rows += [
@@ -14172,6 +14241,7 @@ GO_DECISION_HEADS = ("quyet dinh", "decision")  # tiêu đề cột quyết đ�
 GO_NAME_HEADS = ("ten", "name")
 GO_FREE_RE = re.compile(r"GO(?!\w)", re.I)  # ô GO viết tự do: `GO`, `**GO**; D-126…`, `GO — ok` (D-406)
 GO_NOT_RE = re.compile(r"kh[oô]ng\s*go\b", re.I)  # `Không GO` không bao giờ là GO (cùng `NO_GO_RE`)
+GO_UNCHOSEN_RE = re.compile(r"GO\s*/\s*NO\s*-?\s*GO", re.I)  # ô mẫu chưa chọn `GO / NO-GO`
 GO_VERSION_RE = re.compile(r"(?<![\w.])v(\d+)\.(\d+)\.(\d+)(?![\w.-])")  # `v1.2.0`; `-rc1`/`.1` → không xác định
 
 
@@ -14269,8 +14339,9 @@ def _go_signed_human_go(text: str) -> bool:
 
 def _go_row_kind(text: str, name_col: Optional[int], dec_col: int, in_sign: bool) -> str:
     """`no` = lời từ chối: ô quyết định không rỗng, không phải GO (`_go_cell_go` — kể cả `?`/`Hold`/`Không GO`), ô tên
-    là của người (`_go_human_name`) — hoặc tên rỗng/placeholder mà ô ghi NO-GO rõ (`_decision` = `no`); dòng mẫu (tên
-    trống, `GO / NO-GO`) không tính. `go` = dòng ký GO của người ở §5 guard bảo vệ (`in_sign`, `_go_signed_human_go`).
+    là của người (`_go_human_name`) — hoặc tên rỗng/placeholder mà ô ghi NO-GO rõ (`_decision` = `no`), hoặc ở bảng ký
+    §5 (`in_sign`) tên rỗng với bất kỳ ô quyết định đã điền (`Hold`, `?` — AUD-HAR-345); dòng mẫu (tên trống,
+    `GO / NO-GO`) không tính. `go` = dòng ký GO của người ở §5 guard bảo vệ (`in_sign`, `_go_signed_human_go`).
     Ngày không xét: lời từ chối thiếu/sai ngày vẫn là lời từ chối."""
     cells = _go_cells(text)
     if dec_col >= len(cells) or (name_col or 0) >= len(cells) or not cells[dec_col]:
@@ -14280,7 +14351,10 @@ def _go_row_kind(text: str, name_col: Optional[int], dec_col: int, in_sign: bool
         return "go" if in_sign and _go_signed_human_go(text) else ""
     if name.casefold() == RELEASE_AGENT_NAME:
         return ""
-    return "no" if _decision(cells[dec_col]) == "no" or _go_human_name(name) else ""
+    # AUD-HAR-345: trong bảng ký §5, ô tên TRỐNG mà ô quyết định đã điền vẫn là từ chối — trừ ô mẫu chưa chọn
+    # (`GO / NO-GO`, kể cả kèm ghi chú: lịch sử repo khung có `GO / NO-GO; D-126: …` tên trống)
+    blank = in_sign and not name and not GO_UNCHOSEN_RE.search(cells[dec_col])
+    return "no" if _decision(cells[dec_col]) == "no" or _go_human_name(name) or blank else ""
 
 
 def _go_decision_rows(lines: Sequence[str]) -> Iterator[Tuple[int, str, str]]:
@@ -14468,8 +14542,11 @@ def _sign_scope_check(base: Path) -> None:
             " là BLOCKER người dùng thử, người ký)"
         )
     waiting = _sign_deferred(base)
-    if waiting:
-        raise ReleaseSignError(f"còn việc chờ người (`loop defer`): {', '.join(waiting)} — agent không ký")
+    if waiting:  # AUD-HAR-373: nêu sổ của worktree nào để người gỡ đúng chỗ
+        raise ReleaseSignError(
+            f"còn việc chờ người (`loop defer`): {', '.join(waiting)} — agent không ký; người xử lý xong thì"
+            " `loop resolve --task <ID>` tại worktree chứa sổ đó"
+        )
 
 
 def _worktree_entries(base: Path, env: Dict[str, str]) -> Optional[List[tuple[Path, bool]]]:
@@ -14497,29 +14574,40 @@ def _worktree_roots(base: Path, env: Dict[str, str]) -> Optional[List[Path]]:
     (cũ hơn exit 129) → đọc lại không `-z`, tách dòng; khi đó đường dẫn có ký tự lạ bị git trích dẫn (`"…"`) → None
     (fail-closed, không đoán). Mục bare bỏ qua; mục chính không bare mà không có `.git` bên trong là thư mục git
     (submodule, `--separate-git-dir`: git in thư mục git thay cho cây chính) → cây chính lấy bằng `rev-parse
-    --show-toplevel` tại đó, không ra → None. Không liệt kê được → None (bên gọi fail-closed)."""
+    --show-toplevel` tại đó, không ra → None. Mục không bare mà không phải thư mục có thật (tên lệch khi đọc text,
+    worktree bị `mv`/xoá tay chưa `git worktree prune`) → None. Không liệt kê được → None (bên gọi fail-closed)."""
     entries = _worktree_entries(base, env)
     if entries is None:
         return None
     roots: List[Path] = []
     for i, (path, is_bare) in enumerate(entries):
-        if i == 0 and not is_bare and not os.path.lexists(path / ".git"):
+        if is_bare:
+            continue
+        if not path.is_dir():  # AUD-HAR-372: tên có CR/byte lạ (đọc dạng text lệch tên) hay worktree bị `mv` tay
+            return None
+        if i == 0 and not os.path.lexists(path / ".git"):
             top = _git(path, "rev-parse", "--show-toplevel", env=env)
             if top.returncode or not top.stdout.strip():
                 return None
             path = Path(top.stdout.strip())
-        if not is_bare:
-            roots.append(path)
+        roots.append(path)
     return roots
+
+
+WORKTREE_LIST_HINT = "`git rev-parse`/`git worktree list` lỗi, hay mục worktree không còn thư mục: `git worktree prune`"
 
 
 def worktree_state_files(base: Path) -> Optional[List[Path]]:
     """`.autopilot/state.json` (kể cả symlink gãy) của dự án ở MỌI worktree của repo, cùng thư mục con như `base`, sổ của
     `base` đứng đầu (AUD-HAR-340, AUD-HAR-369): sổ máy không theo git và riêng mỗi worktree (`loop_root`) — đọc theo cwd
-    thì chạy từ worktree khác thoát việc của cây chính. Không liệt kê được worktree → None (bên gọi fail-closed)."""
+    thì chạy từ worktree khác thoát việc của cây chính. Không liệt kê được worktree (cả máy không có `git` — AUD-HAR-403)
+    → None (bên gọi fail-closed)."""
     env = _perf_env()
-    prefix = _git(base, "rev-parse", "--show-prefix", env=env)
-    trees = _worktree_roots(base, env)
+    try:
+        prefix = _git(base, "rev-parse", "--show-prefix", env=env)
+        trees = _worktree_roots(base, env)
+    except OSError:
+        return None
     if prefix.returncode or trees is None:
         return None
     sub = prefix.stdout.rstrip("\n")
@@ -14533,14 +14621,15 @@ def _sign_state_files(base: Path) -> List[Path]:
     files = worktree_state_files(base)
     if files is None:
         raise ReleaseSignError(
-            "không liệt kê được worktree của repo (`git rev-parse`/`git worktree list`) — không biết còn việc"
-            " `loop defer` ở cây chính, agent không ký"
+            f"không liệt kê được worktree của repo ({WORKTREE_LIST_HINT}) — không biết còn việc `loop defer` ở cây"
+            " chính, agent không ký"
         )
     return files
 
 
 def _sign_deferred(base: Path) -> List[str]:
-    """ID `loop defer` còn chờ ở mọi worktree của dự án (fail-closed, AUD-HAR-340): không worktree nào có sổ máy (clone
+    """`<ID> (<sổ>)` của việc `loop defer` còn chờ ở mọi worktree của dự án (fail-closed, AUD-HAR-340; sổ — AUD-HAR-373):
+    không worktree nào có sổ máy (clone
     riêng — sổ không theo git nên không thấy sổ của dự án chính — hay chưa `loop init`) hoặc một sổ không đọc được/hỏng
     → không biết còn việc chờ người → ReleaseSignError. Sổ nào có vòng đang bị chặn (`_loop_block_reason`) cũng từ chối
     (AUD-HAR-377)."""
@@ -14567,7 +14656,7 @@ def _sign_deferred(base: Path) -> List[str]:
         blocked = _loop_block_reason(st, f.parent.parent)
         if blocked:  # AUD-HAR-377: vòng bị chặn = người phải quyết trước, không chỉ còn chữ ký (ADR-0074)
             raise ReleaseSignError(f"{f}: {blocked}; agent không ký")
-        waiting.update(deferred)
+        waiting.update(f"{task} ({f})" for task in deferred)
     return sorted(waiting)
 
 
@@ -14584,7 +14673,9 @@ def _sign_remote_check(base: Path) -> None:
     if remote.refusals:
         raise ReleaseSignError(
             f"người đã từ chối (lịch sử git): {'; '.join(remote.refusals)} — agent không ký đè (xoá/đổi tên/đổi VERSION"
-            " không gỡ được, không hết hạn theo tuổi; chỉ người gỡ: ký GO mới ở §5)"
+            " không gỡ được, không hết hạn theo tuổi; chỉ người gỡ: ký dòng GO mới (tên + ngày) ở §5 của GO-NO-GO cùng"
+            " hoặc cao hơn phiên bản bị từ chối — tệp không có phiên bản thì chính tệp đó — commit SAU lời từ chối và"
+            " ĐẨY lên `origin`: chỉ dòng GO trên remote gỡ được, AUD-HAR-346)"
         )
 
 
@@ -14600,6 +14691,20 @@ def _sign_insert(text: str, row: str, note: str) -> str:
         raise ReleaseSignError("§5 không có bảng ký")
     at = head.end() + rows[-1].end()
     return text[:at] + "\n" + row + "\n\n" + note + text[at:]
+
+
+def _sign_raw(path: Path, rel: str) -> Tuple[str, str]:
+    """(nội dung thô, xuống dòng `\\n`/`\\r\\n`) của GO-NO-GO sẽ ký (AUD-HAR-343): đọc không dịch xuống dòng để ghi lại
+    đúng kiểu của tệp; lẫn kiểu (CRLF với LF hay CR lẻ) → từ chối — ghi một kiểu sẽ đổi dòng người viết."""
+    try:
+        raw = path.read_text(encoding="utf-8", newline="")
+    except (OSError, ValueError) as exc:
+        raise ReleaseSignError(f"không đọc được {rel}: {exc}") from exc
+    rest = raw.replace("\r\n", "")
+    nl = "\r\n" if "\r\n" in raw else "\n"
+    if "\r" in rest or (nl == "\r\n" and "\n" in rest):
+        raise ReleaseSignError(f"{rel}: xuống dòng lẫn kiểu (CRLF/LF/CR) — thống nhất một kiểu rồi ký")
+    return raw, nl
 
 
 def release_sign(base: Path, file: str, note: str, rc: Dict[str, Any]) -> str:
@@ -14641,9 +14746,10 @@ def release_sign(base: Path, file: str, note: str, rc: Dict[str, Any]) -> str:
     )
     new = _sign_insert(text, row, why)
     path = base / rel
-    path.write_text(new, encoding="utf-8")
+    raw, nl = _sign_raw(path, rel)
+    write_atomic(path, new.replace("\n", nl), keep_mode=True)  # AUD-HAR-343: giữ CRLF, quyền tệp; ghi nguyên tử
     if not _go_no_go_signed(new) or _approval_problem(base, rel, new, rc["subject"]):
-        path.write_text(text, encoding="utf-8")
+        write_atomic(path, raw, keep_mode=True)  # trả đúng từng byte
         raise ReleaseSignError(
             f"{rel}: dòng ký ghi vào không hiện ở §5 (bảng trong khối code/chú thích?) — đã hoàn tác"
         )

@@ -385,7 +385,8 @@ def write_copy(src: Path, dst: Path, status: str, data: bytes) -> None:
     """Thực hiện quyết định của `classify_copy`: `copied`/`updated` ghi bản khung (giữ bit chạy cho `.sh`), `updated-new`
     ghi `<file>.xtemplates-new`, `kept`/`kept-own` không ghi gì; symlink → bỏ qua, không đi theo (AUD-HAR-010)."""
     if status == "skipped-symlink":
-        log(f"  ⚠ bỏ qua symlink {dst} (không ghi qua liên kết)")
+        link = next((p for p in (dst, *dst.parents) if p.is_symlink()), dst)  # nêu liên kết, không chỉ file đích
+        log(f"  ⚠ bỏ qua symlink {link} (không ghi qua liên kết){'' if link == dst else f' → {dst}'}")
     elif status == "updated-new":
         dst.with_name(dst.name + ".xtemplates-new").write_bytes(data)
     elif status in ("copied", "updated"):
@@ -759,6 +760,9 @@ def target_error(target: Path, with_github: bool = False) -> str | None:
         return "✗ không cài khung vào chính repo khung"
     if (target / ".xtemplates").is_symlink():
         return f"✗ {target / '.xtemplates'} là symlink — khung không ghi xuyên liên kết (AUD-CFG-003); gỡ liên kết rồi cài lại"
+    for rel in (".claude", *((".github",) if with_github else ())):  # file chiếm tên thư mục → từ chối trước khi ghi gì
+        if (target / rel).exists() and not (target / rel).is_dir():
+            return f"✗ {target / rel} là file, không phải thư mục — khung cần thư mục này (AUD-SEC-652); đổi tên hoặc xoá rồi cài lại"
     return github_root_error(target) if with_github else None
 
 
@@ -1939,7 +1943,7 @@ def legacy_refs(target: Path) -> list[str]:
     candidates += (target / ".github" / "workflows").glob("*")
     hits = []
     for p in candidates:
-        if not p.is_file():
+        if not p.is_file() or under_symlink(target, p.relative_to(target).as_posix()):  # không đọc xuyên liên kết
             continue
         try:
             text = p.read_text(encoding="utf-8")
