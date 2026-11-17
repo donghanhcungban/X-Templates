@@ -65,10 +65,10 @@
 > Cổng ký lần 2 (ứng viên `b68527fc`): 🔴 11 · 🟠 9 · 🟢 14 — hầu hết có từ trước; AUD-HAR-422, AUD-SEC-832 do bản sửa đợt 4. Sửa theo lớp, rồi cổng ký lần 3 chỉ rà diff sửa + hồi quy.
 
 ### Lát P — guard
-- [ ] `T-3929` 🔴 lớp giá trị không tính chắc ở đích/cờ của lệnh có luật: AUD-SEC-820/821/822/823/828/829/830, 🟠 AUD-SEC-832, 🟢 AUD-SEC-835 — Gate: `python3 -m unittest tests.test_guard_value_class` (files: .claude/hooks/guard.py, tests/test_guard_value_class.py)
-- [ ] `T-3930` 🔴 lớp kênh chạy lệnh: AUD-SEC-815/816/817/824, 🟠 AUD-SEC-825/827/831/833, 🟢 AUD-SEC-834 — Gate: `python3 -m unittest tests.test_guard_exec_class` (sau: T-3929; files: .claude/hooks/guard.py, tests/test_guard_exec_class.py)
-- [ ] `T-3931` 🟠 AUD-HAR-419 (heredoc ghi công AI), AUD-HAR-420 (lệnh phá dữ liệu), 🟢 AUD-SEC-818 (in biến token) — Gate: `python3 -m unittest tests.test_guard_har_class` (sau: T-3930; files: .claude/hooks/guard.py, framework/11-autonomous-loop/, tests/test_guard_har_class.py)
+- [x] `T-3929` 🔴 lớp giá trị không tính chắc ở đích/cờ của lệnh có luật: AUD-SEC-820/821/822/823/828/829/830, 🟠 AUD-SEC-832, 🟢 AUD-SEC-835 — Gate: `python3 -m unittest tests.test_guard_value_class` (files: .claude/hooks/guard.py, tests/test_guard_value_class.py)
+- [x] `T-3930` 🔴 lớp kênh chạy lệnh: AUD-SEC-815/816/817/824, 🟠 AUD-SEC-825/827/831/833, 🟢 AUD-SEC-834 — Gate: `python3 -m unittest tests.test_guard_exec_class` (sau: T-3929; files: .claude/hooks/guard.py, tests/test_guard_exec_class.py)
+- [x] `T-3931` 🟠 AUD-HAR-419 (heredoc ghi công AI), AUD-HAR-420 (lệnh phá dữ liệu), 🟢 AUD-SEC-818 (in biến token) — Gate: `python3 -m unittest tests.test_guard_har_class` (sau: T-3930; files: .claude/hooks/guard.py, framework/11-autonomous-loop/, tests/test_guard_har_class.py)
 ### Lát Q — scripts, tests
-- [ ] `T-3932` 🟠 AUD-HAR-422, AUD-TEST-112; 🟢 AUD-HAR-423, AUD-TEST-113…116, AUD-DOC-298/299/300 — Gate: `python3 -m unittest tests.test_signoff2_scripts` (files: scripts/dev-task.sh, scripts/xt.py, tests/, framework/11-autonomous-loop/harness-files.md)
+- [x] `T-3932` 🟠 AUD-HAR-422, AUD-TEST-112; 🟢 AUD-HAR-423, AUD-TEST-113…116, AUD-DOC-298/299/300 — Gate: `python3 -m unittest tests.test_signoff2_scripts` (files: scripts/dev-task.sh, scripts/xt.py, tests/, framework/11-autonomous-loop/harness-files.md)
 ### Lát R — cổng ký lần 3
-- [ ] `T-3933` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3929, T-3930, T-3931, T-3932; files: docs/ops/AUDIT-STATUS.md)
+- [x] `T-3933` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3929, T-3930, T-3931, T-3932; files: docs/ops/AUDIT-STATUS.md)
