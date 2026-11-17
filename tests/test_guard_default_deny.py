@@ -249,6 +249,8 @@ class DefaultDenyHelperTest(unittest.TestCase):
         self.assertEqual(guard._weak_seeds(["select", "f", "in", "a"]), {"f"})
         self.assertEqual(guard._weak_seeds(["IFS=", "read", "-r", "x[1]"]), {"x"})
         self.assertEqual(guard._weak_seeds(["x=$(cat f)", "y=1"]), {"x"})
+        self.assertEqual(guard._weak_seeds(["k=$(echo core.hooksPath)"]), set())  # gán chữ được nâng, quét lại
+        self.assertEqual(guard._weak_seeds(["k=$(printf '\\x2d')"]), {"k"})
         self.assertEqual(guard._weak_seeds([]), set())
         cmds = guard._simple_cmds("X=a; then Y=b; echo $Z; Z=c; for W in a b; do :; done; V=$X")
         assert cmds is not None

@@ -2769,7 +2769,13 @@ def _weak_seeds(seg: List[str]) -> Set[str]:
         return {n.partition("[")[0] for n in _name_slots(head, [_dequote(t) for t in raw[k:]])}
     # gán đứng riêng (gán tiền tố `d=$(…) true` chỉ sống trong lệnh đó) hay qua `export`/`local`…
     assigns = raw[:k] if k == len(raw) else raw[k + 1 :] if head in DECLARE_CMDS else []
-    return {m[1] for t in assigns if (m := ASSIGN_WORD_RE.match(t)) and _dd_subst(t[m.end() :])}
+    return {m[1] for t in assigns if (m := ASSIGN_WORD_RE.match(t)) and _dd_subst(t[m.end() :]) and not _lifted(t)}
+
+
+def _lifted(word: str) -> bool:
+    """Gán `x=$(echo chữ)`/`x=$(printf chữ)` không thoát mà `_lifted_scripts` thay bằng gán chữ rồi quét lại."""
+    m = SUBST_ASSIGN_RE.fullmatch(word)
+    return m is not None and "\\" not in m[4] and bool(_subst_values(m))
 
 
 FOR_ARRAY_RE = re.compile(r'"\$(?:[@*]|\{[@*]\}|\{[A-Za-z_]\w*\[[@*]\]\})"')
