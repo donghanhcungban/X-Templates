@@ -1185,7 +1185,9 @@ class MergeConfigTest(unittest.TestCase):
         self.assertFalse(self.changed(mod, both))
         self.assertTrue(self.changed(mod, both, broken=("base",)))  # lỗi đọc ≠ vắng → coi như đổi
         self.assertTrue(self.changed(mod, both, broken=("head",)))
-        self.assertTrue(xt._touches_hard_key({"filename": self.PLAN_FILE}, "repos/o/r", "", "head"))  # thiếu sha đáy
+        # thiếu sha đáy → đổi dù đầu PR đọc được; `_gh_one` giả (AUD-TEST-115: không gọi `gh api …/contents/…` thật)
+        with unittest.mock.patch.object(xt, "_gh_one", side_effect=self.contents({(self.PLAN_FILE, "head"): g})):
+            self.assertTrue(xt._touches_hard_key({"filename": self.PLAN_FILE}, "repos/o/r", "", "head"))
         self.assertFalse(xt._touches_hard_key({"filename": "docs/other/NOTES.md"}, "repos/o/r", "base", "head"))
 
     def test_plan_grants_reader_rejects_bad_content(self):

@@ -577,7 +577,8 @@
     "AUD-HAR-394",
     "AUD-HAR-395",
     "AUD-SEC-649",
-    "AUD-HAR-417"
+    "AUD-HAR-417",
+    "AUD-HAR-422"
    ]
   },
   {
@@ -659,7 +660,7 @@
    "ids": []
   },
   {
-   "reason": "Trường `milestone_audit` của `loop status` theo pha (harden → `signoff`, build → `now`/`g7`; D-500) — lời nhắc tiến trình của vòng, không phải quyết định cho/chặn của PR, rollup, review hay guard; đỡ bằng tests.test_audit_dot4_har.MilestoneAuditPhaseTest và tests.test_xt_core -k test_milestone_done",
+   "reason": "Trường `milestone_audit` của `loop status` theo pha (harden → `signoff`, build → `g7`; D-500) — lời nhắc tiến trình của vòng, không phải quyết định cho/chặn của PR, rollup, review hay guard; đỡ bằng tests.test_audit_dot4_har.MilestoneAuditPhaseTest và tests.test_xt_core -k test_milestone_done",
    "ids": [
     "AUD-HAR-412"
    ]
@@ -667,7 +668,8 @@
   {
    "reason": "Cô lập mạng của chính bộ test khung (test guard không gọi `gh` thật qua merge-check) — hạ tầng test, không phải quyết định của máy; đỡ bằng tests.test_audit_dot4_har.GreenGhNoNetworkTest với shim gh lỗi",
    "ids": [
-    "AUD-TEST-109"
+    "AUD-TEST-109",
+    "AUD-TEST-112"
    ]
   }
  ]

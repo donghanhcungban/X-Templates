@@ -243,6 +243,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `EXIT` → BUDGET. Bản viết lại `${X:+…}` không đệ quy, bỏ heredoc nháy; mẫu có biến đã biết, `\#`, `[a-z]` tính được.
   Dự án đích: chạy lại `install.py`.
 
+- AUD-HAR-422/423, AUD-TEST-112…116, AUD-DOC-298/299/300 (T-3932): `dev-task.sh format`/`format-file` chỉ bỏ qua thư
+  mục user không đi xuyên được (thiếu `x`); thư mục còn `x` mất `r` (formatter theo `git ls-files` vẫn mở được GO-NO-GO
+  trong đó) lại dừng formatter. `loop stop` khi vòng đã dừng mà `.autopilot` là symlink báo "đã tắt sẵn", không báo
+  "vòng vẫn bật". Test guard/merge không gọi `gh` thật; ghim `LC_ALL=C` và đường `verify` qua symlink; dọn subTest
+  bằng `try/finally`. Dự án đích: chạy lại `install.py`.
+
 - AUD-HAR-415/416/417/418, AUD-DOC-296 (T-3927): `.autopilot` là symlink khi vòng đang bật không còn kẹt phiên — lượt
   Stop do chính hook kích (`stop_hook_active`) cho dừng kèm `systemMessage` bảo người thay liên kết bằng thư mục thật,
   `loop stop` nói rõ việc đó (không ghi gì qua liên kết); `perf trial` không tạo khoá ở đích liên kết. Repo

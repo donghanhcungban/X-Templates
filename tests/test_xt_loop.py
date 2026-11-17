@@ -1156,12 +1156,15 @@ class StateWritersTest(TmpRepoCase):
         for args, code, key in self.reapply_cases():
             with self.subTest(args[1]):
                 rev, writes = xt.read_state(self.tmp)["rev"], []
-                with racing_update_state(self.tmp, writes):
-                    rc, out, err = run_main(*args)
-                st = xt.read_state(self.tmp)
-                self.assertEqual((rc, st["rev"], st["outsider"]), (code, rev + 2, True), out + err)
-                self.assertIn(key, st)
-                xt.write_state({k: v for k, v in st.items() if k != "outsider"}, self.tmp)
+                try:  # AUD-TEST-116: subTest đỏ vẫn bỏ dấu `outsider` trước subTest sau
+                    with racing_update_state(self.tmp, writes):
+                        rc, out, err = run_main(*args)
+                    st = xt.read_state(self.tmp)
+                    self.assertEqual((rc, st["rev"], st["outsider"]), (code, rev + 2, True), out + err)
+                    self.assertIn(key, st)
+                finally:
+                    cur = xt.read_state(self.tmp) or {}
+                    xt.write_state({k: v for k, v in cur.items() if k != "outsider"}, self.tmp)
         writes = []
         with racing_update_state(self.tmp, writes):
             self.assertEqual(run_main("loop", "checkpoint", stdin='{"trigger": "manual"}')[0], 0)
