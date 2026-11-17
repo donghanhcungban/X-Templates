@@ -10,6 +10,10 @@
   `framework/templates/xt.yaml` (khoá để trống). `xt.yaml` của repo khung chỉ ghi khoá dạng chú thích — **bật ở PR riêng
   sau khi mã này lên `main`** (D-402).
 - **Ngày:** 2026-11-08.
+- **Cập nhật (2026-11-17, AUD-DOC-280):** đoạn "Giới hạn còn lại" ở §Quyết định đã được bổ sung tại chỗ sau ngày chấp
+  nhận — qua #480 (vòng phản biện: neo mirror D-406) và #485 (khoá đọc từ mirror, credential helper, `REMOTE_DELETE` —
+  D-407, AUD-SEC-551…553) — mà không có dòng cập nhật; quyết định không đổi. Bổ sung sau ngày này ghi ở §Giới hạn cuối
+  tệp.
 - **Thay một phần:** ADR-0068 §Quyết định 3a ("đã duyệt" vẫn là chữ ký người) — chỉ khi khoá có hiệu lực. **Giữ:** guard
   `GO_SIGN` chặn mọi đường ghi dòng ký khác (Edit/Write/Bash/MCP), dòng `subject:` gắn ứng viên (D-389), hạn
   `release_approval_days`, lời từ chối NO-GO đọc cả văn bản thô.
@@ -135,3 +139,14 @@ Chọn **phương án 1** (D-401).
 ### 3. Mẫu dự án đích bật sẵn
 - Tốt: nhanh nhất cho dự án mới.
 - Xấu: dự án có người dùng thật hay nghĩa vụ ký pháp lý nhận chữ ký máy mà không ai quyết.
+
+## Giới hạn (bổ sung 2026-11-17)
+
+- **Tầm với của dòng GO giả tên người** (AUD-DOC-279): dòng GO gỡ lời từ chối đọc từ `git log --all` của bản mirror,
+  nên chỉ cần lên **một nhánh bất kỳ** của `origin` (không qua review, không cần lên nhánh chính); một tệp
+  `GO-NO-GO-v9.9.9.md` gỡ mọi NO-GO của phiên bản thấp hơn. Vì vậy lối lọt của guard `GO_SIGN` (tên tệp dựng lúc chạy)
+  ở trên có tác động rộng hơn một bản phát hành — ranh giới thật vẫn là sandbox.
+- **Luật lời từ chối chặt hơn đoạn §Quyết định** (AUD-HAR-345): ở bảng ký §5, ô tên **trống** với ô quyết định đã điền
+  (`Hold`, `Chưa duyệt`, `?`) cũng là lời từ chối; ô mẫu chưa chọn `GO / NO-GO` (kể cả kèm ghi chú) và bảng ngoài §5
+  giữ như cũ. Chỉ dòng bảng có cột `Quyết định` tính — NO-GO viết văn xuôi ở §4 không có hiệu lực (mẫu GO-NO-GO §4 ghi
+  rõ, AUD-HAR-348).
