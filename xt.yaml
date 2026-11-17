@@ -55,8 +55,9 @@ merge_review: optional
 merge_hard_exceptions: auto
 # Ký §5 GO-NO-GO (ADR-0074): chủ repo 2026-11-08 "cho agent ký GO-NO-GO" (D-401) → agent ký bằng `xt.py release-sign`
 # khi release-check không FAIL và chỉ còn chữ ký; ô tên ghi `agent`. Bật ở PR RIÊNG sau khi mã ADR-0074 đã lên nhánh
-# chính (D-402): lúc đó `release_signoff` đã thuộc HARD_GATED_KEYS nên PR bật khoá luôn người merge.
-# release_signoff: agent
+# chính (D-402): lúc đó `release_signoff` đã thuộc HARD_GATED_KEYS nên PR bật khoá luôn người merge. Bật 2026-11-17 theo
+# yêu cầu chủ repo "Agent tự ký GO-NO-GO".
+release_signoff: agent
 # Pha giao hàng (ADR-0031): repo khung LUÔN là production — chủ repo 2026-10-22 (D-136, thay D-109) → `harden`: PR làn
 # chuẩn cần review sạch ở head khi `merge_review: required`; guard không nới việc cục bộ (ADR-0040 chỉ áp pha build).
 delivery_phase: harden
