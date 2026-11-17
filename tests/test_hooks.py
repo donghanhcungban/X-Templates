@@ -10880,7 +10880,7 @@ class GuardPrefixGateTest(_GuardDebtCase):
         "nice -n $N git status",
         'xargs -P"$(nproc)" -n1 echo',
         "exec -l$X git status",
-        "exec -$X x git push origin feat/me --force",
+        "exec -$X x git status",  # AUD-SEC-817: dạng `x git push … --force` giờ RULE_DENY (quét hậu tố tên lạ)
         "env -C $D git status",
         "env -u$!x git status",
         'nice -n "$N"x git status',  # không phải đúng một cặp nháy kép
@@ -10962,6 +10962,8 @@ class GuardPrefixGateTest(_GuardDebtCase):
 
     def test_time_coproc_wrapper_budget(self):  # AUD-SEC-663/664, ADR-0076 P0
         self.assert_code((*self.TIME, *self.COPROC, *self.WRAPPER), "BUDGET")
+        # AUD-SEC-817: tên lạ `x` sau cờ động có `git push --force` phía sau — luật của hậu tố chặn trước cổng P0
+        self.assert_code(("exec -$X x git push origin feat/me --force",), "RULE_DENY")
         reason = self.out("time d=/; rm -rf $d")["reason"]
         self.assertIn("viết lại", reason)
         self.assertIn("`d=/`", reason)
@@ -11137,7 +11139,6 @@ class GuardWholeCommandSyntaxTest(_GuardDebtCase):
     # review #528: `shlex` thấy nháy không đóng mà bash thì không (`'` trong `"…"` lồng trong `"$(…)"`) → tách thô
     UNCLOSED = (
         '(rm -rf /); echo "$(echo "it\'s")"',
-        '</dev/null rm -rf /; echo "$(echo "it\'s")"',
         'function g { d=/; rm -rf $d; }; g; echo "$(echo "it\'s")"',
         'bash -c $\'(rm -rf /); echo "$(echo "it\\\\\'s")"\'',  # script lồng nguyên văn cũng chặt
         'echo "$(echo "\'")"; ls {a,b}',  # lành nhưng không đọc chắc (D-415; trước review #528 là ca cho qua)
@@ -11198,6 +11199,8 @@ class GuardWholeCommandSyntaxTest(_GuardDebtCase):
         self.assertIn("AUD-SEC-656", self.out(self.UNCLOSED[0])["reason"])
         # luật cũ đã chặn trên token thô → giữ mã của luật (chỉ đổi kết quả không chặn)
         self.assert_code(('(git push origin feat/me --force); echo "$(echo "it\'s")"',), "RULE_DENY")
+        # AUD-SEC-817: token thô `</dev/null` đọc như tên lạ, hậu tố `rm -rf /` chặn bằng luật — giữ mã của luật
+        self.assert_code(('</dev/null rm -rf /; echo "$(echo "it\'s")"',), "RULE_DENY")
         # thô `ask` mà chính sách chặn (mã nguy hiểm) cũng giữ mã
         self.assert_code(('echo x > .claude/settings.json; echo "$(echo "it\'s")"',), "HOOK_BYPASS")
         # hai lần đọc (`LitWord`): lần đọc mới không chặn → BUDGET, lần đọc cũ RULE_DENY, hoà lấy lần mới — vẫn deny
