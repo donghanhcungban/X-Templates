@@ -12032,10 +12032,20 @@ def stage_agent_approval(base: Path) -> bool:
     """`stage_approval: agent` có hiệu lực khi CẢ xt.yaml ở cây làm việc LẪN bản đã commit ở nhánh chính của remote
     (`STAGE_MAIN_REFS`, ref đầu tiên đọc được) đều khai — như `delivery_phase` của guard: phiên không tự cấp quyền duyệt
     cho mình (ADR-0069). Không đọc được xt.yaml hay không có remote → chỉ người (ADR-0058)."""
-    return _main_key_is(base, STAGE_APPROVAL_KEY, STAGE_AGENT_BY)
+    return _main_key_is(base, STAGE_APPROVAL_KEY, STAGE_AGENT_BY, fresh=True)
 
 
-def _main_key_is(base: Path, key: str, value: str) -> bool:
+def _fetch_main_refs(base: Path) -> bool:
+    """Cập nhật `STAGE_MAIN_REFS` từ `origin` (AUD-SEC-625/637): chủ dự án tắt khoá trên remote thì phiên agent chưa
+    fetch không được dùng bản cũ của ref theo dõi. Fetch nhánh đầu tiên remote có; lỗi/mạng → False (fail-closed)."""
+    for ref in STAGE_MAIN_REFS:
+        branch = ref.split("/", 1)[1]
+        if _git(base, "fetch", "-q", "--no-tags", "origin", f"+refs/heads/{branch}:refs/remotes/{ref}").returncode == 0:
+            return True
+    return False
+
+
+def _main_key_is(base: Path, key: str, value: str, fresh: bool = False) -> bool:
     """Khoá `key` = `value` ở CẢ xt.yaml cây làm việc LẪN bản đã commit ở nhánh chính của remote (`STAGE_MAIN_REFS`, ref
     đầu tiên đọc được); không đọc được → False (ADR-0069, ADR-0074)."""
     try:
@@ -12043,6 +12053,8 @@ def _main_key_is(base: Path, key: str, value: str) -> bool:
             return False
     except (OSError, ValueError):
         return False
+    if fresh and agent_session() and not _fetch_main_refs(base):
+        return False  # AUD-SEC-625/637: phiên agent đọc khoá ở bản mới nhất của remote; không fetch được → chỉ người
     for ref in STAGE_MAIN_REFS:
         text = _committed_xt_text(base, ref)
         if text is not None:
@@ -13724,7 +13736,7 @@ def _release_promotion(base: Path, fails: List[str], human: List[str], subject: 
     if pending:
         return {"state": "pending_human", "reasons": pending}
     by = sorted({name for _, text in docs for name in _go_signers(text)})
-    if any(name.casefold() == RELEASE_AGENT_NAME for name in by) and not release_agent_signoff(base):
+    if any(name.casefold() == RELEASE_AGENT_NAME for name in by) and not release_agent_signoff(base, fresh=True):
         return {
             "state": "pending_human",
             "reasons": [
@@ -14105,9 +14117,9 @@ class ReleaseSignError(Exception):
     """`release-sign` từ chối: một dòng cho người, exit 2, không ghi file."""
 
 
-def release_agent_signoff(base: Path) -> bool:
+def release_agent_signoff(base: Path, fresh: bool = False) -> bool:
     """`release_signoff: agent` có hiệu lực (ADR-0074) — cùng luật `stage_agent_approval`."""
-    return _main_key_is(base, RELEASE_SIGNOFF_KEY, RELEASE_AGENT_NAME)
+    return _main_key_is(base, RELEASE_SIGNOFF_KEY, RELEASE_AGENT_NAME, fresh)
 
 
 def _sign_doc(base: Path, file: str) -> Tuple[str, str]:

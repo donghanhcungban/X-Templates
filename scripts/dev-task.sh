@@ -541,7 +541,10 @@ run_format() { # $1=lệnh; đối số còn lại được truyền cho bash -c
     rm -rf -- "$snap"
     return 1
   fi
+  # AUD-HAR-394: bị ngắt giữa formatter (hook timeout gửi TERM, Ctrl-C) vẫn khôi phục GO-NO-GO và dọn bản chụp
+  trap 'go_restore "$snap" || log "$TASK: ngắt — không khôi phục được GO-NO-GO, bản sao ở $snap"; rm -rf -- "$snap"; exit 143' TERM INT HUP
   ( cd "$ROOT" && bash -o pipefail -c "$@" ) || rc=$?
+  trap - TERM INT HUP
   if ! go_restore "$snap"; then
     log "$TASK: không khôi phục được GO-NO-GO — giữ bản sao ở '$snap'"
     return 1

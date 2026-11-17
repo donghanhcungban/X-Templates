@@ -229,6 +229,17 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con
+  mờ → chặn như `stage`; dòng `Khi chạy thật đã quyết` ghi tay (Edit/Write/Bash) và hàm `decide_prod` nạp trong tiến
+  trình → chặn; trong phiên agent, `stage approve` và hàng promotion của `release-check` fetch nhánh chính trước khi đọc
+  khoá `stage_approval`/`release_signoff` (fetch lỗi → chỉ người).
+- AUD-SEC-612/670/655, AUD-HAR-404/405 (T-3910): đích ghi viết sau thay lệnh (`> $(echo).autopilot/…`), `printf` nuôi
+  shell và here-string vào `xargs sh -c` bị chặn như dạng trơn; `install.py` so thư mục hook theo đường đã giải
+  (`core.hooksPath` qua tổ tiên symlink → bỏ qua) và thôi chặn oan khi `.git`/`.git/hooks` là symlink trong git dir;
+  `.autopilot` là symlink: không ghi state/evidence qua liên kết, `hook-stop` giữ vòng (fail-closed).
+- AUD-HAR-394/395, AUD-SEC-649 (T-3914): `dev-task.sh format`/`format-file` bị ngắt (TERM/INT/HUP) giữa formatter vẫn
+  khôi phục `GO-NO-GO*.md` và dọn bản chụp; mẫu `xt.yaml` hướng dẫn thêm `GO-NO-GO*.md` vào file ignore của formatter
+  Markdown để cổng `format_check` không đỏ sau khi lập GO-NO-GO.
 - `scripts/check-links.py --external`: HEAD 404/410 không còn đủ kết luận link chết — xác nhận lại bằng GET (NIST nvlpubs và
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.

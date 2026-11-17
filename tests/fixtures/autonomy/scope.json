@@ -485,11 +485,13 @@
    ]
   },
   {
-   "reason": "Khoá `stage_approval: agent` (ADR-0069) chỉ có hiệu lực khi xt.yaml đã commit ở `origin/main`/`origin/master` của remote — fixture `files` của autonomy-bench không dựng được repo git có remote ref. Kiểm bằng tests.test_stage_agent_approval (repo git thật có remote: `env -u …` né nhánh agent, `remote set-head`, PR đổi khoá là ngoại lệ cứng).",
+   "reason": "Khoá `stage_approval: agent` (ADR-0069) chỉ có hiệu lực khi xt.yaml đã commit ở `origin/main`/`origin/master` của remote — fixture `files` của autonomy-bench không dựng được repo git có remote ref. Kiểm bằng tests.test_stage_agent_approval (repo git thật có remote: `env -u …` né nhánh agent, `remote set-head`, PR đổi khoá là ngoại lệ cứng). AUD-SEC-625/637 (đọc khoá ở bản mới của remote trong phiên agent): tests.test_stage_agent_approval.",
    "ids": [
     "AUD-SEC-499",
     "AUD-SEC-500",
-    "AUD-HAR-222"
+    "AUD-HAR-222",
+    "AUD-SEC-625",
+    "AUD-SEC-637"
    ]
   },
   {
@@ -563,9 +565,12 @@
    ]
   },
   {
-   "reason": "Lỗi nằm ở `dev-task.sh format-file` (formatter PostToolUse chuẩn hoá dòng §5 sau khi guard đã cho qua) — không phải quyết định của guard/PR/CI mà bench mô phỏng. Khoá bằng tests.test_hooks.DevTaskTest.test_format_file_skips_go_no_go.",
+   "reason": "Lỗi nằm ở `dev-task.sh format-file` (formatter PostToolUse chuẩn hoá dòng §5 sau khi guard đã cho qua) — không phải quyết định của guard/PR/CI mà bench mô phỏng. Khoá bằng tests.test_hooks.DevTaskTest.test_format_file_skips_go_no_go. AUD-HAR-394/395 (`run_format` chụp–khôi phục, `trap` khi bị ngắt) và AUD-SEC-649 (hướng dẫn mẫu xt.yaml): tests.test_hooks.DevTaskTest.",
    "ids": [
-    "AUD-SEC-628"
+    "AUD-SEC-628",
+    "AUD-HAR-394",
+    "AUD-HAR-395",
+    "AUD-SEC-649"
    ]
   },
   {
