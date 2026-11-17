@@ -7996,6 +7996,45 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardGhXargsFieldTest(unittest.TestCase):
+    """AUD-SEC-600/604 (T-3906): `xargs` nối cờ vào lệnh gh có luật cờ/đăng chữ → BUDGET; `-F=k=v` đọc như pflag."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_xargs_into_ruled_gh_is_budget(self):
+        for cmd in (
+            "echo '-X DELETE' | xargs gh api repos/o/r",
+            "xargs -a flags.txt gh auth status",
+            "echo --admin | xargs gh pr merge 5 --squash",
+            "xargs gh api repos/o/r < f",
+            "xargs gh pr comment 5 < f",
+        ):
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", "BUDGET"), res)
+        for cmd in ("echo 5 | xargs gh pr view", "ls | xargs -I{} echo {}"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+    def test_field_equals_form_like_pflag(self):
+        for cmd in (
+            "gh api -X PATCH repos/o/r/git/refs/heads/x -F=force=true",
+            "gh api -X PATCH repos/o/r/git/refs/heads/x -f=force=true",
+        ):
+            with self.subTest(cmd=cmd):
+                plain = self.decide(cmd.replace("=force", " force"))
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", plain.get("code")), res)
+
+
 class GuardGhDynFlagTest(unittest.TestCase):
     """AUD-SEC-591/592/593/746 (T-3905): mở rộng ở vị trí có thể thành cờ của lệnh `gh` — từ thuần mở rộng ngoài đối số
     vị trí đầu (lệnh đăng chữ: mọi vị trí), mở rộng không nháy dính chữ; giá trị `git -c` có mở rộng không nháy → BUDGET."""

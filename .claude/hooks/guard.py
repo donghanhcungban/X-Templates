@@ -8164,7 +8164,7 @@ def _gh_api_field_values(args: List[str]) -> List[str]:
         elif a.startswith(("--field=", "--raw-field=")):
             out.append(a.split("=", 1)[1])
         elif a[:2] in ("-f", "-F") and len(a) > 2:
-            out.append(a[2:])
+            out.append(a[3:] if a[2] == "=" else a[2:])  # pflag: `-F=k=v` = `-F k=v` (AUD-SEC-604)
     return out
 
 
@@ -13739,7 +13739,7 @@ def _dyn_exec_check(placed: "PlacedCmds") -> None:
         n = normalize(c)
         name, args = (n[0], n[1:]) if n else ("", [])
         why = _dyn_exec_why(name, args) or _special_var_why(c, name, args) or _exec_env_why(c, name, args)
-        why = why or _env_file_why(c) or _cmd_env_why(c, name, args) or _runner_why(name, args, n)
+        why = why or _env_file_why(c) or _cmd_env_why(c, name, args) or _runner_why(name, args, n) or _xargs_gh_why(c)
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
 
@@ -13917,6 +13917,22 @@ def _runner_why(name: str, args: List[str], n: List[str]) -> str:
     runs = any(a in TMUX_RUN_SUBS for a in args) if name == "tmux" else any(a[:1] != "-" for a in args)
     if name in SESSION_RUNNERS and runs:
         return f"`{name}` chạy lệnh trong phiên khác (AUD-SEC-608)"
+    return ""
+
+
+def _xargs_gh_why(c: List[str]) -> str:
+    """AUD-SEC-600: `xargs` nối đối số guard không thấy (stdin, `-a tệp`) vào lệnh `gh` có luật cờ/đăng chữ — đối số nối
+    có thể là cờ (`-X DELETE`, `--admin`)."""
+    at = [i for i, t in enumerate(c) if posixpath.basename(t) == "xargs"]
+    gh = next((j for j in range(at[0] + 1, len(c)) if posixpath.basename(c[j]) == "gh"), -1) if at else -1
+    if gh < 0:
+        return ""
+    args = c[gh + 1 :]
+    path = _gh_path(args)
+    path = path if path and args[path[0]] in GH_GROUPS else path[:1]
+    heads = tuple(args[k] for k in path)[:2]
+    if heads in GH_FLAG_RULED or heads[:1] in GH_FLAG_RULED or heads in GH_POST_SUBS:
+        return f"`xargs` nối đối số không thấy vào `gh {' '.join(heads)}` — có thể thành cờ (AUD-SEC-600)"
     return ""
 
 
