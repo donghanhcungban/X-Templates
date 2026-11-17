@@ -2290,8 +2290,7 @@ REREAD_PROMPT_RE = re.compile(r"\$\{[^{}]*@P\}")  # `${x@P}`: mở rộng giá t
 SPLIT_DECLARERS = frozenset("declare typeset local export readonly".split())
 SPLIT_NAME_RE = re.compile(r"[A-Za-z_]\w*(?:\[[^\[\]$`]*\])?\+?")  # đích nguyên văn: tên, chỉ số không mở rộng
 SPLIT_CASE_RE = re.compile(r"\$\{[#!]?\w+(?:\[[^\]]*\])?(?:\^|~|@[Uu])")  # đổi chữ thường từ dữ liệu thành hoa
-# `$?`/`$#`/`$$`, độ dài `${#…}`: ra số. `$!` RỖNG khi chưa có job nền — `$!--admin` = `--admin` (AUD-SEC-754)
-SPLIT_NUM_RE = re.compile(r"\$(?:[?#$]|\{#)")
+SPLIT_NUM_RE = re.compile(r"\$(?:[?#$!]|\{#)")  # `$?`/`$#`/`$$`/`$!`, độ dài `${#…}`: ra số
 
 
 def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
@@ -9832,7 +9831,8 @@ def _gh_lead_flag(word: str) -> bool:
     v = _CodeView(word)
     hits = [i for i, c in enumerate(word) if c in GH_LEAD_CHARS and v.kind[i] == "c" and v.top[i]]
     empty = bool(hits) and not _strip_expansions(_dequote(word[: hits[0]]))  # `"$X"$Y`: X rỗng thì Y đứng đầu
-    lead = empty and (word[hits[0]] != "$" or _word_splits(word))
+    # `$!` không tách từ nhưng RỖNG khi chưa có job nền: `$!--admin` = `--admin` (AUD-SEC-754)
+    lead = empty and (word[hits[0]] != "$" or _word_splits(word) or word.startswith("$!", hits[0]))
     return lead or any(word[i] in GH_GLOB_CHARS for i in hits) and _dequote(word).startswith("-")
 
 
