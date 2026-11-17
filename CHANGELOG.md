@@ -6,6 +6,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [Unreleased]
 
+### Fixed
+
+- Gói `web-api-ts`: `pnpm audit` đỏ vì GHSA-fc5q-39xc-vjpf (picomatch, chưa có bản vá, chỉ qua devDependency vitest);
+  ngoại lệ hẹp `auditConfig.ignoreGhsas` trong `starter/pnpm-workspace.yaml` + `starter/audit-exceptions.json` (hạn
+  2026-12-18, BASE-DEP-004, D-504); CI giữ `--audit-level moderate`, test ghim hai file khớp nhau và chưa hết hạn.
+
 ### Added
 
 - README thêm mục "Vì sao dùng X-Templates" (vấn đề → lợi ích) và "Ủng hộ và liên hệ" (VietQR Techcombank,
