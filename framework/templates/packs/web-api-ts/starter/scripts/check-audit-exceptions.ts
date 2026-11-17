@@ -42,8 +42,15 @@ export function ignoredIds(text: string, key: string): string[] {
   return out;
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const REQUIRED_TEXT = ["reason", "approved_by", "owner"];
+
 export function problems(workspace: string, exceptions: Exception[], today: string): string[] {
   const errs: string[] = [];
+  if (/^\s*auditConfig:\s*\{/m.test(workspace)) {
+    // dạng flow-mapping (`auditConfig: { ignoreGhsas: [...] }`) không đọc chắc → đỏ, không bỏ qua im lặng
+    errs.push("auditConfig dạng flow-mapping `{ … }`: viết dạng khối để kiểm được");
+  }
   const ghsas = ignoredIds(workspace, "ignoreGhsas");
   const cves = ignoredIds(workspace, "ignoreCves");
   for (const e of exceptions) {
@@ -52,8 +59,16 @@ export function problems(workspace: string, exceptions: Exception[], today: stri
     if (missing.length > 0) {
       errs.push(`${id}: thiếu khoá ${missing.join(", ")}`);
     }
-    if (String(e.expires) < today) {
+    // `null`, "never", ngày sai dạng: không phải hạn — so chuỗi với hôm nay sẽ cho qua ("never" > "2026-…")
+    if (typeof e.expires !== "string" || !DATE_RE.test(e.expires)) {
+      errs.push(`${id}: expires phải là YYYY-MM-DD, có ${String(e.expires)}`);
+    } else if (e.expires < today) {
       errs.push(`${id}: hết hạn ${e.expires}`);
+    }
+    for (const k of REQUIRED_TEXT) {
+      if (k in e && (typeof e[k] !== "string" || String(e[k]).trim() === "")) {
+        errs.push(`${id}: ${k} rỗng`);
+      }
     }
     const used = (e.ghsa != null && ghsas.includes(e.ghsa)) || (e.cve != null && cves.includes(e.cve));
     if (!used) {

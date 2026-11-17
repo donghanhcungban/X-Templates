@@ -556,3 +556,87 @@
 {"id": "d503s5-b032", "root": "signoff5 sed script", "cmd": "sed -n \"$n p\" f"}
 {"id": "d503s5-b033", "root": "signoff5 sed script", "cmd": "sed -n \"$((n-1))s/x/$(cat f)/p\" f"}
 {"id": "d503s5-b034", "root": "signoff5 sed script", "cmd": "sed --expr \"s/x/$(cat f)/e\" f"}
+{"id": "R01|fn:date:1", "root": "fn:date", "cmd": "date(){ echo -rf; }; rm \"$(date +%F)\" ~"}
+{"id": "R01|fn:datekw:1", "root": "fn:datekw", "cmd": "function date { echo -rf; }; rm \"$(date +%F)\" ~"}
+{"id": "R01|fn:dateu:1", "root": "fn:dateu", "cmd": "date () { printf %s -rf; }; rm \"$(date -u +%Y)\" ~"}
+{"id": "R01|fn:dateeval:1", "root": "fn:dateeval", "cmd": "eval 'date(){ echo -rf; }'; rm \"$(date +%F)\" ~"}
+{"id": "R01|fn:pwd:1", "root": "fn:pwd", "cmd": "pwd(){ echo -rf; }; rm \"$(pwd)\" ~"}
+{"id": "R01|fn:mktemp:1", "root": "fn:mktemp", "cmd": "mktemp(){ echo -rf; }; rm \"$(mktemp)\" ~"}
+{"id": "R01|fn:mktempd:1", "root": "fn:mktempd", "cmd": "mktemp(){ echo -rf; }; rm \"$(mktemp -d)\" ~"}
+{"id": "R01|fn:date:2", "root": "fn:date", "cmd": "date(){ echo ~; }; rm -rf \"$(date +%F)\""}
+{"id": "R01|fn:datekw:2", "root": "fn:datekw", "cmd": "function date { echo ~; }; rm -rf \"$(date +%F)\""}
+{"id": "R01|fn:dateu:2", "root": "fn:dateu", "cmd": "date () { printf %s ~; }; rm -rf \"$(date -u +%Y)\""}
+{"id": "R01|fn:datebare:2", "root": "fn:datebare", "cmd": "date(){ echo ~; }; rm -rf $(date +%s)"}
+{"id": "R01|fn:dateeval:2", "root": "fn:dateeval", "cmd": "eval 'date(){ echo ~; }'; rm -rf \"$(date +%F)\""}
+{"id": "R01|fn:mktemp:2", "root": "fn:mktemp", "cmd": "mktemp(){ echo ~; }; rm -rf \"$(mktemp)\""}
+{"id": "R01|fn:mktempd:2", "root": "fn:mktempd", "cmd": "mktemp(){ echo ~; }; rm -rf \"$(mktemp -d)\""}
+{"id": "R02|fn:pwd:1", "root": "fn:pwd", "cmd": "pwd(){ echo -rf; }; rm \"$(pwd)\" /etc/ssl"}
+{"id": "R02|fn:datebare:2", "root": "fn:datebare", "cmd": "date(){ echo /etc/ssl; }; rm -rf $(date +%s)"}
+{"id": "C01|cdx:printfv", "root": "cdx:printfv", "cmd": "printf -v CD''PATH /; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:printfv2", "root": "cdx:printfv2", "cmd": "printf -v CD\"\"PATH %s /; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:exportbs", "root": "cdx:exportbs", "cmd": "export CD\\PATH=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:declare", "root": "cdx:declare", "cmd": "declare CD\"\"PATH=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:declarex", "root": "cdx:declarex", "cmd": "declare -x CD''PATH=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:typeset", "root": "cdx:typeset", "cmd": "typeset CD''PATH=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:readonly", "root": "cdx:readonly", "cmd": "readonly CD''PATH=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:read", "root": "cdx:read", "cmd": "read CD\"\"PATH <<< /; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:readr", "root": "cdx:readr", "cmd": "IFS= read -r CD''PATH <<< /; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:mapfile", "root": "cdx:mapfile", "cmd": "mapfile -t CD''PATH <<< /; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:eval", "root": "cdx:eval", "cmd": "eval CD''PATH=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:evaldq", "root": "cdx:evaldq", "cmd": "eval \"CD\"\"PATH=/\"; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:printfvz", "root": "cdx:printfvz", "cmd": "printf -v \"CD${Z}PATH\" /; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:nameref", "root": "cdx:nameref", "cmd": "declare -n R=CD''PATH; R=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:exportq", "root": "cdx:exportq", "cmd": "export CD''PATH=/; cd etc ; rm -rf ssl"}
+{"id": "C01|cdx:cdable", "root": "cdx:cdable", "cmd": "shopt -s cdable_\"\"vars; X=/etc; cd X ; rm -rf ssl"}
+{"id": "C01|cdx:cdable2", "root": "cdx:cdable2", "cmd": "shopt -s cdable_''vars; X=/etc; cd X ; rm -rf ssl"}
+{"id": "C01|cdx:cdable3", "root": "cdx:cdable3", "cmd": "shopt -s cdable\\_vars; X=/etc; cd X ; rm -rf ssl"}
+{"id": "C01|cdx:popd", "root": "cdx:popd", "cmd": "cd /etc && pushd /tmp >/dev/null && popd >/dev/null ; rm -rf ssl"}
+{"id": "C10|cdx:printfv", "root": "cdx:printfv", "cmd": "printf -v CD''PATH /; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:printfv2", "root": "cdx:printfv2", "cmd": "printf -v CD\"\"PATH %s /; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:exportbs", "root": "cdx:exportbs", "cmd": "export CD\\PATH=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:declare", "root": "cdx:declare", "cmd": "declare CD\"\"PATH=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:declarex", "root": "cdx:declarex", "cmd": "declare -x CD''PATH=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:typeset", "root": "cdx:typeset", "cmd": "typeset CD''PATH=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:readonly", "root": "cdx:readonly", "cmd": "readonly CD''PATH=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:read", "root": "cdx:read", "cmd": "read CD\"\"PATH <<< /; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:readr", "root": "cdx:readr", "cmd": "IFS= read -r CD''PATH <<< /; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:mapfile", "root": "cdx:mapfile", "cmd": "mapfile -t CD''PATH <<< /; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:eval", "root": "cdx:eval", "cmd": "eval CD''PATH=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:evaldq", "root": "cdx:evaldq", "cmd": "eval \"CD\"\"PATH=/\"; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:printfvz", "root": "cdx:printfvz", "cmd": "printf -v \"CD${Z}PATH\" /; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:nameref", "root": "cdx:nameref", "cmd": "declare -n R=CD''PATH; R=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:exportq", "root": "cdx:exportq", "cmd": "export CD''PATH=/; cd etc && rm -rf ssl"}
+{"id": "C10|cdx:cdable", "root": "cdx:cdable", "cmd": "shopt -s cdable_\"\"vars; X=/etc; cd X && rm -rf ssl"}
+{"id": "C10|cdx:cdable2", "root": "cdx:cdable2", "cmd": "shopt -s cdable_''vars; X=/etc; cd X && rm -rf ssl"}
+{"id": "C10|cdx:cdable3", "root": "cdx:cdable3", "cmd": "shopt -s cdable\\_vars; X=/etc; cd X && rm -rf ssl"}
+{"id": "C10|cdx:popd", "root": "cdx:popd", "cmd": "cd /etc && pushd /tmp >/dev/null && popd >/dev/null && rm -rf ssl"}
+{"id": "W07|xs:find:", "root": "xs:find", "cmd": "find . -name settings.json | xargs rm"}
+{"id": "W07|xs:find:r", "root": "xs:find", "cmd": "find . -name settings.json | xargs -r rm"}
+{"id": "W07|xs:findq:", "root": "xs:findq", "cmd": "find . -name 'settings.json' | xargs rm"}
+{"id": "W07|xs:findq:r", "root": "xs:findq", "cmd": "find . -name 'settings.json' | xargs -r rm"}
+{"id": "W07|xs:findi:", "root": "xs:findi", "cmd": "find . -iname SETTINGS.JSON | xargs rm"}
+{"id": "W07|xs:findi:r", "root": "xs:findi", "cmd": "find . -iname SETTINGS.JSON | xargs -r rm"}
+{"id": "W07|xs:findtf:", "root": "xs:findtf", "cmd": "find . -type f -name settings.json | xargs rm"}
+{"id": "W07|xs:findtf:r", "root": "xs:findtf", "cmd": "find . -type f -name settings.json | xargs -r rm"}
+{"id": "W07|xs:findpath:", "root": "xs:findpath", "cmd": "find . -path '*/settings.json' | xargs rm"}
+{"id": "W07|xs:findpath:r", "root": "xs:findpath", "cmd": "find . -path '*/settings.json' | xargs -r rm"}
+{"id": "W07|xs:findglob:", "root": "xs:findglob", "cmd": "find . -name 'sett*' | xargs rm"}
+{"id": "W07|xs:findglob:r", "root": "xs:findglob", "cmd": "find . -name 'sett*' | xargs -r rm"}
+{"id": "W07|xs:findglob2:", "root": "xs:findglob2", "cmd": "find . -name \"*tings.json\" | xargs rm"}
+{"id": "W07|xs:findglob2:r", "root": "xs:findglob2", "cmd": "find . -name \"*tings.json\" | xargs -r rm"}
+{"id": "W07|xs:gitls:", "root": "xs:gitls", "cmd": "git ls-files | xargs rm"}
+{"id": "W07|xs:gitls:r", "root": "xs:gitls", "cmd": "git ls-files | xargs -r rm"}
+{"id": "W07|xs:gitlsp:", "root": "xs:gitlsp", "cmd": "git ls-files '*settings.json' | xargs rm"}
+{"id": "W07|xs:gitlsp:r", "root": "xs:gitlsp", "cmd": "git ls-files '*settings.json' | xargs -r rm"}
+{"id": "W07|xs:gitlsdd:", "root": "xs:gitlsdd", "cmd": "git ls-files -- '*ttings.json' | xargs rm"}
+{"id": "W07|xs:gitlsdd:r", "root": "xs:gitlsdd", "cmd": "git ls-files -- '*ttings.json' | xargs -r rm"}
+{"id": "W07|xs:echoe0:", "root": "xs:echoe0", "cmd": "echo -e '\\x2eclaude/settings.json' | xargs rm"}
+{"id": "W07|xs:echoe0:r", "root": "xs:echoe0", "cmd": "echo -e '\\x2eclaude/settings.json' | xargs -r rm"}
+{"id": "W07|xs:echoe1:", "root": "xs:echoe1", "cmd": "echo -e '\\0056claude/settings.json' | xargs rm"}
+{"id": "W07|xs:echoe1:r", "root": "xs:echoe1", "cmd": "echo -e '\\0056claude/settings.json' | xargs -r rm"}
+{"id": "W07|xs:echoe2:", "root": "xs:echoe2", "cmd": "echo -e '\\x2ecl\\x61ude/settings.json' | xargs rm"}
+{"id": "W07|xs:echoe2:r", "root": "xs:echoe2", "cmd": "echo -e '\\x2ecl\\x61ude/settings.json' | xargs -r rm"}
+{"id": "W07|xs:echone:", "root": "xs:echone", "cmd": "echo -ne '\\x2eclaude/settings.json\\n' | xargs rm"}
+{"id": "W07|xs:echone:r", "root": "xs:echone", "cmd": "echo -ne '\\x2eclaude/settings.json\\n' | xargs -r rm"}
+{"id": "W07|xs:xpg:", "root": "xs:xpg", "cmd": "shopt -s xpg_echo; echo '\\x2eclaude/settings.json' | xargs rm"}
+{"id": "W07|xs:xpg:r", "root": "xs:xpg", "cmd": "shopt -s xpg_echo; echo '\\x2eclaude/settings.json' | xargs -r rm"}
