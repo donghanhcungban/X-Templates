@@ -233,6 +233,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
 
+- AUD-SEC-554/623/626/544 (T-3907): `git push` theo `HEAD` sau `switch`/`checkout` cùng lệnh → BUDGET; `gh repo sync
+  --force` → chặn như push --force; mutation graphql gỡ bảo vệ nhánh/ruleset/môi trường → DESTROY; `gh api` ghi thẳng
+  nhánh chính (contents, ref `heads/main`) → PUSH_MAIN như tool MCP.
 - AUD-SEC-600/604 (T-3906): `xargs` nối đối số (stdin, `-a`) vào lệnh `gh` có luật cờ hay đăng chữ → BUDGET;
   `gh api -F=k=v`/`-f=k=v` đọc như pflag (`k=v`), nên `-F=force=true` bị luật ghi ref force chặn như dạng tách.
 - AUD-SEC-591/592/593/746 (T-3905): lệnh `gh` — mở rộng thuần ngoài đối số vị trí đầu (`gh pr close 5 "$X"`), mở rộng

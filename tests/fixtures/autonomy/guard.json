@@ -23594,6 +23594,11 @@
 {"id": "aud746-git-c-dyn", "origin": "audit", "refs": ["AUD-SEC-746"], "input": {"command": "git -c push.default=matching$X fetch origin"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud600-xargs-gh-api", "origin": "audit", "refs": ["AUD-SEC-600"], "input": {"command": "echo '-X DELETE' | xargs gh api repos/o/r"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud600-ctl-xargs-gh-view", "origin": "control", "refs": ["AUD-SEC-600"], "input": {"command": "echo 5 | xargs gh pr view"}, "expect": {"allowed": true}},
-{"id": "aud604-gh-field-equals-force", "origin": "audit", "refs": ["AUD-SEC-604"], "input": {"command": "gh api -X PATCH repos/o/r/git/refs/heads/x -F=force=true"}, "expect": {"allowed": false, "code": "RULE_DENY"}}
+{"id": "aud604-gh-field-equals-force", "origin": "audit", "refs": ["AUD-SEC-604"], "input": {"command": "gh api -X PATCH repos/o/r/git/refs/heads/x -F=force=true"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+{"id": "aud554-switch-push-head-delete", "origin": "audit", "refs": ["AUD-SEC-554"], "input": {"command": "git switch feat/other; git push origin -d HEAD"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud554-ctl-switch-push-explicit", "origin": "control", "refs": ["AUD-SEC-554"], "input": {"command": "git switch feat/x && git push origin feat/x"}, "expect": {"allowed": true}},
+{"id": "aud623-repo-sync-force", "origin": "audit", "refs": ["AUD-SEC-623"], "input": {"command": "gh repo sync o/r --branch main --force"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+{"id": "aud626-graphql-delete-protection", "origin": "audit", "refs": ["AUD-SEC-626"], "input": {"command": "gh api graphql -f query='mutation { deleteBranchProtectionRule(input:{x:1}) { a } }'"}, "expect": {"allowed": false, "code": "DESTROY"}},
+{"id": "aud544-api-contents-main", "origin": "audit", "refs": ["AUD-SEC-544"], "input": {"command": "gh api -X PUT repos/o/r/contents/x -f branch=main -f message=m -f content=eA=="}, "expect": {"allowed": false, "code": "PUSH_MAIN"}}
  ]
 }
