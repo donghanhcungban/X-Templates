@@ -170,10 +170,14 @@ class TreeRowTest(ReleaseCase):
         for flag, tag in (("assume-unchanged", "h app.py"), ("skip-worktree", "S app.py")):
             with self.subTest(flag=flag):
                 self.git("update-index", f"--{flag}", "app.py")
-                row = self.tree()
-                self.assertEqual(row["result"], "FAIL", row)
-                self.assertIn(f"1 tệp assume-unchanged (chữ thường) hoặc skip-worktree (`S`): {tag} —", row["evidence"])
-                self.git("update-index", f"--no-{flag}", "app.py")
+                try:  # AUD-TEST-111: subTest đỏ vẫn gỡ cờ, không để lại cho subTest sau
+                    row = self.tree()
+                    self.assertEqual(row["result"], "FAIL", row)
+                    self.assertIn(
+                        f"1 tệp assume-unchanged (chữ thường) hoặc skip-worktree (`S`): {tag} —", row["evidence"]
+                    )
+                finally:
+                    self.git("update-index", f"--no-{flag}", "app.py")
 
     def test_failed_git_command_named(self):
         row, head, readable = xt._release_tree(self.tmp)
@@ -267,15 +271,17 @@ class StageHiddenIndexTest(TmpRepoCase):
         for flag, tag in (("assume-unchanged", "h f.txt"), ("skip-worktree", "S f.txt")):
             with self.subTest(flag=flag):
                 self.git("update-index", f"--{flag}", "f.txt")
-                f.write_text("sửa lén\n", encoding="utf-8")
-                self.assertEqual(self.git("status", "--porcelain", "--", "f.txt"), "")
-                rc, _, err = self.stage("submit", "--evidence", "x", agent=True)
-                self.assertEqual(rc, 2)
-                self.assertIn(
-                    f"assume-unchanged/skip-worktree hoặc không đọc được (`git ls-files -v` exit 0: {tag})", err
-                )
-                self.git("update-index", f"--no-{flag}", "f.txt")
-                self.git("checkout", "--", "f.txt")
+                try:  # AUD-TEST-111: subTest đỏ vẫn gỡ cờ và trả tệp, không để lại cho subTest sau
+                    f.write_text("sửa lén\n", encoding="utf-8")
+                    self.assertEqual(self.git("status", "--porcelain", "--", "f.txt"), "")
+                    rc, _, err = self.stage("submit", "--evidence", "x", agent=True)
+                    self.assertEqual(rc, 2)
+                    self.assertIn(
+                        f"assume-unchanged/skip-worktree hoặc không đọc được (`git ls-files -v` exit 0: {tag})", err
+                    )
+                finally:
+                    self.git("update-index", f"--no-{flag}", "f.txt")
+                    self.git("checkout", "--", "f.txt")
 
     def test_unreadable_index_listing_refused(self):
         self.stage("init")

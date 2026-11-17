@@ -654,6 +654,18 @@
   {
    "reason": "Cổng phát hành của xt.py (`release-check` hàng tree, `release-sign` đọc `loop defer`) — không phải quyết định guard/harness/pr để mô phỏng bằng corpus; đỡ bằng repo git tạm trong tests.test_release_contract (PromotionTest.test_status_config_cannot_hide_dirty_tree) và tests.test_release_signoff (test_deferred_read_from_every_worktree, test_unknown_or_broken_state_refuses, ReleaseSignSubdirTest); hàng `verify` đọc sổ máy mọi worktree (AUD-HAR-369): tests.test_release_contract.ReleaseVerifyWorktreeTest.",
    "ids": []
+  },
+  {
+   "reason": "Trường `milestone_audit` của `loop status` theo pha (harden → `signoff`, build → `now`/`g7`; D-500) — lời nhắc tiến trình của vòng, không phải quyết định cho/chặn của PR, rollup, review hay guard; đỡ bằng tests.test_audit_dot4_har.MilestoneAuditPhaseTest và tests.test_xt_core -k test_milestone_done",
+   "ids": [
+    "AUD-HAR-412"
+   ]
+  },
+  {
+   "reason": "Cô lập mạng của chính bộ test khung (test guard không gọi `gh` thật qua merge-check) — hạ tầng test, không phải quyết định của máy; đỡ bằng tests.test_audit_dot4_har.GreenGhNoNetworkTest với shim gh lỗi",
+   "ids": [
+    "AUD-TEST-109"
+   ]
   }
  ]
 }

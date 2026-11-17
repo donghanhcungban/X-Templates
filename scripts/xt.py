@@ -2057,37 +2057,48 @@ def _verdict_plan(base: Path, st: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def _with_dispatch(
     v: Dict[str, Any], t: Dict[str, Any], tasks: List[Dict[str, Any]], base: Path, st: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Thêm cấu hình agent (ADR-0061), tầng executor (chuyển cấp nếu có, ADR-0029) và mốc vừa xong vào verdict `continue`."""
+    """Thêm cấu hình agent (ADR-0061), tầng executor (chuyển cấp nếu có, ADR-0029) và mốc vừa xong vào verdict `continue`.
+    Không pha nào audit theo mốc (D-500): build gom về cuối đợt (`g7`, ADR-0033/0046/0047), harden gom về cổng ký
+    (`signoff`, ADR-0080) — `milestone_audit` chỉ báo audit dồn về đâu; task kế làm ngay. `release-check` vẫn là chốt G7."""
     v.update(executor_choice(t, base, st))
-    if v["escalated"]:
-        v["reason"] += (
-            f" — chuyển cấp: tầng mặc định đỏ {v['default_failures']} lần → giao `{v['executor']}` kèm diff + evidence lỗi"
-            " + giả thuyết đã loại (LOOP-ORCH-014)"
-        )
-    elif v["executor"] and v["tier"] == "deep":
-        v["reason"] += f" — tầng sâu theo PLAN (`exec: deep`): giao `{v['executor']}`"
-    elif v["executor"]:
-        v["reason"] += f" — `topo: parallel`: giao `{v['executor']}`"
-    elif v["topology"] != TOPO_DEFAULT:
-        v["reason"] += f" — `topo: {v['topology']}`: phiên chính tự làm (LOOP-ORCH-024)"
+    build = _phase_in_tree(base) == "build"
+    v["reason"] += _dispatch_note(v, build)
     done = milestone_done(tasks, t, _deferred(st))
     if done:
         v["milestone_done"] = done
-        # Pha build (ADR-0033/0046/0047): audit delta ở cuối đợt (`done`), không theo mốc — `release-check` FAIL `phase`/`review_debt` tới harden.
-        v["milestone_audit"] = "g7" if _phase_in_tree(base) == "build" else "now"
-        v["reason"] += (
-            f" · mốc «{done}» đã xong · pha build: audit delta ở cuối đợt (D-177), làm tiếp task kế"
-            if v["milestone_audit"] == "g7"
-            else f" · mốc «{done}» đã xong → audit delta trước khi sang mốc kế"
-            " (`xt.py audit plan --status docs/ops/AUDIT-STATUS.md`; 🔴/🟠 thành task mới — audit.md §1)"
+        v["milestone_audit"] = "g7" if build else "signoff"
+        v["reason"] += f" · mốc «{done}» đã xong · " + (
+            "pha build: audit delta ở cuối đợt (D-177), làm tiếp task kế"
+            if build
+            else "pha harden: audit delta dồn về cổng ký (ADR-0080), làm tiếp task kế"
         )
     return v
 
 
+def _dispatch_note(v: Dict[str, Any], build: bool) -> str:
+    """Đuôi lý do theo tầng/topology. `topo: review`/`audit` ở pha harden: rà độc lập và audit gom về cổng ký (ADR-0080),
+    không gọi reviewer/audit giữa nhịp vét việc (AUD-HAR-412)."""
+    if v["escalated"]:
+        return (
+            f" — chuyển cấp: tầng mặc định đỏ {v['default_failures']} lần → giao `{v['executor']}` kèm diff + evidence lỗi"
+            " + giả thuyết đã loại (LOOP-ORCH-014)"
+        )
+    if v["executor"] and v["tier"] == "deep":
+        return f" — tầng sâu theo PLAN (`exec: deep`): giao `{v['executor']}`"
+    if v["executor"]:
+        return f" — `topo: parallel`: giao `{v['executor']}`"
+    if v["topology"] == TOPO_DEFAULT:
+        return ""
+    note = f" — `topo: {v['topology']}`: phiên chính tự làm (LOOP-ORCH-024)"
+    if not build and v["topology"] in ("review", "audit"):
+        note += "; pha harden: rà/audit độc lập gom về cổng ký (ADR-0080)"
+    return note
+
+
 def _phase_in_tree(base: Path) -> str:
     """`delivery_phase` của `xt.yaml` ở cây làm việc cho `milestone_audit` (ADR-0033) — chỉ gợi ý thứ tự việc, chốt thật là
-    `release-check`. File không đọc được (byte lạ) → "" (= harden, audit theo mốc như cũ) thay vì làm `loop status` vỡ ở
-    ranh giới mốc (fail-open về luồng, ADR-0002; review #189)."""
+    `release-check`. File không đọc được (byte lạ) → "" (= harden, audit dồn về cổng ký) thay vì làm `loop status` vỡ
+    (fail-open về luồng, ADR-0002; review #189)."""
     try:
         return _xt_keys(base).get(PHASE_KEY, "")
     except (OSError, ValueError):
@@ -11658,18 +11669,27 @@ def _merge_eval(pr: Dict[str, Any], local: bool = False) -> Tuple[Dict[str, Any]
     rec = _pr_record(read_reviews(project_dir()), str(pr.get("number", ""))) if local else None
     decision = merge_check_result(pr, autonomy, risk, hard_auto, phase, rec)
     if _committed_xt_keys(project_dir(), ref).get("merge_review", "optional") == "optional":
-        decision = merge_decision({**pr, "reviewDecision": ""}, autonomy, risk, hard_auto)
-        decision.update(
-            {
-                PHASE_KEY: phase,
-                "review": "optional",
-                "review_deferred": False,
-                "eligible": decision["verdict"] == "merge",
-                "auto_merge_ok": not decision.get("hard"),
-                "review_optional": True,
-            }
-        )
+        decision = optional_review_decision(pr, autonomy, risk, hard_auto, phase)
     return decision, notes + hard_notes + phase_notes
+
+
+def optional_review_decision(
+    pr: Dict[str, Any], autonomy: int, risk: List[str], hard_auto: bool, phase: str
+) -> Dict[str, Any]:
+    """`merge_review: optional` (ADR-0079): không cổng review — PR rủi ro cao (migration, auth, thanh toán) merge khi CI
+    xanh; chỉ ngoại lệ cứng với `merge_hard_exceptions: human` còn giữ người. Dùng chung với bench (AUD-HAR-413)."""
+    decision = merge_decision({**pr, "reviewDecision": ""}, autonomy, risk, hard_auto)
+    decision.update(
+        {
+            PHASE_KEY: phase,
+            "review": "optional",
+            "review_deferred": False,
+            "eligible": decision["verdict"] == "merge",
+            "auto_merge_ok": not decision.get("hard"),
+            "review_optional": True,
+        }
+    )
+    return decision
 
 
 def _check_live_base(pr: Dict[str, Any], d: Dict[str, Any]) -> Dict[str, Any]:
@@ -16978,11 +16998,17 @@ class BenchEnv:
 
 def _bench_pr(inp: Dict[str, Any], env: BenchEnv) -> Dict[str, Any]:
     """PR → `merge-check` (merge_decision + merge_eligibility, ADR-0028) với cấu hình của ca, không đọc xt.yaml/GitHub.
-    `local` = sổ review cục bộ của PR (`{"reviews", "standard_seen"}`, D-104 — chỉ làm chặt hơn)."""
+    `local` = sổ review cục bộ của PR (`{"reviews", "standard_seen"}`, D-104 — chỉ làm chặt hơn). Ca không ghi
+    `merge_review` = `required` (cổng review đầy đủ); `optional` đi đúng nhánh của `_merge_eval` (ADR-0079, AUD-HAR-413)."""
     risk = prefixed_globs([str(g) for g in inp.get("risk_paths") or []], str(inp.get("project_prefix") or ""))
     phase = str(inp.get(PHASE_KEY) or "harden")
     local = inp.get("local") if isinstance(inp.get("local"), dict) else None
-    d = merge_check_result(inp["pr"], int(inp.get("autonomy") or 1), risk, bool(inp.get("hard_auto")), phase, local)
+    autonomy, hard_auto = int(inp.get("autonomy") or 1), bool(inp.get("hard_auto"))
+    d = (
+        optional_review_decision(inp["pr"], autonomy, risk, hard_auto, phase)
+        if inp.get("merge_review") == "optional"
+        else merge_check_result(inp["pr"], autonomy, risk, hard_auto, phase, local)
+    )
     return {
         "eligible": d["eligible"],
         "auto_merge_ok": d["auto_merge_ok"],
