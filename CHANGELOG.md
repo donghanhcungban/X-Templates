@@ -238,6 +238,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Gói `web-api-ts`: `pnpm audit` đỏ vì GHSA-fc5q-39xc-vjpf (picomatch, chưa có bản vá, chỉ qua devDependency vitest);
+  ngoại lệ hẹp `auditConfig.ignoreGhsas` trong `starter/pnpm-workspace.yaml` + `starter/audit-exceptions.json` (hạn
+  2026-12-18, BASE-DEP-004, D-504); CI giữ `--audit-level moderate`, test ghim hai file khớp nhau và chưa hết hạn.
 - T-3934 (D-503): guard mặc định chặn (BUDGET) theo cấu trúc ở lệnh có luật hẹp (xoá tệp, git trừ lệnh con chỉ đọc/
   `add`, gh trừ lệnh đọc, phá dữ liệu, `mkfs*`, đích chuyển hướng ghi): thay lệnh/tiến trình, toán tử trên biến không gán
   chữ (`${HOME%/*}`, `${X%/x}` với `X=$HOME/x`), biến bash tự gán (`$BASH_*`, `$DIRSTACK`, `$0`…), biến từ `read`/

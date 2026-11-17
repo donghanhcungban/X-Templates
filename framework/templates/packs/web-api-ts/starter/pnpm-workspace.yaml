@@ -1,0 +1,5 @@
+# Ngoại lệ quét phụ thuộc (BASE-DEP-004): mỗi GHSA ở đây phải có dòng cùng id trong audit-exceptions.json
+# (lý do, người duyệt, hạn); test của khung ghim hai file khớp nhau. Không dùng để hạ ngưỡng `--audit-level`.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf
