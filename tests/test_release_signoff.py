@@ -263,6 +263,37 @@ class ReleaseSignTest(SignoffRepo):
         self.assertIn("| agent | GO |", doc.read_text(encoding="utf-8"))
         self.assertEqual(self.doc.read_text(encoding="utf-8"), GO_DOC)
 
+    def test_git_env_cannot_redirect_worktree_listing(self):
+        """AUD-TEST-098 (đột biến M7): `GIT_DIR`/`GIT_WORK_TREE` của tiến trình trỏ repo khác không đổi được danh sách
+        worktree (`_perf_env`) — việc chờ ở worktree của repo này vẫn thấy."""
+        wt = self.worktree()
+        (wt / ".autopilot").mkdir()
+        (wt / ".autopilot/state.json").write_text('{"deferred": {"T-8": {"reason": "khoá thật"}}}', "utf-8")
+        other = self.tmp / "khac"
+        subprocess.run(["git", "init", "-q", str(other)], check=True)
+        for env in ({"GIT_DIR": str(other / ".git")}, {"GIT_DIR": str(other / ".git"), "GIT_WORK_TREE": str(other)}):
+            with self.subTest(env=sorted(env)), unittest.mock.patch.dict(os.environ, env):
+                with self.assertRaises(xt.ReleaseSignError) as ctx:
+                    xt._sign_scope_check(self.repo)
+                self.assertIn("`loop defer`): T-8", str(ctx.exception))
+
+    def test_own_ledger_read_when_listing_omits_it(self):
+        """AUD-TEST-098 (đột biến M4): sổ của chính cây đang ký luôn được đọc, kể cả khi `git worktree list` không in
+        cây này (bố cục submodule/thư mục git lạ) — không chỉ dựa vào danh sách của git."""
+        wt = self.worktree()
+        self.state.write_text('{"deferred": {"T-9": {"reason": "tiền thật"}}}', encoding="utf-8")
+        real = xt._git
+
+        def only_other(cwd, *args, **kw):
+            if args[:2] == ("worktree", "list"):
+                return subprocess.CompletedProcess(args, 0, f"worktree {wt}\0HEAD {'a' * 40}\0detached\0\0", "")
+            return real(cwd, *args, **kw)
+
+        with unittest.mock.patch.object(xt, "_git", side_effect=only_other):
+            with self.assertRaises(xt.ReleaseSignError) as ctx:
+                xt._sign_scope_check(self.repo)
+        self.assertIn("`loop defer`): T-9", str(ctx.exception))
+
     def test_unknown_or_broken_state_refuses(self):
         """AUD-HAR-340 fail-closed: không có sổ máy ở worktree nào (clone riêng, chưa `loop init`), sổ hỏng hay không
         liệt kê được worktree → không biết còn `loop defer` → từ chối."""
@@ -971,6 +1002,17 @@ class GoHistoryTest(TmpRepoCase):
         self.git("mv", "GO-NO-GO-a-v1.0.0.md", "GO-NO-GO-archived-v1.0.0.md")
         sha = self.commit_files({}, ago(days=1))
         self.assertIn(f"{sha[:12]} GO-NO-GO-archived-v1.0.0.md", "\n".join(self.refusals()))
+
+    def test_latest_occurrence_when_newest_copy_is_local_only(self):
+        """AUD-TEST-093: cô lập nhánh "lần thêm MỚI NHẤT" — bản mirror đọc trước (lời từ chối cũ, đã được GO gỡ), lịch sử
+        cục bộ đọc sau có bản chép lại MỚI HƠN chưa đẩy: giữ lần thêm đầu tiên gặp (thứ tự đọc) hay sớm nhất thì lời từ
+        chối biến mất — phải còn."""
+        no = "| Chủ repo | An | NO-GO | 2025-01-01 |"
+        self.commit_files({"GO-NO-GO-a-v1.0.0.md": sign_doc(no)}, ago(days=10))
+        self.commit_files({"GO-NO-GO-b-v1.0.0.md": sign_doc("| Chủ repo | An | GO | 2025-02-01 |")}, ago(days=9))
+        self.assertEqual(self.refusals(), [])
+        sha = self.commit_files({"GO-NO-GO-c-v1.0.0.md": sign_doc(no)}, ago(days=1))  # chép lại, chưa đẩy
+        self.assertEqual(self.refusals(publish=False), [f"{sha[:12]} GO-NO-GO-c-v1.0.0.md:7 `{no}`"])
 
     def test_diff_parsing_edges(self):
         """Sửa (dòng `-`), xoá tệp, tệp không có xuống dòng cuối, dòng nội dung trông như tiêu đề diff."""

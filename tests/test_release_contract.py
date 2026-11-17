@@ -559,6 +559,39 @@ class ReleaseVerifyWorktreeTest(ReleaseCase):
         self.assertNotIn("loop unblock", primary)
         self.assertEqual(after_init, xt.EXIT_UNBLOCK)
 
+    def init_ledger(self, root: Path, verify: tuple = ()) -> None:
+        with unittest.mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(root)}):
+            self.assertEqual(run_main("loop", "init", "--plan", "docs/autopilot/PLAN.md")[0], 0)
+            if verify:
+                self.assertEqual(run_main("loop", "verify", *verify)[0], 0)
+
+    def test_green_ledger_after_unverified_one_counts(self):
+        """AUD-TEST-103 (M06): nhánh "nơi khác" xét MỌI sổ — sổ đầu (cây chính) chưa verify, sổ sau xanh khớp → PASS."""
+        third = self.tmp / "wt3"
+        self.git("worktree", "add", "-q", "--detach", str(third))
+        self.init_ledger(third, ("--all",))
+        row = self.verify_from(self.wt)
+        self.assertEqual(row["result"], "PASS", row)
+        self.assertIn(str(third.resolve()), row["evidence"])
+
+    def test_own_ledger_first_not_replaced_by_green_elsewhere(self):
+        """AUD-TEST-103 (M09): sổ của chính worktree đứng đầu — vòng ở đây chưa `loop verify --all` thì xanh ở cây chính
+        (cùng vân tay) không thay được."""
+        self.assertEqual(run_main("loop", "verify", "--all")[0], 0)
+        self.init_ledger(self.wt)
+        row = self.verify_from(self.wt)
+        self.assertEqual(row["result"], "FAIL", row)
+        self.assertIn("chưa kiểm lại cuối trên cây hiện tại", row["evidence"])
+
+    def test_partial_verify_elsewhere_not_accepted(self):
+        """AUD-TEST-103 (M15): sổ nơi khác chỉ có `loop verify` một phần (`mode` ≠ `all`), xanh và khớp → vẫn FAIL."""
+        self.assertEqual(run_main("loop", "verify")[0], 0)
+        rec = json.loads((self.repo / ".autopilot" / xt.VERIFIED_FILE).read_text(encoding="utf-8"))
+        self.assertEqual((rec["ok"], rec["mode"]), (True, "changed"))
+        row = self.verify_from(self.wt)
+        self.assertEqual(row["result"], "FAIL", row)
+        self.assertIn("worktree này không có sổ máy", row["evidence"])
+
     def test_no_ledger_anywhere_is_na_and_unlistable_fails(self):
         """Không worktree nào có sổ → N/A SHOULD như cũ (không chạy autopilot); không liệt kê được worktree → FAIL."""
         (self.repo / ".autopilot/state.json").unlink()
@@ -791,7 +824,9 @@ class PromotionTest(ReleaseCase):
                 self.assertIsNone(result["subject"]["tree"])
                 self.assertIsNone(result["subject"]["content"])
                 self.git("update-index", f"--no-{flag}", tracked.name)
-                self.git("restore", "--", tracked.name)
+                # ghi lại nội dung thật: `git restore` tin stat cùng kích thước nên có thể để nguyên `print(2)` — cây
+                # vẫn bẩn, hàng `tree` so nội dung với HEAD bắt được (AUD-HAR-374)
+                tracked.write_text("print(1)\n", encoding="utf-8")
                 self.assertEqual(self.promotion()[2]["state"], "approved")
 
     def test_status_config_cannot_hide_dirty_tree(self):

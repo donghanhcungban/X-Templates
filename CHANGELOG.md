@@ -233,6 +233,15 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   sống do chủ repo áp); `cooldown` Dependabot 7 ngày (AUD-DEP-025); test ghim job không nhận `if:` và chỉ xét đúng job
   (AUD-DEP-027/029); bộ kiểm index migration của `web-api-ts` bỏ chú thích, chuẩn hoá tên, cấm builder `createIndex(`,
   chỉ miễn bảng mới hẳn trong `up()`, ghim từng index của 0005 và kiểm trạng thái/hạn dòng sổ (AUD-DATA-014…018).
+- Nợ review 🟢 `release-sign`/`release-check`/`stage` (T-3919): hàng `tree` so nội dung với index tạm dựng từ HEAD và
+  bỏ `GIT_*` trỏ repo khác (fsmonitor nói dối, `GIT_WORK_TREE`, sửa cùng kích thước trả mtime — AUD-HAR-374), nêu tệp +
+  cờ index (AUD-HAR-335), lệnh git hỏng (AUD-HAR-337), FAIL khi vân tay thấy bẩn sau `status` sạch (AUD-HAR-338);
+  `stage submit` chặn tệp assume-unchanged/skip-worktree (AUD-HAR-336); `release-sign` giữ CRLF/quyền tệp, ghi nguyên tử
+  (AUD-HAR-343), mục worktree không khớp thư mục thật → từ chối (AUD-HAR-372), thông điệp nêu sổ và cách gỡ
+  (AUD-HAR-346/373); lời từ chối §5 tên trống (`Hold`, `?`) có hiệu lực (AUD-HAR-345); hàng `verify`: bản ghi đỏ cùng
+  vân tay ở sổ nào cũng thắng, không vân tay/không có `git` → FAIL (AUD-HAR-402/403). Test ghim đột biến
+  AUD-TEST-093/098/103; test ID task trùng giữa các PLAN (AUD-HAR-384); mẫu GO-NO-GO §4 và ADR-0074 §Giới hạn
+  (AUD-HAR-348, AUD-DOC-279/280).
 - AUD-HAR-371/400 (T-3911): `release-sign` và hàng `verify` của `release-check` tìm cây chính đúng khi git in thư mục
   git (submodule, `--separate-git-dir`) và với git < 2.36 (không có `worktree list -z`); không suy được → từ chối.
 - AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con

@@ -1,7 +1,7 @@
 ---
 title: Mẫu GO-NO-GO
 kind: template
-updated: 2026-11-14
+updated: 2026-11-17
 ---
 
 # Mẫu GO-NO-GO.md — báo cáo phát hành
@@ -74,6 +74,7 @@ Bản phát hành **chỉ tối ưu**: chỉ task của `/optimize`, diff không
 ## 4. Kết luận
 **GO / NO-GO** — NO-GO nếu bất kỳ BLOCKER = FAIL. Điều kiện kèm theo (SHOULD FAIL có ticket): <...>
 Rủi ro còn lại được chấp nhận: <mục — người chấp nhận — ngày>
+Quyết định có hiệu lực chỉ là **dòng bảng mục 5** (tên + quyết định + ngày): NO-GO viết văn xuôi ở mục này không chặn phát hành — người từ chối điền dòng NO-GO ở mục 5 (AUD-HAR-348).
 
 ## 5. Ký (con người; agent chỉ khi xt.yaml khai `release_signoff: agent` và ký bằng `xt.py release-sign` — ADR-0074)
 | Vai trò | Tên | Quyết định | Ngày |
