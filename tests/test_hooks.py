@@ -7996,6 +7996,61 @@ class GuardReaderExecOptTest(unittest.TestCase):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
 
 
+class GuardSignApproveTest(unittest.TestCase):
+    """AUD-SEC-545/654/641 (T-3908): `release-sign` qua mọi dạng gọi xt (`-m xt`, glob, đường mờ), `loop` lệnh con mờ với
+    script mờ, dòng `Khi chạy thật đã quyết` ghi tay (Bash/Write/Edit) hay hàm `decide_prod` nạp trong tiến trình."""
+
+    DENY = (
+        ("python3 -m xt release-sign --note x", "GO_SIGN"),
+        ("python3 scripts/x?.py release-sign --note x", "GO_SIGN"),
+        ('python3 "$XT" release-sign --note x', "GO_SIGN"),
+        ('python3 "$XT" loop "$(echo decide-prod)" --ref D-1 --choice x', "STAGE_APPROVE"),
+        ('python3 "$XT" loop $A --ref D-1 --choice x', "STAGE_APPROVE"),
+        (
+            "python3 -c \"import sys; sys.path.insert(0,'scripts'); import xt; xt._loop_decide_prod(1)\"",
+            "STAGE_APPROVE",
+        ),
+        ("echo '- Khi chạy thật đã quyết (D-126): giữ' >> docs/autopilot/DECISIONS.md", "BUDGET"),
+    )
+    ALLOW = (
+        "python3 scripts/xt.py loop status",
+        'python3 "$XT" loop status',
+        "grep -n 'Khi chạy thật đã quyết' docs/autopilot/DECISIONS.md",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_sign_approve_forms_denied(self):
+        for cmd, code in self.DENY:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", code), res)
+
+    def test_reads_pass(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+    def test_decisions_prod_line_write_denied(self):
+        rel = "docs/autopilot/DECISIONS.md"
+        line = "- Khi chạy thật đã quyết (D-126): giữ\n"
+        edit = {"file_path": str(ROOT / rel), "old_string": "### D-1", "new_string": "### D-1\n" + line}
+        self.assertEqual(self.g.edit_decision(str(ROOT / rel), str(ROOT), edit)[0], "deny")
+        same = {"file_path": str(ROOT / rel), "old_string": line, "new_string": line + "x\n"}
+        self.assertEqual(self.g.edit_decision(str(ROOT / rel), str(ROOT), same)[0], "")  # không thêm dòng mới
+        disk = (ROOT / rel).read_text(encoding="utf-8")
+        write = {"file_path": str(ROOT / rel), "content": disk + line}
+        self.assertEqual(self.g.edit_decision(str(ROOT / rel), str(ROOT), write)[0], "deny")
+
+
 class GuardRemoteRefWriteTest(unittest.TestCase):
     """AUD-SEC-554/623/626/544 (T-3907): push theo `HEAD` sau `switch`/`checkout` cùng lệnh, `gh repo sync --force`, graphql
     gỡ bảo vệ nhánh/ruleset/môi trường, `gh api` REST ghi thẳng nhánh chính."""

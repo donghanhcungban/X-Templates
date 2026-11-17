@@ -229,6 +229,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con
+  mờ → chặn như `stage`; dòng `Khi chạy thật đã quyết` ghi tay (Edit/Write/Bash) và hàm `decide_prod` nạp trong tiến
+  trình → chặn; trong phiên agent, `stage approve` và hàng promotion của `release-check` fetch nhánh chính trước khi đọc
+  khoá `stage_approval`/`release_signoff` (fetch lỗi → chỉ người).
 - `scripts/check-links.py --external`: HEAD 404/410 không còn đủ kết luận link chết — xác nhận lại bằng GET (NIST nvlpubs và
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
