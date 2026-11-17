@@ -350,7 +350,8 @@ class DynamicCodeDenyTest(unittest.TestCase):
         "sed -n '1,5p' f",
         "sed -i -e 's/a/b/g' -e 's|x|y|' f",
         "sed -E 's/(foo)/\\1-bar/' f",
-        'sed -n "${n},${e}p" f',
+        # T-3940: `sed -n "${n},${e}p" f` (biến môi trường không biết ở địa chỉ — có thể là `1e lệnh`) nay BUDGET
+        # (`tests.test_guard_signoff5`); địa chỉ số học `$((n-25))` vẫn cho qua
         "bash -c 'echo hi'",
         "sh -c 'npm test' && echo ok",
         "eval 'echo hi'",

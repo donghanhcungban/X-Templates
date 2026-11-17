@@ -40,7 +40,9 @@ thêm một mục `package-ecosystem: npm`, `directory: /` và lịch vào `upda
 Quét registry của workflow chạy độc lập với cấu hình Dependabot.
 
 Ngoại lệ hẹp theo từng GHSA nằm ở `starter/pnpm-workspace.yaml` (`auditConfig.ignoreGhsas`) và phải có dòng cùng id trong
-`starter/audit-exceptions.json` (lý do, người duyệt, hạn). Hết hạn thì xét lại hoặc bỏ; không hạ `--audit-level`.
+`starter/audit-exceptions.json` (`cve`, lý do, người duyệt, hạn). Hết hạn thì xét lại hoặc bỏ; không hạ `--audit-level`.
+`pnpm audit:exceptions` (`scripts/check-audit-exceptions.ts`) đỏ khi ngoại lệ hết hạn, thiếu khoá, hay `ignoreGhsas`/
+`ignoreCves` lệch với file ngoại lệ; gói không kèm workflow CI mẫu — thêm bước này vào CI của dự án cạnh `pnpm audit`.
 [Xem phiên bản được hỗ trợ](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories).
 
 ## Ca sai cố ý (`mutants.json`)

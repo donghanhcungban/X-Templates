@@ -238,6 +238,18 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3940 (D-503, cổng ký lần 5 + fuzz mở rộng): hồi quy #648 — cắt `${f%…}`/`${f#…}` trên biến `for` duyệt glob không
+  còn coi là chữ đã tính; bản thay ráp với từng từ của danh sách (glob giữ nguyên, ra ngoài nháy) được quét như
+  `rm -rf ~/*`, không ráp chắc → BUDGET. Thân `sh -c "…"` nháy kép quét thêm bản bỏ `\` trước `$`/backtick; thư mục
+  làm việc không biết (`CDPATH`, `cdable_vars`, `~+`/`~-`, `cd`/`cd -` trần, `pushd` không thư mục/`-n`/`+N`,
+  `$(builtin pwd)/..`, `env -C` có mở rộng) rồi lệnh có luật hẹp → BUDGET; xargs miễn theo nguồn `find`/`ls`/`echo`
+  chỉ khi không `cd`, nguồn không chạm đoạn đường dấu chấm, `echo` viết lại được thành lệnh trơn (cả nháy, `echo -n`,
+  trình bọc `env`/`nice`/`timeout` sau xargs, chuỗi thay `-I@`/`{}.json`), chữ stdin không làm đích `mv`/`cp`; mảng còn
+  gán vô hướng là biến ngoài mô hình. Hết chặn oan: kịch bản sed (mở rộng chỉ ở vế thay `s` không cờ `e`/`w`, giá trị
+  `$(date +FMT)`/`$(cat TỆP)`/biến gán từ chúng), `$(date +FMT)` ở đích ghi, `npx -y`/`--yes`/`--no-install`/
+  `--silent`, `cd "$HOME/<dự án>"`. Gói `web-api-ts`: ngoại lệ thêm `cve`, `pnpm audit:exceptions` kiểm hạn/khớp
+  `ignoreGhsas`/`ignoreCves`; test đọc dạng flow `[…]` hoặc đỏ. Test `test_guard_signoff5`.
+
 - T-3937 (D-503, cổng ký lần 4 + fuzz bất biến): guard chặn (BUDGET) lệnh có luật hẹp sau `cd`/`pushd` vào thay lệnh
   chưa tính được, biến gán ngoài mô hình (`eval X=…`, `${X:=…}`, mảng, vế phải có toán tử, `unset`, `set --`,
   `source`), tham số vị trí `sh -c` không gắn được vào đối số chữ (gắn được thì quét thân đã gắn), hậu tố và tên lệnh

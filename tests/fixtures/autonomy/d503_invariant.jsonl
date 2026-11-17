@@ -471,3 +471,88 @@
 {"id": "d503s4-cd-pwd-parent", "root": "signoff4 decision", "cmd": "cd \"$PWD/..\" && rm -rf zz"}
 {"id": "d503s4-cd-pwd-subst-parent", "root": "signoff4 decision", "cmd": "cd \"$(pwd)/..\" && rm -rf zz"}
 {"id": "d503s4-xargs-echo-protected", "root": "signoff4 decision", "cmd": "echo .claude/settings.json | xargs mv x.json"}
+{"id": "d503s5-000", "root": "signoff5 glob-loop cut", "cmd": "for d in ~/*/; do rm -rf \"${d%/}\"; done"}
+{"id": "d503s5-001", "root": "signoff5 glob-loop cut", "cmd": "for d in /*; do rm -rf \"${d%/}\"; done"}
+{"id": "d503s5-002", "root": "signoff5 glob-loop cut", "cmd": "for d in ../*; do rm -rf \"${d%/}\"; done"}
+{"id": "d503s5-003", "root": "signoff5 glob-loop cut", "cmd": "for d in ~/.*; do rm -rf \"${d%/}\"; done"}
+{"id": "d503s5-004", "root": "signoff5 glob-loop cut", "cmd": "for d in /home/u/*; do rm -rf \"${d%/}\"; done"}
+{"id": "d503s5-005", "root": "signoff5 glob-loop cut", "cmd": "for d in ~/X*; do rm -rf \"${d%/}\"; done"}
+{"id": "d503s5-006", "root": "signoff5 glob-loop cut", "cmd": "for f in ~/.ssh/*; do rm -f \"${f%.pub}\"; done"}
+{"id": "d503s5-007", "root": "signoff5 glob-loop cut", "cmd": "for f in *; do rm -rf \"${f%x}\"; done"}
+{"id": "d503s5-008", "root": "signoff5 glob-loop cut", "cmd": "for f in .git/*; do rm -rf \"${f%x}\"; done"}
+{"id": "d503s5-009", "root": "signoff5 glob-loop cut", "cmd": "for d in /*; do rm -rf \"${d#x}\"; done"}
+{"id": "d503s5-010", "root": "signoff5 glob-loop cut", "cmd": "for f in .claude/*.json; do cp /dev/null \"${f%x}\"; done"}
+{"id": "d503s5-011", "root": "signoff5 glob-loop cut", "cmd": "for d in ~/*/; do rm -rf ${d%/}; done"}
+{"id": "d503s5-012", "root": "signoff5 glob-loop cut", "cmd": "for d in ~/a*; do rm -rf \"${d%%a}\"; done"}
+{"id": "d503s5-013", "root": "signoff5 glob-loop cut", "cmd": "rm -rf \"${d%/}\"; for d in a*; do :; done"}
+{"id": "d503s5-014", "root": "signoff5 glob-loop cut", "cmd": "for d in ~/*/; do rm -rf \"${X:-${d%/}}\"; done"}
+{"id": "d503s5-015", "root": "signoff5 glob-loop cut", "cmd": "for d in \"a b\"*; do rm -rf \"${d%/}\"; done"}
+{"id": "d503s5-016", "root": "signoff5 sed script", "cmd": "sed -i \"s/x/$(cat f)/e\" f"}
+{"id": "d503s5-017", "root": "signoff5 sed script", "cmd": "sed -i \"s/x/$(date +%F)/w out\" f"}
+{"id": "d503s5-018", "root": "signoff5 sed script", "cmd": "sed -i \"s:x:$(date +%T):\" f"}
+{"id": "d503s5-019", "root": "signoff5 sed script", "cmd": "sed -i \"s/$(date +%F)/x/\" f"}
+{"id": "d503s5-020", "root": "signoff5 sed script", "cmd": "sed -i \"s/x/$FOO/\" f"}
+{"id": "d503s5-021", "root": "signoff5 sed script", "cmd": "sed -i \"s/x/$(date +%D)/\" f"}
+{"id": "d503s5-022", "root": "signoff5 sed script", "cmd": "NEW=/w; sed -i \"s/x/$NEW/\" f"}
+{"id": "d503s5-023", "root": "signoff5 sed script", "cmd": "false || NEW=1; sed -i \"s/x/$NEW/\" f"}
+{"id": "d503s5-024", "root": "signoff5 sed script", "cmd": "sed -i \"s/x/$NEW/\" f; NEW=1"}
+{"id": "d503s5-025", "root": "signoff5 sed script", "cmd": "read NEW; sed -i \"s/x/$NEW/\" f"}
+{"id": "d503s5-026", "root": "signoff5 sed script", "cmd": "rm -f x; sed \"s/__V__/$(cat VERSION)/\" tpl > out"}
+{"id": "d503s5-027", "root": "signoff5 sed script", "cmd": "sed \"s/x/$(cat ../VERSION)/\" tpl > out"}
+{"id": "d503s5-028", "root": "signoff5 sed script", "cmd": "sed \"s/x/$(cat nosuchfile)/\" tpl > out"}
+{"id": "d503s5-029", "root": "signoff5 sed script", "cmd": "sed -e \"s/x/$(date +%F)/\" -e \"1r $(cat f)\" f"}
+{"id": "d503s5-031", "root": "signoff5 sed script", "cmd": "sed -i \"s/x/${NEW%a}/\" f"}
+{"id": "d503s5-032", "root": "signoff5 sed script", "cmd": "sed -i \"s/x/$1/\" f"}
+{"id": "d503s5-033", "root": "signoff5 date subst", "cmd": "cp X \"$(date +/etc/%F)\""}
+{"id": "d503s5-034", "root": "signoff5 date subst", "cmd": "cp X \"$(date +%F/..)\""}
+{"id": "d503s5-035", "root": "signoff5 date subst", "cmd": "cp X \"$(date +.)\""}
+{"id": "d503s5-036", "root": "signoff5 date subst", "cmd": "cp X \"$(date +%F) $(date +%n)\""}
+{"id": "d503s5-037", "root": "signoff5 sh-c dquote", "cmd": "sh -c \"X=-rf; rm \\\"\\$X\\\" ~\""}
+{"id": "d503s5-038", "root": "signoff5 sh-c dquote", "cmd": "sh -c \"export X=~; rm -rf \\\"\\$X\\\"\""}
+{"id": "d503s5-039", "root": "signoff5 sh-c dquote", "cmd": "sh -c \"X=-rf; uv run rm \\\"\\$X\\\" ~\""}
+{"id": "d503s5-040", "root": "signoff5 sh-c dquote", "cmd": "bash -c \"for X in -rf; do rm \\\"\\$X\\\" ~; done\""}
+{"id": "d503s5-041", "root": "signoff5 cwd unknown", "cmd": "CDPATH=/ cd etc ; rm -rf ssl"}
+{"id": "d503s5-042", "root": "signoff5 cwd unknown", "cmd": "CDPATH= cd .. && rm -rf proj"}
+{"id": "d503s5-043", "root": "signoff5 cwd unknown", "cmd": "export CDPATH=/; cd etc ; command rm -rf ssl"}
+{"id": "d503s5-044", "root": "signoff5 cwd unknown", "cmd": "cd ~+/.. && rm -rf proj"}
+{"id": "d503s5-045", "root": "signoff5 cwd unknown", "cmd": "cd ~- && rm -rf zz"}
+{"id": "d503s5-046", "root": "signoff5 cwd unknown", "cmd": "cd \"$(builtin pwd)/..\" && rm -rf proj"}
+{"id": "d503s5-047", "root": "signoff5 cwd unknown", "cmd": "cd \"$(command pwd)/..\" && nice rm -rf proj"}
+{"id": "d503s5-048", "root": "signoff5 cwd unknown", "cmd": "CDPATH=/home; cd u && rm -rf zz"}
+{"id": "d503s5-049", "root": "signoff5 cwd unknown", "cmd": "env -C \"$HOME\" rm -rf zz"}
+{"id": "d503s5-050", "root": "signoff5 cwd unknown", "cmd": "env -C \"$PWD/..\" rm -rf proj"}
+{"id": "d503s5-051", "root": "signoff5 cwd unknown", "cmd": "env --chdir=\"$HOME\" rm -rf zz"}
+{"id": "d503s5-052", "root": "signoff5 cwd unknown", "cmd": "env -C\"$HOME\" rm -rf zz"}
+{"id": "d503s5-053", "root": "signoff5 cwd unknown", "cmd": "pushd -n ~; pushd; rm -rf zz"}
+{"id": "d503s5-054", "root": "signoff5 cwd unknown", "cmd": "pushd +1 && rm -rf zz"}
+{"id": "d503s5-055", "root": "signoff5 cwd unknown", "cmd": "shopt -s cdable_vars; X=/etc; cd X && rm -rf ssl"}
+{"id": "d503s5-056", "root": "signoff5 cwd unknown", "cmd": "cd - && rm -rf zz"}
+{"id": "d503s5-057", "root": "signoff5 cwd unknown", "cmd": "cd && rm -rf zz"}
+{"id": "d503s5-058", "root": "signoff5 xargs source", "cmd": "echo \".claude/settings.json\" | xargs mv x.json"}
+{"id": "d503s5-059", "root": "signoff5 xargs source", "cmd": "echo '.claude/settings.json' | xargs -I{} nice mv x.json {}"}
+{"id": "d503s5-060", "root": "signoff5 xargs source", "cmd": "echo -n .claude/settings.json | xargs -I{} mv x.json {}"}
+{"id": "d503s5-061", "root": "signoff5 xargs source", "cmd": "echo .claude/settings.json | xargs env mv x.json"}
+{"id": "d503s5-062", "root": "signoff5 xargs source", "cmd": "echo .claude/settings.json | xargs -I@ env mv x.json @"}
+{"id": "d503s5-063", "root": "signoff5 xargs source", "cmd": "cd .claude && ls | xargs rm"}
+{"id": "d503s5-064", "root": "signoff5 xargs source", "cmd": "cd .autopilot && ls | xargs cp /dev/null"}
+{"id": "d503s5-065", "root": "signoff5 xargs source", "cmd": "find .claude -name settings.json | xargs rm"}
+{"id": "d503s5-066", "root": "signoff5 xargs source", "cmd": "find .claude/settings.json -maxdepth 0 | xargs mv x.json"}
+{"id": "d503s5-067", "root": "signoff5 sed script", "cmd": "ls -d .claude/* | xargs sed -i s/a/b/"}
+{"id": "d503s5-068", "root": "signoff5 xargs source", "cmd": "ls -A | xargs cp /dev/null"}
+{"id": "d503s5-069", "root": "signoff5 xargs source", "cmd": "echo .claude/settings | xargs -I{} mv x.json {}.json"}
+{"id": "d503s5-070", "root": "signoff5 xargs source", "cmd": "echo settings.json | xargs -I{} nice mv x.json .claude/{}"}
+{"id": "d503s5-071", "root": "signoff5 xargs source", "cmd": "echo .claude/settings.json | xargs -t env mv x.json 2>/dev/null"}
+{"id": "d503s5-072", "root": "signoff5 xargs source", "cmd": "find . -name '*.json' | xargs mv x.json"}
+{"id": "d503s5-073", "root": "signoff5 xargs source", "cmd": "find . -name '*.json' | xargs -I{} cp x.json {}"}
+{"id": "d503s5-074", "root": "signoff5 xargs source", "cmd": "printf '%s\\n' git | xargs -I{} nice {} push --force origin main"}
+{"id": "d503s5-075", "root": "signoff5 xargs source", "cmd": "printf '%s\\n' rm | xargs -I{} env {} -rf ~"}
+{"id": "d503s5-076", "root": "signoff5 xargs source", "cmd": "echo $X | xargs rm"}
+{"id": "d503s5-077", "root": "signoff5 array scalar", "cmd": "X=1; X=(-h); dropdb \"${X[0]}\" db.prod.example.com app"}
+{"id": "d503s5-078", "root": "signoff5 array scalar", "cmd": "X=1; X=(/etc); cd \"${X[0]}\" && rm -rf ssl"}
+{"id": "d503s5-079", "root": "signoff5 cwd unknown", "cmd": "cd \"$HOME\" && git pull"}
+{"id": "d503s5-080", "root": "signoff5 cwd unknown", "cmd": "HOME=/ ; cd \"$HOME/proj\" && git pull"}
+{"id": "d503s5-b030", "root": "signoff5 sed script", "cmd": "sed -i \"1s/x/$(date +%F)/;2r f\" f"}
+{"id": "d503s5-b031", "root": "signoff5 sed script", "cmd": "sed -n \"${n},${e}p\" f"}
+{"id": "d503s5-b032", "root": "signoff5 sed script", "cmd": "sed -n \"$n p\" f"}
+{"id": "d503s5-b033", "root": "signoff5 sed script", "cmd": "sed -n \"$((n-1))s/x/$(cat f)/p\" f"}
+{"id": "d503s5-b034", "root": "signoff5 sed script", "cmd": "sed --expr \"s/x/$(cat f)/e\" f"}

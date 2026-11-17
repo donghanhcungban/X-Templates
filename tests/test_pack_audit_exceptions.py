@@ -15,22 +15,36 @@ WORKFLOW = ROOT / ".github" / "workflows" / "dep-audit.yml"
 GHSA = re.compile(r"^GHSA(-[2-9cfghjmpqrvwx]{4}){3}$")
 
 
-def ignored_ghsas(text: str) -> list[str]:
-    """Đọc khối `auditConfig.ignoreGhsas` của pnpm-workspace.yaml (chỉ stdlib, đúng dạng danh sách `- ID`)."""
+CVE = re.compile(r"^CVE-\d{4}-\d{4,}$")
+FLOW = re.compile(r"\[([^\]]*)\]")
+
+
+def ignored_ids(text: str, key: str) -> list[str]:
+    """Đọc khối `auditConfig.<key>` của pnpm-workspace.yaml (chỉ stdlib): danh sách `- ID` hay dạng flow `[A, B]`; dạng
+    khác (giá trị vô hướng, flow nhiều dòng) không đọc chắc → ValueError (test đỏ, T-3940)."""
     out: list[str] = []
     in_ignore = False
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        if re.match(r"^\s+ignoreGhsas:\s*$", line):
-            in_ignore = True
+        head = re.match(rf"^\s+{key}:\s*(.*?)\s*(#.*)?$", line)
+        if head:
+            in_ignore = head.group(1) == ""
+            flow = FLOW.fullmatch(head.group(1))
+            if not in_ignore and flow is None:
+                raise ValueError(f"không đọc được {key}: {head.group(1)}")
+            out += [s.strip().strip("'\"") for s in flow.group(1).split(",") if s.strip()] if flow else []
             continue
         m = re.match(r"^\s+-\s+(\S+)\s*(#.*)?$", line)
         if in_ignore and m:
-            out.append(m.group(1))
+            out.append(m.group(1).strip("'\""))
         else:
             in_ignore = False
     return out
+
+
+def ignored_ghsas(text: str) -> list[str]:
+    return ignored_ids(text, "ignoreGhsas")
 
 
 def expired(exceptions: list[dict], today: dt.date) -> list[str]:
@@ -50,6 +64,13 @@ class PackAuditExceptionsTest(unittest.TestCase):
         self.assertEqual(sorted(ignored), sorted(listed))
         self.assertEqual(len(set(listed)), len(listed), "GHSA trùng trong audit-exceptions.json")
 
+    def test_ignored_cves_have_exception(self):
+        ws = (STARTER / "pnpm-workspace.yaml").read_text(encoding="utf-8")
+        _, exceptions = load()
+        cves = ignored_ids(ws, "ignoreCves")
+        self.assertEqual(sorted(cves), sorted(c for c in (e["cve"] for e in exceptions) if c in cves))
+        self.assertTrue(set(cves) <= {e["cve"] for e in exceptions})
+
     def test_exceptions_complete_and_not_expired(self):
         _, exceptions = load()
         today = dt.date.today()
@@ -58,7 +79,32 @@ class PackAuditExceptionsTest(unittest.TestCase):
                 for key in ("ghsa", "package", "reason", "owner", "approved_by", "expires"):
                     self.assertTrue(str(e.get(key, "")).strip(), f"thiếu `{key}`")
                 self.assertRegex(e["ghsa"], GHSA)
+                # BASE-DEP-004: khoá `cve` bắt buộc; `null` chỉ khi advisory chưa có CVE (định danh là `ghsa`)
+                self.assertIn("cve", e)
+                self.assertTrue(e["cve"] is None or CVE.fullmatch(e["cve"]), e["cve"])
         self.assertEqual(expired(exceptions, today), [], "có ngoại lệ hết hạn: xét lại hoặc bỏ")
+
+    def test_starter_ships_exception_check(self):
+        pkg = json.loads((STARTER / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(pkg["scripts"]["audit:exceptions"], "node scripts/check-audit-exceptions.ts")
+        script = (STARTER / "scripts" / "check-audit-exceptions.ts").read_text(encoding="utf-8")
+        for needle in ("ignoreGhsas", "ignoreCves", "expires", "process.exit"):
+            self.assertIn(needle, script)
+
+    def test_flow_lists_read_or_red(self):
+        self.assertEqual(
+            ignored_ghsas("auditConfig:\n  ignoreGhsas: [GHSA-aaaa-bbbb-cccc, 'GHSA-dddd-eeee-ffff']\n"),
+            [
+                "GHSA-aaaa-bbbb-cccc",
+                "GHSA-dddd-eeee-ffff",
+            ],
+        )
+        self.assertEqual(
+            ignored_ids("auditConfig:\n  ignoreCves: [CVE-2026-1234]  # x\n", "ignoreCves"), ["CVE-2026-1234"]
+        )
+        for bad in ("  ignoreGhsas: GHSA-aaaa-bbbb-cccc\n", "  ignoreGhsas: [GHSA-aaaa-bbbb-cccc,\n"):
+            with self.subTest(text=bad), self.assertRaises(ValueError):
+                ignored_ghsas("auditConfig:\n" + bad)
 
     def test_expired_exception_is_red(self):
         ex = [{"ghsa": "GHSA-aaaa-bbbb-cccc", "expires": "2026-12-18"}]
