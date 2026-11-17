@@ -3638,6 +3638,11 @@ class GuardAud612FormsTest(unittest.TestCase):
         self.assertEqual(guard._printf_render("%s;", ["a", "b"]), "a;b;")
         self.assertEqual(guard._printf_render("100%% %s", []), "100% ")
 
+    def test_xargs_words(self):
+        self.assertEqual(guard._xargs_words("'rm -rf ~'"), ["'rm -rf ~'", "rm -rf ~"])
+        self.assertEqual(guard._xargs_words("echo"), ["echo"])
+        self.assertEqual(guard._xargs_words("'rm -rf ~"), ["'rm -rf ~"])  # nháy lẻ: giữ nguyên chữ
+
     def test_subst_tail(self):
         self.assertEqual(guard._subst_tail("$(echo).claude/x"), ".claude/x")
         self.assertEqual(guard._subst_tail("$(a $(b))`c`/x"), "/x")

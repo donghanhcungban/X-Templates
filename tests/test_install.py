@@ -2772,6 +2772,20 @@ class HooksRealDirTest(SymlinkEscapeCase):
         self.assertNothingOutside(outside)
         self.assertIn("⚠ git hook: bỏ qua symlink", err)
 
+    def test_hooks_symlink_unresolvable_not_written(self):
+        """`resolve()` lỗi (vòng symlink ở bản Python ném lỗi, quyền) → không biết nơi ghi → không ghi."""
+        target, _ = self.fresh()
+        hooks = target / ".githooks"
+        orig = Path.resolve
+
+        def fake(self: Path, strict: bool = False) -> Path:
+            if self == hooks:
+                raise RuntimeError("vòng symlink")
+            return orig(self, strict)
+
+        with mock.patch.object(Path, "resolve", fake):
+            self.assertTrue(install.hooks_symlink(target, hooks))
+
     def test_absolute_hooks_path_via_ancestor_symlink_inside_project_installs(self):
         target, _ = self.fresh()
         via = target.parent / "via"
