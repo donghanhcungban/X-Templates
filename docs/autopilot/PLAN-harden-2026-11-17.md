@@ -72,3 +72,10 @@
 - [x] `T-3932` 🟠 AUD-HAR-422, AUD-TEST-112; 🟢 AUD-HAR-423, AUD-TEST-113…116, AUD-DOC-298/299/300 — Gate: `python3 -m unittest tests.test_signoff2_scripts` (files: scripts/dev-task.sh, scripts/xt.py, tests/, framework/11-autonomous-loop/harness-files.md)
 ### Lát R — cổng ký lần 3
 - [x] `T-3933` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3929, T-3930, T-3931, T-3932; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 6 — mặc định chặn trong lệnh có luật (D-503)
+> Cổng ký lần 3 (ứng viên `b5de13e9`): 🔴 13 · 🟠 7 · 🟢 7 — biến thể trong các lớp đợt 5 đã đóng. Đóng bằng cấu trúc, rồi cổng ký lần 4 kiểm bất biến.
+
+- [ ] `T-3934` 🔴 AUD-SEC-836…843, AUD-SEC-846…850; 🟠 AUD-SEC-844/851/852, AUD-HAR-424/425; 🟢 AUD-SEC-854: mặc định chặn ở đích/cờ/lệnh con của lệnh có luật, quét mọi hậu tố sau trình bọc, xargs tới shell/trình bọc — Gate: `python3 -m unittest tests.test_guard_default_deny` (files: .claude/hooks/guard.py, tests/test_guard_default_deny.py, tests/test_guard_fuzz.py)
+- [ ] `T-3935` 🟠 AUD-TEST-117; 🟢 AUD-HAR-427/428, AUD-TEST-118: test không gọi mạng, go_skippable — Gate: `python3 -m unittest tests.test_signoff3_isolation` (files: scripts/dev-task.sh, tests/)
+- [ ] `T-3936` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3934, T-3935; files: docs/ops/AUDIT-STATUS.md)
