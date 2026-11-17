@@ -243,6 +243,15 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `EXIT` → BUDGET. Bản viết lại `${X:+…}` không đệ quy, bỏ heredoc nháy; mẫu có biến đã biết, `\#`, `[a-z]` tính được.
   Dự án đích: chạy lại `install.py`.
 
+- AUD-SEC-815/816/817/824/825/827/831/833/834 (T-3930, D-502): guard đóng lớp "kênh chạy lệnh guard không mô hình":
+  chữ `printf`/`echo` vào shell mà guard không dựng chắc (thoát ngoài `\n`/`\t`, `%b`/`%c`/`%q`/độ chính xác, echo có
+  `\`) → BUDGET; `xargs -I/-i/--replace` đọc thêm như không có từ chứa chỗ thay (`rm -rf {}` ≡ `rm -rf` không đích);
+  lệnh lạ và trình chạy gói (`uv run`, `direnv exec`, `nix develop -c`…) quét hậu tố từ tên lệnh có luật, thêm
+  `setpriv`/`bwrap`/`capsh`/`prlimit`/`firejail`/`hyperfine`/`entr`/`gdb`… vào bảng trình bọc; cờ dài viết tắt của
+  `timeout`/`nice`/`stdbuf`/`time`/`xargs`; `--ctx=v "$X"` ở công cụ có lệnh con; thân `sh -c`/`eval` nhắc biến gán
+  không phải chữ; `:branch`/`:owner`/`:repo` của `gh api`; `git init --t=`; `python3 -Im git_filter_repo`.
+  Dự án đích: chạy lại `install.py`.
+
 - AUD-HAR-422/423, AUD-TEST-112…116, AUD-DOC-298/299/300 (T-3932): `dev-task.sh format`/`format-file` chỉ bỏ qua thư
   mục user không đi xuyên được (thiếu `x`); thư mục còn `x` mất `r` (formatter theo `git ls-files` vẫn mở được GO-NO-GO
   trong đó) lại dừng formatter. `loop stop` khi vòng đã dừng mà `.autopilot` là symlink báo "đã tắt sẵn", không báo

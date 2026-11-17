@@ -52,10 +52,25 @@ WRAPPER_OPTS_WITH_VALUE: Dict[str, Set[str]] = {
     "nice": {"-n", "--adjustment"},
     "stdbuf": {"-i", "-o", "-e", "--input", "--output", "--error"},
     "xargs": {"-n", "-I", "-L", "-P", "-d", "-s", "-E", "-a", "--max-args", "--max-procs", "--delimiter", "--max-chars"}
-    | {"--arg-file"},  # `--replace`/`--eof`/`--max-lines`: giá trị chỉ đi dạng `--opt=v`, token sau là lệnh
+    | {"--arg-file", "--process-slot-var"},  # `--replace`/`--eof`/`--max-lines`: giá trị chỉ đi dạng `--opt=v`
     "time": {"-f", "-o", "--format", "--output"},
     "timeout": {"-s", "-k", "--signal", "--kill-after"},
     "exec": {"-a"},  # `exec -a <tên> git push --force` (AUD-SEC-024)
+}
+# AUD-SEC-824: mọi cờ dài của trình bọc GNU (coreutils/findutils/time — `--help` từng lệnh, đọc 2026-11-17):
+# getopt_long nhận tiền tố không mơ hồ (`timeout --sig KILL` = `--signal KILL`) — `_wrapper_long` giải về tên đầy đủ.
+WRAPPER_LONG_OPTS: Dict[str, Tuple[str, ...]] = {
+    "nice": ("--adjustment", "--help", "--version"),
+    "stdbuf": ("--input", "--output", "--error", "--help", "--version"),
+    "timeout": ("--foreground", "--kill-after", "--preserve-status", "--signal", "--verbose", "--help", "--version"),
+    "time": ("--format", "--output", "--append", "--verbose", "--portability", "--quiet", "--help", "--version"),
+    "setsid": ("--ctty", "--fork", "--wait", "--help", "--version"),
+    "nohup": ("--help", "--version"),
+    "xargs": (
+        *("--null", "--arg-file", "--delimiter", "--eof", "--replace", "--max-lines", "--max-args", "--max-procs"),
+        *("--interactive", "--no-run-if-empty", "--max-chars", "--show-limits", "--verbose", "--exit"),
+        *("--process-slot-var", "--open-tty", "--help", "--version"),
+    ),
 }
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "mksh", "ash"}  # mksh khớp cả `STRICT_SH` (AUD-SEC-332)
 # Shell họ khác cũng đọc script từ stdin/`-c` (AUD-SEC-341): quét như bash là chiều chặt (cú pháp csh khác — lệnh nguy
@@ -457,13 +472,16 @@ def _git_cfg_opts(s: List[str], root: str, cwd: Optional[str]) -> List[str]:
     # AUD-SEC-442: một override, kể cả rỗng, có thể đổi chương trình Git tìm thấy.
     out += ["--exec-path" for o, _ in opts if o == "--exec-path="]
     n = normalize(s)
-    # AUD-SEC-813: cả viết tắt (`--templ=X`; parse-options nhận tiền tố không mơ hồ, `--t` mơ hồ với `--tags`)
+    # AUD-SEC-813/833: cả viết tắt (`--templ=X`; parse-options nhận tiền tố không mơ hồ) — ngưỡng theo lệnh con: với
+    # `clone` `--t` mơ hồ với `--tags`, với `init` không cờ dài nào khác bắt đầu bằng `t` nên `--t` đã là `--template`.
     keys = [a.partition("=")[0] for a in itertools.takewhile(lambda a: a != "--", n[2:])]
-    if n[1:2] and n[1] in ("init", "clone") and any(len(k) >= 4 and _long_match(k, ("--template",)) for k in keys):
+    least = TEMPLATE_PREFIX_MIN.get(n[1], 0) if n[1:2] else 0
+    if least and any(len(k) >= least and _long_match(k, ("--template",)) for k in keys):
         out.append("--template")
     return out
 
 
+TEMPLATE_PREFIX_MIN = {"init": 3, "clone": 4}  # độ dài ngắn nhất (kể `--`) của viết tắt không mơ hồ của `--template`
 GIT_CFG_NAMES = (
     "HOME",
     "XDG_CONFIG_HOME",
@@ -477,7 +495,7 @@ GIT_CFG_NAMES = (
 )
 GIT_CFG_NAME_RE = re.compile(  # lọc nhanh trên chữ thô
     r"HOME|XDG_CONFIG_HOME|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_DIR|GIT_COMMON_DIR|GIT_TEMPLATE_DIR|GIT_EXEC_PATH"
-    r"|GIT_OBJECT_DIRECTORY|--git-dir|--exec-path|--te"
+    r"|GIT_OBJECT_DIRECTORY|--git-dir|--exec-path|--t"
 )
 GIT_CFG_VAR_HEADS = frozenset({"read", "mapfile", "readarray", "getopts"})  # nhận TÊN biến làm đối số
 GIT_CFG_DYN = "$?"  # giá trị không biết (đặt bằng `for`/`read`/`printf -v`/`eval`)
@@ -2856,20 +2874,21 @@ def _gate_runner_tail(name: str, args: List[str]) -> str:
 
 def _gate_tool_sub1(name: str, args: List[str], skels: List[str]) -> str:
     """Lệnh con cấp một của công cụ đối ngoại/huỷ/cài gói có mở rộng/glob: từ không phải cờ có mở rộng trước lệnh con
-    nguyên văn — trừ mở rộng thuần đứng ngay sau cờ (giá trị cờ: `kubectl -n "$NS" get`)."""
+    nguyên văn — trừ mở rộng thuần đứng ngay sau cờ (giá trị cờ: `kubectl -n "$NS" get`). AUD-SEC-825: cờ đã mang giá
+    trị (`--context=prod`, `-nprod`) hay `--` không ăn từ kế — mở rộng sau nó ở vị trí lệnh con."""
     if name not in GATE_SUB1_EXTRA and name not in ASK_CMDS and name not in DESTROY_CMDS:
         return ""
-    flag = False
+    flag = eats = False  # từ trước là cờ · cờ đó có thể ăn từ kế làm giá trị
     for a, s in zip(args, skels):
         if s[:1] == "-":
-            flag = True
+            flag, eats = True, "=" not in s and s != "--" and (s[:2] == "--" or len(s) == 2)
             continue
         if GATE_DYN in s or GATE_GLOB in s:
-            if not (flag and not s.strip(GATE_DYN + GATE_GLOB)):
+            if not (eats and not s.strip(GATE_DYN + GATE_GLOB)):
                 return a
         elif not flag:
             return ""
-        flag = False
+        flag = eats = False
     return ""
 
 
@@ -4774,15 +4793,33 @@ def _pipe_shell_why(tokens: List[str]) -> str:
 
 
 def _dyn_word(word: str, whole: str) -> bool:
-    """Thân `sh -c`/`eval` dựng lúc chạy (vùng sống — nháy đơn thật đã trống): thay lệnh, `$'…'`, hoặc biến được gán
-    (`=`/`+=`) từ thay lệnh ngay trong lệnh này (`L=$(…); bash -c "$L"`). Biến khác (`$f` của vòng lặp) là giới hạn
-    chung (D-051)."""
+    """Thân `sh -c`/`eval` dựng lúc chạy (vùng sống — nháy đơn thật đã trống): thay lệnh, `$'…'`, hoặc biến lệnh này gán
+    giá trị không phải chữ (`L=$(…); bash -c "$L"`, `read L`, biến `for` — `_runtime_assigned`). Biến lệnh không gán
+    (`$HOME`) là giới hạn chung (D-051)."""
     if STRICT_DYN_WORD_RE.search(word):
         return True
     names = {a or b for a, b in re.findall(r"\$\{(\w+)\}|\$(\w+)", word)}
     if len(names) > STRICT_DYN_MAX:
         raise ScanTooComplex(f"thân `sh -c`/`eval` có hơn {STRICT_DYN_MAX} biến")
-    return any(re.search(rf"(?:^|[\s;&|(]){re.escape(n)}\+?=(?:\$\(|`)", whole) for n in names)
+    return bool(names) and bool(names & _runtime_assigned(whole))
+
+
+@functools.lru_cache(maxsize=8)
+def _runtime_assigned(whole: str) -> FrozenSet[str]:
+    """AUD-SEC-827: tên biến lệnh `whole` gán giá trị không phải chữ (`D="$(cat f)"`, `D=$X`, `read D`, biến `for … in
+    $(…)`) — thân `sh -c`/`eval` nhắc chúng là mã dựng lúc chạy như `$(…)` trực tiếp. Biến `for` trên đối số/glob
+    (`for f; do sh -c "echo $f"`) giữ giới hạn chung D-051. Không tách chắc → dạng chữ thô cũ (gán ngay từ thay lệnh,
+    cả trong nháy kép)."""
+    cmds = _simple_cmds(whole)
+    if cmds is None:
+        return frozenset(m[1] for m in re.finditer(r"(?:^|[\s;&|(])(\w+)\+?=\"?(?:\$\(|`)", whole))
+    plains = ([_dequote(t) for t in _no_redirects(seg) if t not in SHELL_KEYWORDS] for seg, _ in cmds)
+    return frozenset(n for plain in plains for n in _dyn_assigned(plain) if _loop_subst(plain))
+
+
+def _loop_subst(plain: List[str]) -> bool:
+    """Lệnh không phải vòng `for`/`select`, hoặc danh sách của nó có thay lệnh."""
+    return plain[:1] not in (["for"], ["select"]) or any("$(" in w or "`" in w for w in plain[2:])
 
 
 def _word_end(v: _CodeView, i: int, whole_command: bool) -> int:
@@ -5942,7 +5979,18 @@ def _wrapper_opt_takes_next(name: str, opt: str) -> bool:
     `_exec_login`): `-la x CMD`/`-ca x CMD` — `a` cuối cụm ăn `x`; `-al CMD` là `-a l` (giá trị dính)."""
     if name == "ssh-agent":
         return SSH_AGENT_VALUE_LAST_RE.fullmatch(opt) is not None
+    opt = _wrapper_long(name, opt)
     return opt in WRAPPER_OPTS_WITH_VALUE.get(name, ()) or name == "exec" and bool(EXEC_A_LAST_RE.fullmatch(opt))
+
+
+def _wrapper_long(name: str, opt: str) -> str:
+    """Tên đầy đủ của cờ dài `opt` (không `=`) ở trình bọc `name` khi là tiền tố không mơ hồ (getopt_long, AUD-SEC-824);
+    còn lại giữ nguyên."""
+    longs = WRAPPER_LONG_OPTS.get(name, ())
+    if opt[:2] != "--" or "=" in opt or opt in longs:
+        return opt
+    hits = [o for o in longs if o.startswith(opt)]
+    return hits[0] if len(hits) == 1 else opt
 
 
 # Cấu hình làm `git push` đẩy nhiều nhánh/nhánh chính mà lệnh không ghi refspec (AUD-SEC-047): `push.default=matching`,
@@ -6890,6 +6938,9 @@ def _git_filter_repo(args: List[str]) -> Tuple[str, str]:
 # AUD-SEC-561: git-filter-repo là một script Python — chạy qua trình thông dịch (`python3 -m git_filter_repo …`,
 # `python3 /usr/local/bin/git-filter-repo …`) cũng viết lại mọi ref. Mô-đun/script ở BẤT KỲ đối số nào (chặt).
 PY_INTERP_RE = re.compile(r"(?:python|pypy)[\d.]*")
+# AUD-SEC-834: `-m` trong cụm cờ (`-Im git_filter_repo`, `-Imgit_filter_repo`); script cài theo tên mô-đun (`….py`).
+PY_MODULE_OPT_RE = re.compile(r"-[A-Za-z]*m(git_filter_repo)?")
+PY_FILTER_REPO_SCRIPTS = frozenset({"git-filter-repo", "git_filter_repo.py", "git-filter-repo.py"})
 
 
 def _py_filter_repo(name: str, args: List[str]) -> Optional[List[str]]:
@@ -6897,9 +6948,10 @@ def _py_filter_repo(name: str, args: List[str]) -> Optional[List[str]]:
     if not PY_INTERP_RE.fullmatch(posixpath.basename(name)):
         return None
     for k, a in enumerate(args):
-        if a == "-m" and args[k + 1 : k + 2] == ["git_filter_repo"]:
+        m = PY_MODULE_OPT_RE.fullmatch(a)
+        if m and not m.group(1) and args[k + 1 : k + 2] == ["git_filter_repo"]:
             return args[k + 2 :]
-        if a == "-mgit_filter_repo" or posixpath.basename(a) == "git-filter-repo":
+        if m and m.group(1) or posixpath.basename(a) in PY_FILTER_REPO_SCRIPTS:
             return args[k + 1 :]
     return None
 
@@ -10284,8 +10336,12 @@ def _gh_api_main_write(args: List[str]) -> bool:
     return target.removeprefix("refs/").removeprefix("heads/") in MAIN_BRANCHES or _gh_branch_vague(target)
 
 
+# AUD-SEC-831: gh thay `:owner`/`:repo`/`:branch` như `{owner}`/`{repo}`/`{branch}` (placeholderRE của `gh api`).
+GH_COLON_PLACEHOLDER_RE = re.compile(r":(?:owner|repo|branch)\b")
+
+
 def _gh_branch_vague(name: str) -> bool:
-    return name.lstrip()[:1] == "@" or any(c in name for c in "${")
+    return name.lstrip()[:1] == "@" or any(c in name for c in "${") or bool(GH_COLON_PLACEHOLDER_RE.search(name))
 
 
 # `PATCH …/git/refs/<ref>` (cả POST `…/git/refs`, số ít `git/ref/` — chặt) có trường `force` khác `false` ghi đè ref
@@ -14106,7 +14162,23 @@ def _scan_command(
     deny = _scan_one(plain, root, res, asks, cwd, dirs) if plain else None
     tail = n[3:] if n[:3] == ["git", "bisect", "run"] else []  # AUD-SEC-636: lệnh git bisect chạy cho từng commit
     deny = deny or (_scan_command(tail, root, res, asks, cwd, dirs) if tail else None)
+    bare = _xargs_unreplaced(argv)  # AUD-SEC-816
+    deny = deny or (_scan_one(bare, root, res, asks, cwd, dirs) if bare else None)
     return deny or _scan_one(argv, root, res, asks, cwd, dirs)
+
+
+def _xargs_unreplaced(argv: List[str]) -> Optional[List[str]]:
+    """AUD-SEC-816: `xargs -I R|-i|--replace=R CMD … R …` thay R bằng từng dòng stdin — từ chứa R là giá trị guard không
+    thấy, đọc thêm lệnh như KHÔNG có các từ đó (`xargs -I{} rm -rf {}` ≡ `xargs rm -rf`: đích từ stdin). None = không
+    phải dạng này."""
+    s = _strip_prefixes(argv)
+    base = [posixpath.basename(t) for t in argv[: len(argv) - len(s)]]
+    if "xargs" not in base or not s:
+        return None
+    mark = _xargs_replace(argv[len(base) - base[::-1].index("xargs") : len(base)])
+    if not mark or not any(mark in t for t in s[1:]):
+        return None
+    return [s[0], *(t for t in s[1:] if mark not in t)]
 
 
 def _scan_one(
@@ -14343,6 +14415,21 @@ def _echo_texts(name: str, words: List[str]) -> List[str]:
 
 
 PRINTF_SPEC_RE = re.compile(r"%%|%[-+ #0']*(?:\d+|\*)?(?:\.(?:\d+|\*)?)?[A-Za-z]")
+# AUD-SEC-815: phần `printf` guard dựng lại chắc — đặc tả `%s`/`%d`/`%i`/`%u` (cờ `-`, độ rộng số), `%%`, thoát `\n`/`\t`.
+PRINTF_SAFE_SPEC_RE = re.compile(r"%%|%-?\d*[sdiu]")
+PRINTF_SAFE_ESC_RE = re.compile(r"\\[nt]")
+
+
+def _echo_opaque(n: List[str]) -> bool:
+    """Chữ `echo`/`printf` (`n` đã chuẩn hoá) guard không dựng lại chắc (AUD-SEC-815): định dạng printf có thoát khác
+    `\\n`/`\\t` (`\\x6d`, bát phân `\\155`), đặc tả biến đổi đối số (`%b`, `%c`, `%q`, `%x`, độ chính xác `%.2s`, `*`);
+    echo có `\\` bất kỳ (`-e`, `xpg_echo` giải thoát). Vào shell → chữ không biết (BUDGET), không quét bản đoán."""
+    words = n[1:]
+    if n[0] != "printf":
+        return any("\\" in w for w in words)
+    words = words[1:] if words[:1] == ["--"] else words
+    fmt = words[0] if words else ""
+    return "\\" in PRINTF_SAFE_ESC_RE.sub("", fmt) or "%" in PRINTF_SAFE_SPEC_RE.sub("", fmt)
 
 
 def _printf_render(fmt: str, args: List[str]) -> str:
@@ -15262,7 +15349,7 @@ def _pipe_feed(stage: List[str], prev: Optional[List[str]]) -> Optional[List[str
     here-string vào bộ lọc → chữ đó; `tee`/bộ lọc không file → chữ vào; khâu khác → None (guard không biết)."""
     n = normalize(stage)
     if n[:1] in (["echo"], ["printf"]):
-        return _echoed_scripts(n)
+        return None if _echo_opaque(n) else _echoed_scripts(n)
     if "<<" in stage:
         return []
     if n[:1] == ["tee"]:
@@ -16030,8 +16117,17 @@ RUNNERS = {
     *("flock", "watch", "script", "su", "busybox", "toybox", "coproc", "ionice", "chrt", "taskset", "fakeroot"),
     "unshare",
     *("nsenter", "runuser", "systemd-run", "pkexec", "strace", "ltrace", "chroot", "sg", "newgrp", "at", "parallel"),
+    # AUD-SEC-817: trình bọc chạy lệnh từ đối số (cờ riêng từng công cụ; `capsh -- -c '…'`, `hyperfine '…'`, `entr -s`)
+    *("setpriv", "bwrap", "capsh", "prlimit", "unbuffer", "rlwrap", "numactl", "firejail", "hyperfine", "entr", "gdb"),
+    "flatpak-spawn",
 }
 RUNNER_SUFFIXES = 12  # số hậu tố đối số tối đa mỗi lệnh (chặn số lần quét lồng)
+# AUD-SEC-817 (lớp, D-502): lệnh guard KHÔNG mô hình (tên lạ — `direnv exec`, `op run`, `nix develop -c`, bản mới của
+# trình bọc nào đó) hay trình chạy gói (`uv run`, `poetry run`…) mà đối số có từ là tên lệnh có luật chạy được
+# (`EXEC_TRIGGERS`) → phần từ từ đó quét như một lệnh; từ có khoảng trắng mở đầu bằng tên đó (`'git push …'`) quét như
+# chuỗi lệnh. Chặt: chữ dữ liệu trùng tên lệnh (`apt install git`) chỉ thêm một lượt quét vô hại.
+EXEC_TRIGGER_NAMES = frozenset({"git", "gh", "rm", "xt.py", "eval", "sudo", "doas", "env", "find", "dd", "shred"})
+PROGRAM_NAME_RE = re.compile(r"[A-Za-z_][\w.+-]*")
 SHELL_JOIN_RUNNERS = frozenset({"watch"})  # chạy `sh -c "<đối số nối bằng khoảng trắng>"` (procps watch, không `-x`)
 
 
@@ -16056,6 +16152,52 @@ def _runner_scripts(tokens: List[str]) -> List[str]:
                 )
                 if lead and re.search(r"\s", rest[k]):
                     out += [rest[k], " ".join(rest[k:])]
+    return out
+
+
+def _unmodelled_sources(tokens: List[str], start: Optional[str], picks: int) -> Placed:
+    """Hậu tố quét như lệnh của mọi lệnh đơn tên lạ/trình chạy gói (AUD-SEC-817), kèm thư mục ở mọi ứng viên (D-347).
+    Gọi ở tầng cả lệnh (`_scan_nested`) như cổng tên `GATE_NAMES`, không phải luật của một lệnh (`_scan_command`)."""
+    out: Placed = []
+    for pick in range(picks):
+        out += [(s, here) for c, here in _commands_with_cwd(tokens, start, pick) for s in _unmodelled_suffixes(c)]
+    return list(dict.fromkeys(out))
+
+
+def _unmodelled_suffixes(c: List[str]) -> List[str]:
+    words = _strip_prefixes(c)
+    return _trigger_suffixes(words[1:]) if _unmodelled_runner(words) else []
+
+
+def _unmodelled_runner(words: List[str]) -> bool:
+    """Lệnh đơn `words` (đã bỏ tiền tố) có tên guard không có luật (ngoài `_GATE_BRANCHED`, builtin, tên khớp mẫu) hay
+    là trình chạy gói (AUD-SEC-817) — câu hỏi "tên này có luật không" như cổng `GATE_NAMES` (lát 6, D-432), không phải
+    nhánh luật theo tên. Chỉ tên dạng tên chương trình: dấu/số đứng đầu (`:::` của `parallel`, `5` sau `timeout $X`) là
+    dữ liệu hay từ guard đã xử lý ở luật khác."""
+    name = posixpath.basename(_dequote(words[0])) if words else ""
+    if name in PKG_WRAPPERS or name in GATE_RUNNERS:
+        return True
+    ruled = name in _GATE_BRANCHED or name in BASH_BUILTINS or bool(INTERP_RE.fullmatch(name))
+    plausible = bool(PROGRAM_NAME_RE.fullmatch(name))
+    return plausible and not (ruled or name.startswith(("git-", "mkfs")) or name in RUNNERS)
+
+
+def _exec_trigger(word: str) -> bool:
+    name = posixpath.basename(word)
+    return name in EXEC_TRIGGER_NAMES or name in SHELLS or name in WRAPPERS or name in RUNNERS or name in DESTROY_CMDS
+
+
+def _trigger_suffixes(rest: List[str]) -> List[str]:
+    """Hậu tố đối số mở đầu bằng tên lệnh có luật, và từ-chuỗi-lệnh mở đầu bằng tên đó (AUD-SEC-817); tối đa
+    `RUNNER_SUFFIXES`."""
+    out: List[str] = []
+    for k, t in enumerate(rest):
+        if _exec_trigger(t):
+            out.append(_join_tokens(rest[k:]))
+        elif re.search(r"\s", t) and _exec_trigger(t.split()[0]):
+            out.append(t)
+        if len(out) >= RUNNER_SUFFIXES:
+            break
     return out
 
 
@@ -16260,6 +16402,7 @@ def _scan_nested(
         rw_at, ns_at, opaque = _nested_sources(cmd, tokens, cwd, root, budget, pick)
         rewritten, nested = list(dict.fromkeys(rewritten + rw_at)), list(dict.fromkeys(nested + ns_at))
         asks += opaque
+    rewritten = list(dict.fromkeys(rewritten + _unmodelled_sources(tokens, cwd, picks)))  # AUD-SEC-817
     for here, (rw, ns) in _moved_groups(rewritten, nested, cwd).items():
         moved = _scan_scripts(rw, root, here, depth, asks, 0, budget, rewrites)
         moved = moved or _scan_scripts(ns, root, here, depth, asks, 1, budget)
@@ -17957,6 +18100,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     AGENT_CLI_ALIASES,
     SKILL_RUNNER_NAMES,
     GIT_DASHED_REWRITERS,
+    PY_FILTER_REPO_SCRIPTS,  # AUD-SEC-834: script filter-repo chạy qua python
     CALLBACK_OPTS,  # `mapfile -C`, `compgen -C` chạy lệnh
     VAR_WRITER_CMDS,  # ghi biến theo tên đối số: `read`, `let`, `mapfile`…
     GIT_CFG_VAR_HEADS,
