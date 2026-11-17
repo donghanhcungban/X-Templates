@@ -1395,6 +1395,134 @@
     "eligible": false,
     "verdict": "wait"
    }
+  },
+  {
+   "id": "pr-aud-har-413-optional-migration-merges",
+   "origin": "audit",
+   "refs": [
+    "AUD-HAR-413"
+   ],
+   "input": {
+    "merge_review": "optional",
+    "hard_auto": true,
+    "pr": {
+     "files": [
+      {
+       "path": "migrations/0001.sql",
+       "additions": 5,
+       "deletions": 0
+      },
+      {
+       "path": "tests/test_a.py",
+       "additions": 4,
+       "deletions": 0
+      }
+     ]
+    }
+   },
+   "expect": {
+    "eligible": true,
+    "auto_merge_ok": true,
+    "verdict": "merge",
+    "lane": "chuẩn",
+    "review": "optional"
+   },
+   "note": "AUD-HAR-413: PR rủi ro cao chỉ bị bắt review khi `merge_review: required`; `optional` (mặc định mẫu, ADR-0079) merge khi CI xanh; `merge_hard_exceptions: human` chỉ giữ người cho ngoại lệ cứng (auth/tiền/PII), không cho migration"
+  },
+  {
+   "id": "pr-aud-har-413-required-migration-reviews",
+   "origin": "audit",
+   "refs": [
+    "AUD-HAR-413"
+   ],
+   "input": {
+    "merge_review": "required",
+    "hard_auto": true,
+    "pr": {
+     "files": [
+      {
+       "path": "migrations/0001.sql",
+       "additions": 5,
+       "deletions": 0
+      },
+      {
+       "path": "tests/test_a.py",
+       "additions": 4,
+       "deletions": 0
+      }
+     ]
+    }
+   },
+   "expect": {
+    "eligible": false,
+    "auto_merge_ok": false,
+    "verdict": "review",
+    "review": "missing",
+    "hard": false
+   }
+  },
+  {
+   "id": "pr-aud-har-413-optional-auth-hard-human",
+   "origin": "audit",
+   "refs": [
+    "AUD-HAR-413"
+   ],
+   "input": {
+    "merge_review": "optional",
+    "hard_auto": false,
+    "pr": {
+     "files": [
+      {
+       "path": "src/auth/login.py",
+       "additions": 5,
+       "deletions": 0
+      },
+      {
+       "path": "tests/test_a.py",
+       "additions": 4,
+       "deletions": 0
+      }
+     ]
+    }
+   },
+   "expect": {
+    "eligible": false,
+    "auto_merge_ok": false,
+    "verdict": "human",
+    "review": "optional",
+    "hard": true
+   }
+  },
+  {
+   "id": "pr-aud-har-413-optional-migration-hard-human-merges",
+   "origin": "audit",
+   "refs": [
+    "AUD-HAR-413"
+   ],
+   "input": {
+    "merge_review": "optional",
+    "hard_auto": false,
+    "pr": {
+     "files": [
+      {
+       "path": "migrations/0001.sql",
+       "additions": 5,
+       "deletions": 0
+      },
+      {
+       "path": "tests/test_a.py",
+       "additions": 4,
+       "deletions": 0
+      }
+     ]
+    }
+   },
+   "expect": {
+    "eligible": true,
+    "verdict": "merge",
+    "review": "optional",
+    "hard": false
+   }
   }
  ]
 }

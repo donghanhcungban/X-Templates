@@ -4,6 +4,8 @@
   cho đến khi ký GO-NO-GO mới audit và trả hết nợ mới ký GO"; phiên chính tự duyệt cách máy hoá — D-494).
 - **Trạng thái triển khai:** Tài liệu và skill (`/complete`, `orchestration-and-subagents.md`, README mảng 11). Máy không
   đổi: `pr next`, `release-check` hàng `audit`/`review_debt`, `loop next-step --objective harden-to-signoff` đã đủ.
+  Cập nhật (2026-11-17, D-500, AUD-HAR-412): máy có đổi — `loop status` ở pha harden trả `milestone_audit: signoff`
+  (audit dồn về cổng ký) thay vì đòi audit delta theo mốc; pha build giữ `now|g7` (ADR-0033).
 - **Sửa:** ADR-0046 (thứ tự bước của `/complete`: audit và nợ review rời đầu pha về cổng ký). **Giữ:** ADR-0062 (review
   1 lần: 🔴 sửa, 🟠/🟢 ghi nợ), ADR-0079 (`merge_review`), ADR-0057 (`review_debt`), ADR-0009 (một phiên tới khi xong).
 
