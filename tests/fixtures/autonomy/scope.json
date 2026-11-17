@@ -63,7 +63,7 @@
    ]
   },
   {
-   "reason": "CI, ruleset, phụ thuộc — đỡ bằng `ci-check`, job `protection-guard`, `pip-audit` (dep-audit.yml)",
+   "reason": "CI, ruleset, phụ thuộc — đỡ bằng `ci-check`, job `protection-guard`, `pip-audit`, `pnpm audit` (job `pack-npm-audit`, dep-audit.yml)",
    "ids": [
     "AUD-CI-001",
     "AUD-CI-002",
