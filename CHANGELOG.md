@@ -242,6 +242,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   vân tay ở sổ nào cũng thắng, không vân tay/không có `git` → FAIL (AUD-HAR-402/403). Test ghim đột biến
   AUD-TEST-093/098/103; test ID task trùng giữa các PLAN (AUD-HAR-384); mẫu GO-NO-GO §4 và ADR-0074 §Giới hạn
   (AUD-HAR-348, AUD-DOC-279/280).
+- AUD-SEC-652/TEST-101/102, AUD-HAR-396/397/399 (T-3920): `install.py` từ chối có lý do (mã 2, không traceback) khi file
+  thường chiếm `.claude`/`.github`, `legacy_refs` không đọc xuyên thư mục symlink, cảnh báo `bỏ qua symlink` nêu chính
+  liên kết; `dev-task.sh` chụp và khôi phục cả symlink mang tên `GO-NO-GO*.md` (đích tên khác). Test mới
+  `tests/test_green_install.py` ghim `--plan` Gemini dưới symlink, dòng `skip format-file`, ba nhánh formatter xoá/hardlink/`mktemp`;
+  `ParentSymlinkTest` mỗi ca một thư mục riêng.
 - AUD-HAR-371/400 (T-3911): `release-sign` và hàng `verify` của `release-check` tìm cây chính đúng khi git in thư mục
   git (submodule, `--separate-git-dir`) và với git < 2.36 (không có `worktree list -z`); không suy được → từ chối.
 - AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con
