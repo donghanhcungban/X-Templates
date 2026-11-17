@@ -39,7 +39,7 @@
 > 94 dòng 🟢 `mở` mang `nợ-review: #N`. Mặc định sửa kèm test hồi quy; nghi ngờ chưa tái hiện, ranh giới sandbox, hiệu năng guard (T-3709), đổi thiết kế, lịch sử không viết lại được → `chấp nhận` có hạn 2027-01-21. Test mới ở file riêng mỗi lát.
 
 ### Lát J — guard
-- [ ] `T-3917` 🟢 lệnh `gh`: chặn oan dạng trợ giúp, `GH_POST_RE`/`GH_PR_TEXT_RE`, token qua `gh auth git-credential`/`gh config get`, `DELETE …/labels/%2F`, `updateRef force`, `--delete-branch` (AUD-HAR-342/356/357/360/363…366, AUD-SEC-562/565/589/601/603) — Gate: `python3 -m unittest tests.test_green_gh` (files: .claude/hooks/guard.py, tests/test_green_gh.py)
+- [x] `T-3917` 🟢 lệnh `gh`: chặn oan dạng trợ giúp, `GH_POST_RE`/`GH_PR_TEXT_RE`, token qua `gh auth git-credential`/`gh config get`, `DELETE …/labels/%2F`, `updateRef force`, `--delete-branch` (AUD-HAR-342/356/357/360/363…366, AUD-SEC-562/565/589/601/603) — Gate: `python3 -m unittest tests.test_green_gh` (files: .claude/hooks/guard.py, tests/test_green_gh.py)
 - [ ] `T-3918` 🟢 đọc shell: `REMOTE_DELETE` theo remote, `git_filter_repo`, fd nhiều chữ số, glob/`$!` dính cờ, chặn oan hẹp (AUD-SEC-560/561/602/653/658/667/701/712/720/732/747/751/754/755, AUD-HAR-349/358/359, AUD-TEST-096/097/099) — Gate: `python3 -m unittest tests.test_green_shell` (sau: T-3917; files: .claude/hooks/guard.py, tests/test_green_shell.py)
 ### Lát K — phát hành, cài đặt, CI
 - [x] `T-3919` 🟢 `release-sign`/`release-check`/`stage` (AUD-HAR-335…338/343…346/348/372…374/384/402/403, AUD-TEST-093/098/103, AUD-DOC-279/280) — Gate: `python3 -m unittest tests.test_green_release tests.test_release_signoff` (files: scripts/xt.py, docs/adr/, tests/)
