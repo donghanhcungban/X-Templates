@@ -457,7 +457,9 @@ def _git_cfg_opts(s: List[str], root: str, cwd: Optional[str]) -> List[str]:
     # AUD-SEC-442: một override, kể cả rỗng, có thể đổi chương trình Git tìm thấy.
     out += ["--exec-path" for o, _ in opts if o == "--exec-path="]
     n = normalize(s)
-    if n[1:2] and n[1] in ("init", "clone") and any(a == "--template" or a.startswith("--template=") for a in n[2:]):
+    # AUD-SEC-813: cả viết tắt (`--templ=X`; parse-options nhận tiền tố không mơ hồ, `--t` mơ hồ với `--tags`)
+    keys = [a.partition("=")[0] for a in itertools.takewhile(lambda a: a != "--", n[2:])]
+    if n[1:2] and n[1] in ("init", "clone") and any(len(k) >= 4 and _long_match(k, ("--template",)) for k in keys):
         out.append("--template")
     return out
 
@@ -475,7 +477,7 @@ GIT_CFG_NAMES = (
 )
 GIT_CFG_NAME_RE = re.compile(  # lọc nhanh trên chữ thô
     r"HOME|XDG_CONFIG_HOME|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_DIR|GIT_COMMON_DIR|GIT_TEMPLATE_DIR|GIT_EXEC_PATH"
-    r"|GIT_OBJECT_DIRECTORY|--git-dir|--exec-path|--template"
+    r"|GIT_OBJECT_DIRECTORY|--git-dir|--exec-path|--te"
 )
 GIT_CFG_VAR_HEADS = frozenset({"read", "mapfile", "readarray", "getopts"})  # nhận TÊN biến làm đối số
 GIT_CFG_DYN = "$?"  # giá trị không biết (đặt bằng `for`/`read`/`printf -v`/`eval`)
@@ -6681,6 +6683,27 @@ def _git_filter_branch(args: List[str]) -> Tuple[str, str]:
     if any(a.split("=", 1)[0] in REV_ALL_REFS for a in args) or _rewritten_refs(_filter_branch_revs(args)) > 1:
         return "deny", REF_REWRITE_WHY.format("git filter-branch " + " ".join(args)[:120])
     return "", ""
+
+
+# AUD-SEC-812: bộ lọc của filter-branch là chuỗi shell (script của git `eval` nó) — quét như `sh -c` (dạng `--x v` và
+# `--x=v`, như git-filter-branch.sh đọc: tên nguyên văn). `--subdirectory-filter` nhận thư mục, không phải lệnh.
+FILTER_BRANCH_SCRIPTS = frozenset(
+    "--setup --env-filter --tree-filter --index-filter --parent-filter --msg-filter --commit-filter --tag-name-filter"
+    .split()
+)  # fmt: skip
+
+
+def _filter_branch_scripts(argv: List[str]) -> List[str]:
+    """Chuỗi lệnh trong cờ bộ lọc của `git filter-branch`/`git-filter-branch` (tới `--`); lệnh khác → []."""
+    n = normalize(argv)
+    head = n[:2] == ["git", "filter-branch"] or n[:1] == ["git-filter-branch"]
+    args = list(itertools.takewhile(lambda a: a != "--", n[2:] if n[:1] == ["git"] else n[1:])) if head else []
+    out: List[str] = []
+    for k, a in enumerate(args):
+        key, eq, val = a.partition("=")
+        if key in FILTER_BRANCH_SCRIPTS:
+            out += [val] if eq else args[k + 1 : k + 2]
+    return out
 
 
 def _git_filter_repo(args: List[str]) -> Tuple[str, str]:
@@ -14547,14 +14570,16 @@ GIT_RUN_OPTS = {
     "send-pack": ("--receive-pack", "--exec"),
     "fetch": ("--upload-pack",),
     "pull": ("--upload-pack",),
-    "clone": ("--upload-pack",),
     "ls-remote": ("--upload-pack", "--exec"),
     "archive": ("--exec",),
     # AUD-SEC-807: `fetch-pack` (như fetch), `instaweb` chạy httpd theo tên/lệnh, `send-email` chạy lệnh shell của cờ
     "fetch-pack": ("--upload-pack", "--exec"),
     "instaweb": ("--httpd",),
     "send-email": ("--sendmail-cmd", "--to-cmd", "--cc-cmd", "--header-cmd"),
+    "clone": ("--upload-pack",),
 }
+# AUD-SEC-813: giá trị là đường dẫn (có `/`, đầu `~`) là chương trình chạy (`--smtp-server=/usr/sbin/x`); tên máy thì không
+GIT_RUN_PATH_OPTS = {"send-email": ("--smtp-server",)}
 GIT_RUN_SHORT = {"rebase": "x", "clone": "u", "instaweb": "d"}  # cờ ngắn ăn lệnh (trong cụm: tới trước chữ ăn giá trị)
 GIT_PERL_LONG = frozenset({"send-email"})  # Getopt::Long: tên dài nhận cả một gạch (`-sendmail-cmd=…`)
 GIT_RUN_EXACT = frozenset({"--to", "--cc"})  # tên cờ nguyên văn (không phải viết tắt của `--to-cmd`/`--cc-cmd`)
@@ -14573,6 +14598,19 @@ def _git_nested_run(sub: str, args: List[str]) -> bool:
         if key[:2] == "--" and len(key) >= 4 and key not in GIT_RUN_EXACT and any(o.startswith(key) for o in longs):
             return True
         if short and a[:1] == "-" and a[1:2] != "-" and short in a:
+            return True
+    return _git_run_path_value(sub, args)
+
+
+def _git_run_path_value(sub: str, args: List[str]) -> bool:
+    """`GIT_RUN_PATH_OPTS`: cờ (viết tắt ≥ 4 ký tự, cả một gạch của Getopt) có giá trị là đường dẫn chương trình."""
+    longs = GIT_RUN_PATH_OPTS.get(sub, ())
+    seen = list(itertools.takewhile(lambda a: a not in OPTS_END, args))
+    for k, a in enumerate(seen):
+        key, eq, val = a.partition("=")
+        key = "-" + key if key[:1] == "-" and key[1:2] != "-" else key
+        val = val if eq else "".join(seen[k + 1 : k + 2])
+        if len(key) >= 4 and any(o.startswith(key) for o in longs) and ("/" in val or val[:1] == "~"):
             return True
     return False
 
@@ -14964,7 +15002,7 @@ def _nested_pairs(
     viên thư mục đang xét (`_commands_with_cwd`, D-347)."""
     moved = any(here != start for _, here in placed)
     out: Placed = [(s, here) for c, here in placed for s in [_shell_c_script(c)] if s]
-    out += [(s, here) for c, here in placed for s in _eval_scripts(c)]
+    out += [(s, here) for c, here in placed for s in _eval_scripts(c) + _filter_branch_scripts(c)]
     out += _span_pairs(strip_heredocs(literal_bodies_masked(cmd)), _backtick_spans, start, moved, pick)
     out += _span_pairs(strip_heredocs(cmd), _dollar_spans, start, moved, pick)
     out += [(b, here) for sc, here in list(out) for b in _cat_heredoc_bodies(sc)]

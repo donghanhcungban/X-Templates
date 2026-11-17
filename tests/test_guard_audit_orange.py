@@ -360,6 +360,54 @@ class GitNestedRunMoreTest(AuditOrangeCase):
             )
         )
 
+    def test_filter_branch_filters_scanned(self):  # AUD-SEC-812: bộ lọc quét như `sh -c`
+        self.assert_denied(
+            {
+                'git filter-branch --tree-filter "rm -rf ~" HEAD': "RULE_DENY",
+                "git filter-branch --index-filter 'git push --force origin main' HEAD": "RULE_DENY",
+                "git filter-branch --msg-filter 'git reset --hard; cat' HEAD": "RULE_DENY",
+                "git filter-branch --env-filter='rm -rf ~' HEAD": "RULE_DENY",
+                "git filter-branch --commit-filter 'rm -rf ~; git commit-tree \"$@\"' HEAD": "RULE_DENY",
+                "git filter-branch --parent-filter 'rm -rf ~; cat' HEAD": "RULE_DENY",
+                "git filter-branch --tag-name-filter 'rm -rf ~' HEAD": "RULE_DENY",
+                "git filter-branch --setup 'rm -rf ~' --subdirectory-filter sub HEAD": "RULE_DENY",
+                "git-filter-branch --msg-filter 'rm -rf ~' HEAD": "RULE_DENY",
+                "git filter-branch --tree-filter 'eval $(cat x)' HEAD": "BUDGET",
+                # đối chứng đã chặn trước bản sửa: filter-repo (cả `--*-callback`) chặn mọi dạng (D-407)
+                "git filter-repo --commit-callback 'import os; os.system(\"x\")'": "REMOTE_DELETE",
+            }
+        )
+        self.assert_allowed(
+            (
+                "git filter-branch --subdirectory-filter sub HEAD",
+                "git filter-branch --msg-filter 'sed s/a/b/' HEAD",
+                "git filter-branch --index-filter 'git rm --cached --ignore-unmatch x' HEAD",
+                "git filter-branch --msg-filter cat -- HEAD -- --tree-filter",
+            )
+        )
+        self.assertEqual(guard._filter_branch_scripts(["git", "log", "--msg-filter", "x"]), [])
+
+    def test_program_path_and_template_denied(self):  # AUD-SEC-813
+        self.assert_denied(
+            {
+                "git send-email --smtp-server=/usr/sbin/sendmail x.patch": "BUDGET",
+                "git send-email --smtp-server ./evil x.patch": "BUDGET",
+                "git send-email --smtp-server=~/bin/x x.patch": "BUDGET",
+                "git send-email -smtp-server=/tmp/x x.patch": "BUDGET",
+                "git clone --template=/tmp/t https://h/r": "BUDGET",
+                "git clone --template /tmp/t https://h/r": "BUDGET",
+                "git clone --templ=/tmp/t https://h/r": "BUDGET",
+            }
+        )
+        self.assert_allowed(
+            (
+                "git send-email --smtp-server=smtp.example.com x.patch",
+                "git send-email --smtp-server smtp.example.com --smtp-server-port 587 x.patch",
+                "git send-email --smtp-server x.patch -- --smtp-server=/x",
+            )
+        )
+        self.assertFalse(guard._git_run_path_value("send-email", ["--smtp-server"]))
+
     def test_clone_config_unit(self):
         self.assertEqual(guard._git_clone_config(["git", "clone", "-oc", "x=y", "u"]), [])  # `c` là giá trị của `-o`
         self.assertEqual(guard._git_clone_config(["git", "clone", "-c"]), [("", "")])

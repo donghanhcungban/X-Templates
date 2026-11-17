@@ -237,6 +237,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   chính. Thêm `fetch-pack --upload-pack/--exec`, `instaweb --httpd/-d`, `send-email --*-cmd`, `clone -c/--config`
   vào luật lệnh lồng/khoá cấu hình. Cắt chuỗi biến đã gán (`${X:2}`, `${X#a}`, `${X%%z*}`) ra giá trị; dạng không
   tính chắc → BUDGET. Test: `tests/test_guard_audit_orange.py`; ca bench `aud804-*`…`aud811-*`.
+- AUD-SEC-812/813 (T-3925): guard quét bộ lọc shell của `git filter-branch` (`--*-filter`, `--setup`) như `sh -c`;
+  chặn (BUDGET) `git send-email --smtp-server=<đường chương trình>` (tên máy vẫn chạy) và viết tắt
+  `git clone|init --templ=<dir>`; ca bench `aud812-*`, `aud813-*`.
 - AUD-SEC-801/802/803 (T-3924, ADR-0080): guard chặn hàm có biến gán muộn bằng `for`/`select`, `${X:=…}`,
   `getopts`, `unset` (BUDGET); `eval -- <lệnh>` quét như `eval <lệnh>`; mở rộng tham số có từ thay thế (`${X:+từ}`,
   `${X+từ}`, `${X/mẫu/từ}`, mặc định lồng `${X:-$HOME}`) quét thêm bản thay từ, đổi hoa/thường biến đã gán

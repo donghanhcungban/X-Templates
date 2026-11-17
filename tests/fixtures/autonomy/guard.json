@@ -23661,6 +23661,12 @@
   {"id": "aud807-ctl-send-email-to", "origin": "control", "refs": ["AUD-SEC-807"], "input": {"command": "git send-email --to=a@b x.patch"}, "expect": {"allowed": true}},
   {"id": "aud811-slice-offset", "origin": "audit", "refs": ["AUD-SEC-811"], "input": {"command": "X=xx--hard; git reset ${X:2}"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
   {"id": "aud811-trim-prefix-push", "origin": "audit", "refs": ["AUD-SEC-811"], "input": {"command": "X=xmain; git push origin ${X#x}"}, "expect": {"allowed": false, "code": "PUSH_MAIN"}},
-  {"id": "aud811-ctl-echo-slice", "origin": "control", "refs": ["AUD-SEC-811"], "input": {"command": "X=abc; echo ${X:1}"}, "expect": {"allowed": true}}
+  {"id": "aud811-ctl-echo-slice", "origin": "control", "refs": ["AUD-SEC-811"], "input": {"command": "X=abc; echo ${X:1}"}, "expect": {"allowed": true}},
+  {"id": "aud812-tree-filter", "origin": "audit", "refs": ["AUD-SEC-812"], "input": {"command": "git filter-branch --tree-filter \"rm -rf ~\" HEAD"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud812-msg-filter", "origin": "audit", "refs": ["AUD-SEC-812"], "input": {"command": "git filter-branch --msg-filter 'git reset --hard; cat' HEAD"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud812-ctl-subdirectory", "origin": "control", "refs": ["AUD-SEC-812"], "input": {"command": "git filter-branch --subdirectory-filter sub HEAD"}, "expect": {"allowed": true}},
+  {"id": "aud813-smtp-program", "origin": "audit", "refs": ["AUD-SEC-813"], "input": {"command": "git send-email --smtp-server=/usr/sbin/sendmail x.patch"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "aud813-clone-template", "origin": "audit", "refs": ["AUD-SEC-813"], "input": {"command": "git clone --templ=/tmp/t https://h/r"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "aud813-ctl-smtp-host", "origin": "control", "refs": ["AUD-SEC-813"], "input": {"command": "git send-email --smtp-server=smtp.example.com x.patch"}, "expect": {"allowed": true}}
  ]
 }
