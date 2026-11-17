@@ -2343,7 +2343,12 @@ def _late_assigned(live: str, start: int) -> bool:
 
 VAR_NAME_USE_RE = re.compile(r"\$(?:([A-Za-z_]\w*)|\{[#!]?([A-Za-z_]\w*))")
 FUNC_TILDE_RE = re.compile(r"(?<![\w/.-])~")
-LATE_ASSIGN_FMT = r"(?<![\w$]){0}(?:\[[^\]]*\])?\+?=|(?:read|export|declare|typeset|local|readonly|mapfile|readarray|-v)\b[^;&|\n]*(?<![\w$]){0}\b"
+# AUD-SEC-801: mọi dạng gán sau định nghĩa — `X=`/`X+=`/`${X:=…}`/`${X=…}`, tên đích của builtin (cả `getopts`, và
+# `unset`: biến rỗng đổi đích `"$d/"` thành `/`), biến vòng `for X`/`select X`.
+LATE_ASSIGN_FMT = (
+    r"(?<![\w$]){0}(?:\[[^\]]*\])?[+:]?=|(?<![\w$])(?:for|select)\s+{0}\b"
+    r"|(?:read|export|declare|typeset|local|readonly|mapfile|readarray|getopts|unset|-v)\b[^;&|\n]*(?<![\w$]){0}\b"
+)
 
 
 def _func_scope_why(cmd: str) -> str:
@@ -14104,13 +14109,18 @@ def _eval_scripts(tokens: List[str]) -> List[str]:
     """`eval '<lệnh>'`: shell ghép các đối số rồi chạy như một dòng lệnh. Chuyển hướng là của chính `eval`: quét cả chữ
     có nó (stdin/stdout của lệnh đọc lại — `eval nc h 80 < .env`) lẫn chữ bỏ nó (`eval git reset > ';' --hard` chạy
     `git reset --hard`, AUD-SEC-605)."""
-    evals = [n for c in split_commands(tokens) for n in [normalize(c)] if n[:1] == ["eval"] and n[1:]]
+    evals = [n for c in split_commands(tokens) for n in [_eval_args(normalize(c))] if n[:1] == ["eval"] and n[1:]]
     out = [s for n in evals for s in dict.fromkeys((" ".join(n[1:]), " ".join(_no_redirects(n)[1:]))) if s]
     for c in split_commands(tokens):  # `trap '<lệnh>' SIGNAL`: bash chạy thân như `eval` (AUD-SEC-226)
         n = [a for a in normalize(c) if a != "--"]
         if n[:1] == ["trap"] and len(n) > 1 and n[1] not in ("-", "-p", "-l"):
             out.append(n[1])
     return out
+
+
+def _eval_args(n: List[str]) -> List[str]:
+    """AUD-SEC-802: `eval -- <lệnh>` — bash bỏ MỘT `--` đầu rồi chạy phần còn lại như `eval <lệnh>` (như `_eval_tail`)."""
+    return n[:1] + n[2:] if n[:2] == ["eval", "--"] else n
 
 
 # AUD-SEC-251: công cụ không phải shell nhưng tự chạy lệnh shell — chuỗi lệnh ở các chỗ này quét như `sh -c`. Chiều
@@ -15112,7 +15122,7 @@ VAR_USE_RE = re.compile(r"\$[\w{@*#?!$-]")  # dùng biến/tham số (`$B`, `${B
 
 def _known_vars(text: str, env: Dict[str, str]) -> str:
     """Thay CHỈ biến đã gán chữ trong cùng lệnh; biến lạ (`$B` từ `read`/môi trường, `${B:-x}` khi B chưa gán) giữ nguyên."""
-    text = VAR_DEFAULT_RE.sub(lambda m: env.get(m.group(1), m.group(0)), text)
+    text = VAR_DEFAULT_RE.sub(lambda m: env.get(m.group(1), m.group(0)), _sub_case(text, env))
     return VAR_REF_RE.sub(lambda m: env.get(m.group(1) or m.group(2), m.group(0)), text)
 
 
@@ -15174,8 +15184,29 @@ VAR_DEFAULT_RE = re.compile(r"\$\{(\w+):?[-=]([^{}$`]*)\}")  # `${y:-rm}`, `${y=
 
 
 def _sub_vars(text: str, env: Dict[str, str]) -> str:
-    text = VAR_DEFAULT_RE.sub(lambda m: env.get(m.group(1), m.group(2)), text)
+    text = VAR_DEFAULT_RE.sub(lambda m: env.get(m.group(1), m.group(2)), _sub_case(text, env))
     return VAR_REF_RE.sub(lambda m: env.get(m.group(1) or m.group(2), m.group(0)), text)
+
+
+# AUD-SEC-803: đổi hoa/thường (`${X,,}`, `${X^^}`, `${X~~}`, một ký tự đầu `${X,}`…, `${X@L}`/`@U`/`@u`) của biến đã gán
+# chữ → giá trị đã đổi (`X=--HARD; git reset ${X,,}` là `--hard`). Mẫu ký tự sau toán tử (`${X,,[A-Z]}`) bỏ qua: đổi cả
+# chuỗi (chiều chặt). Biến không biết giữ nguyên như `$X`.
+VAR_CASE_RE = re.compile(r"\$\{(\w+)(?:(\^\^?|,,?|~~?)[^{}$`]*|@([ULu]))\}")
+CASE_ALL = {"^^": str.upper, ",,": str.lower, "~~": str.swapcase, "U": str.upper, "L": str.lower}
+CASE_FIRST = {"^": str.upper, ",": str.lower, "~": str.swapcase, "u": str.upper}
+
+
+def _case_conv(val: str, op: str) -> str:
+    conv = CASE_ALL.get(op)
+    return conv(val) if conv else CASE_FIRST[op](val[:1]) + val[1:]
+
+
+def _sub_case(text: str, env: Dict[str, str]) -> str:
+    def conv(m: "re.Match[str]") -> str:
+        val = env.get(m.group(1))
+        return m.group(0) if val is None else _case_conv(val, m.group(2) or m.group(3))
+
+    return VAR_CASE_RE.sub(conv, text) if "${" in text else text
 
 
 VAR_VALUE_MAX = 4096  # giá trị biến dài hơn không được ghi nhận (chặn nhân đôi `a="$a$a"`)
@@ -17556,6 +17587,51 @@ def _scan_glob_rewrites(
     return _scan_scripts(_glob_rewrites(cmd, tokens, heads), root, cwd, depth, asks, 0, budget, rw)
 
 
+# AUD-SEC-803 (D-415): mở rộng tham số có TỪ thay giá trị — `${X:+từ}`/`${X+từ}` (đã gán → từ), `${X/mẫu/từ}`
+# (`//`, `/#`, `/%`), mặc định/gán có mở rộng lồng `${X:-$HOME}` (mặc định chữ trơn đã do `VAR_DEFAULT_RE`) — guard
+# không biết nhánh nào chạy nên xét cả hai: lệnh gốc (token mờ = nhánh giữ giá trị/rỗng) và bản thay từ — mọi chỗ cùng
+# lúc, rồi từng chỗ một (từ của chỗ này không che chỗ kia: `${A:+--dry-run} ${B:+--force}`). Chỉ ngoài nháy đơn.
+PARAM_NAME = r"(?:[A-Za-z_]\w*|\d+|[@*])(?:\[[^\]{}]*\])?"
+PARAM_OP_RE = re.compile(
+    r"\$\{" + PARAM_NAME + r"(:?[-+=]|(?://?|/[#%])(?:[^/{}\\]|\\.)*/)((?:[^{}\\]|\\.|\$\{[^{}]*\})*)\}"
+)
+PARAM_REWRITE_MAX = 8  # số chỗ thay tối đa mỗi lệnh (bản viết lại = số chỗ + 1) — quá → chặn
+PARAM_REWRITE_WHY = (
+    "quá nhiều mở rộng tham số có từ thay thế `${X:+…}`/`${X/…/…}` — AUD-SEC-803; viết giá trị nguyên văn hay chia nhỏ"
+)
+
+
+def _param_rewrites(cmd: str) -> Optional[List[str]]:
+    """Bản viết lại của `cmd` với từ thay thế của mở rộng tham số (AUD-SEC-803); None = quá `PARAM_REWRITE_MAX` chỗ."""
+    if "${" not in cmd:
+        return []
+    v = _CodeView(cmd)
+    hits = [
+        m
+        for m in PARAM_OP_RE.finditer(cmd)
+        if (v.why or v.kind[m.start()] != "q") and (m[1][-1] not in "-=" or re.search(r"[$`]", m[2]))
+    ]
+    if len(hits) > PARAM_REWRITE_MAX:
+        return None
+    picks = [hits, *([m] for m in hits)] if len(hits) > 1 else [hits]
+    return [_splice_params(cmd, p) for p in picks] if hits else []
+
+
+def _splice_params(cmd: str, hits: List["re.Match[str]"]) -> str:
+    for m in reversed(hits):
+        cmd = cmd[: m.start()] + m[2] + cmd[m.end() :]
+    return cmd
+
+
+def _scan_param_rewrites(
+    cmd: str, root: str, cwd: Optional[str], depth: int, asks: List[str], budget: "ScanBudget", rw: int
+) -> str:
+    variants = _param_rewrites(cmd)
+    if variants is None:
+        raise ScanTooComplex(PARAM_REWRITE_WHY)
+    return _scan_scripts(variants, root, cwd, depth, asks, 0, budget, rw)
+
+
 def _glob_rewrites(cmd: str, tokens: List[str], heads: Dict[str, List[str]]) -> List[str]:
     """Bản viết lại CHUỖI LỆNH GỐC (giữ heredoc, `<(`, nháy, gán biến) cho MỖI tên nhạy cảm khớp mẫu glob của tên một lệnh
     đơn: mọi lần xuất hiện của từ đó thay cùng lúc. Quét như shell lồng — `bash_decision` đệ quy chịu ngân sách và
@@ -17804,6 +17880,7 @@ def _bash_decision(
         else _scan_scripts(braces, root, cwd, depth, asks, 0, budget, rewrites)
     ) or _scan_nested(cmd, tokens, root, cwd, depth, asks, budget, rewrites, _cwd_picks(placed))
     nested_deny = nested_deny or _scan_glob_rewrites(cmd, tokens, root, cwd, depth, asks, budget, rewrites)
+    nested_deny = nested_deny or _scan_param_rewrites(cmd, root, cwd, depth, asks, budget, rewrites)  # AUD-SEC-803
     if nested_deny:
         return _nested_deny_result(res, nested_deny, budget)
     asks += _late_pending_asks(cmd, tokens, every, root, cwd, pending_bare, budget)

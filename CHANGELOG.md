@@ -229,6 +229,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-801/802/803 (T-3924, ADR-0080): guard chặn hàm có biến gán muộn bằng `for`/`select`, `${X:=…}`,
+  `getopts`, `unset` (BUDGET); `eval -- <lệnh>` quét như `eval <lệnh>`; mở rộng tham số có từ thay thế (`${X:+từ}`,
+  `${X+từ}`, `${X/mẫu/từ}`, mặc định lồng `${X:-$HOME}`) quét thêm bản thay từ, đổi hoa/thường biến đã gán
+  (`${X,,}`, `${X@L}`…) ra giá trị. Dạng lành (`"${X:-default}"`, `${#a[@]}`, `${f%.txt}`, `echo ${X:+a}`) vẫn chạy.
+  Test: `tests/test_guard_audit_red.py`; ca bench `aud801-*`…`aud803-*`.
 - AUD-SEC-560/561/602/653/667/747/754, AUD-HAR-349, AUD-TEST-096/097/099 (T-3918): guard chặn merge REST theo id
   `repositories/<id>/pulls/N/merge` (UNVERIFIED), `git credential fill`/`git credential-<helper> get` (in token), xoá
   nhánh trùng tên trên remote/repo khác `origin`, `python3 -m git_filter_repo`, mở rộng lồng/`~-` đứng đầu từ của `gh`,
