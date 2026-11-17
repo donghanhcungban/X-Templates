@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/cpu_budget.py
 import cpu_budget
 from git_fixture import fixture_git, init_git_fixture, isolated_git_environment
+from nonet import isolate_network
 
 # Luật guard được test ở pha harden; pha build nới hành động cục bộ (ADR-0040) — test riêng ở BuildPhaseGuardTest.
 os.environ.setdefault("XT_GUARD_PHASE", "harden")
@@ -83,6 +84,9 @@ def guard_decision(mode: str, arg: str, root: Path = ROOT, policy: str = "strict
 
 @unittest.skipIf(shutil.which("bash") is None, "cần bash")
 class PreBashGuardTest(unittest.TestCase):
+    def setUp(self):
+        isolate_network(self)  # AUD-TEST-109/112
+
     def d(self, cmd: str, via_hook: bool = False) -> str | None:
         if not via_hook:
             return guard_decision("bash", cmd)
@@ -359,13 +363,15 @@ class CommitGateFastConfigChangeTest(CommitGateFastHookBase):
         ]
         for change in cfg:
             with self.subTest(change=change):
-                code, out, err = self.commit("commit_gate: fast\n", fast="echo FAST-RAN", change=change)
-                self.assertEqual((code, decision(out)), (0, None), err)
-                self.assertIn("FULL-RAN", err)  # chưa khai test_list/test_unit → bước test = `test` đầy đủ
-                self.assertNotIn("FAST-RAN", err)
-                self.assertIn("đụng cấu hình cổng nên cổng nhanh chạy MỌI lớp test", err)
-                subprocess.run([*self.git, "reset", "-q", "--hard"], check=True)
-                subprocess.run([*self.git, "clean", "-qfd"], check=True)
+                try:
+                    code, out, err = self.commit("commit_gate: fast\n", fast="echo FAST-RAN", change=change)
+                    self.assertEqual((code, decision(out)), (0, None), err)
+                    self.assertIn("FULL-RAN", err)  # chưa khai test_list/test_unit → bước test = `test` đầy đủ
+                    self.assertNotIn("FAST-RAN", err)
+                    self.assertIn("đụng cấu hình cổng nên cổng nhanh chạy MỌI lớp test", err)
+                finally:  # assert đỏ không để lại trạng thái cho ca sau
+                    subprocess.run([*self.git, "reset", "-q", "--hard"], check=True)
+                    subprocess.run([*self.git, "clean", "-qfd"], check=True)
         # Đổi file thường (cả file mới, tên gần giống) → vẫn cổng nhanh.
         for change in ("src/app.py", "docs/xt.yaml.md", "notes/requirements.md"):
             with self.subTest(change=change):
@@ -383,10 +389,12 @@ class CommitGateFastConfigChangeTest(CommitGateFastHookBase):
                     (self.tmp / "ruff.toml").write_text("# staged\n", encoding="utf-8")
                 subprocess.run([*self.git, *op], check=True)
                 payload = {"tool_input": {"command": "git commit -m x"}, "cwd": str(self.tmp)}
-                code, out, err = run_hook("pre-bash-guard.sh", payload, self.tmp, extra_env={"XT_GUARD_POLICY": ""})
-                self.assertIn("FULL-RAN", err)
-                self.assertIn("đụng cấu hình cổng", err)
-                subprocess.run([*self.git, "reset", "-q", "--hard"], check=True)
+                try:
+                    code, out, err = run_hook("pre-bash-guard.sh", payload, self.tmp, extra_env={"XT_GUARD_POLICY": ""})
+                    self.assertIn("FULL-RAN", err)
+                    self.assertIn("đụng cấu hình cổng", err)
+                finally:
+                    subprocess.run([*self.git, "reset", "-q", "--hard"], check=True)
 
 
 class CommitGatePytestConfigChangeTest(CommitGateFastHookBase):
@@ -397,13 +405,15 @@ class CommitGatePytestConfigChangeTest(CommitGateFastHookBase):
     def test_pytest_config_change_forces_full_gate(self):
         for change in ("pytest.ini", ".pytest.ini", "pytest.toml", ".pytest.toml", "tox.ini", "setup.cfg"):
             with self.subTest(change=change):
-                code, out, err = self.commit("commit_gate: fast\n", fast="echo FAST-RAN", change=change)
-                self.assertEqual((code, decision(out)), (0, None), err)
-                self.assertIn("FULL-RAN", err)
-                self.assertNotIn("FAST-RAN", err)
-                self.assertIn("đụng cấu hình cổng nên cổng nhanh chạy MỌI lớp test", err)
-                subprocess.run([*self.git, "reset", "-q", "--hard"], check=True)
-                subprocess.run([*self.git, "clean", "-qfd"], check=True)
+                try:
+                    code, out, err = self.commit("commit_gate: fast\n", fast="echo FAST-RAN", change=change)
+                    self.assertEqual((code, decision(out)), (0, None), err)
+                    self.assertIn("FULL-RAN", err)
+                    self.assertNotIn("FAST-RAN", err)
+                    self.assertIn("đụng cấu hình cổng nên cổng nhanh chạy MỌI lớp test", err)
+                finally:
+                    subprocess.run([*self.git, "reset", "-q", "--hard"], check=True)
+                    subprocess.run([*self.git, "clean", "-qfd"], check=True)
         # Chỉ ở gốc (dev-task đọc `$ROOT/<tệp>`; pytest tìm từ thư mục chạy): tên tương tự ở thư mục con → cổng nhanh.
         code, out, err = self.commit("commit_gate: fast\n", fast="echo FAST-RAN", change="docs/setup.cfg")
         self.assertIn("FAST-RAN", err)
@@ -542,6 +552,7 @@ class GuardMatrixTest(unittest.TestCase):
         import guard
 
         self.g = guard
+        isolate_network(self, None, guard)  # AUD-TEST-109/112
         self.root = self.enterContext(tempfile.TemporaryDirectory())
 
     def dec(self, cmd: str) -> str:
@@ -3627,6 +3638,7 @@ class GuardDeltaAuditTest(unittest.TestCase):
         cls.guard = guard
 
     def setUp(self):
+        isolate_network(self, None, self.guard)  # AUD-TEST-109/112
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
 
     def dec(self, cmd: str) -> str:
@@ -3944,6 +3956,7 @@ class EgressCase(unittest.TestCase):
         cls.guard = guard
 
     def setUp(self):
+        isolate_network(self, None, self.guard)  # AUD-TEST-109/112
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
 
     def dec(self, cmd: str) -> str:

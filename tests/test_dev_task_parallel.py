@@ -307,9 +307,11 @@ class DevTaskParallelTest(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(self.ran(r), "python3 -m unittest discover -s tests")
                 (self.tmp / "xt.yaml").write_text("test: git push --force origin main\n", encoding="utf-8")
-                r = self.dt("test", XT_GUARD_POLICY=policy)
-                self.assertEqual(r.returncode, 126, r.stderr)
-                (self.tmp / "xt.yaml").unlink()
+                try:
+                    r = self.dt("test", XT_GUARD_POLICY=policy)
+                    self.assertEqual(r.returncode, 126, r.stderr)
+                finally:
+                    (self.tmp / "xt.yaml").unlink(missing_ok=True)
         self.pytest(xdist=True)
         for policy in ("default", "strict"):
             with self.subTest(policy=policy, runner="pytest"):
