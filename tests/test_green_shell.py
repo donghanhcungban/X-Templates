@@ -21,14 +21,18 @@ os.environ.setdefault("XT_GUARD_PHASE", "harden")
 sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
 import guard
 
+MERGE_OK = {"verdict": "merge", "hard": [], "head": "a" * 40, "eligible": True, "reasons": ["ok"]}
+
 
 def decide(cmd: str, policy: str = "") -> dict:
     # Nhánh hiện tại ghim về `feat` như tests/test_guard_strict.py; `origin` = `me/repo`. `strict`: quyết định thô như
-    # hook ở `XT_GUARD_POLICY=strict` (không qua chính sách mặc định)
+    # hook ở `XT_GUARD_POLICY=strict` (không qua chính sách mặc định). AUD-TEST-112: merge-check giả xanh như
+    # tests/test_green_gh.py — không gọi `xt.py merge-check`/`gh` thật; quyết định không phụ thuộc mạng hay PR thật.
     with (
         mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(ROOT), "XT_GUARD_POLICY": policy}),
         mock.patch.object(guard, "_current_branch", return_value="feat"),
         mock.patch.object(guard, "_origin_repo", return_value="me/repo"),
+        mock.patch.object(guard, "merge_check", return_value=MERGE_OK),
     ):
         raw = guard.bash_decision(cmd, str(ROOT), str(ROOT))
         return {**raw, "code": guard.decide(raw).code} if policy else guard.apply_policy(raw)

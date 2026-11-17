@@ -9605,7 +9605,9 @@ def _loop_stop(args: argparse.Namespace, base: Path) -> int:
         "stop_reason": args.reason,
         "final_verdict": {"verdict": "stopped", "reason": args.reason},
     }
-    if state_dir(base).is_symlink() and read_state(base):
+    # AUD-HAR-423: vòng đã dừng sau liên kết → "đã tắt sẵn" bên dưới, không khoá/ghi xuyên liên kết
+    linked = read_state(base) if state_dir(base).is_symlink() else None
+    if linked and linked.get("active"):
         # AUD-HAR-415: không ghi qua liên kết (AUD-HAR-405) — nói rõ ai gỡ được kẹt thay cho lỗi OSError trần
         print(
             "✗ `.autopilot` là symlink — `loop stop` không ghi state qua liên kết, vòng vẫn bật."
@@ -9614,8 +9616,8 @@ def _loop_stop(args: argparse.Namespace, base: Path) -> int:
         )
         return 2
     ended: List[bool] = []
-    cur = update_loop_state(base, lambda cur: {**cur, **end} if cur.get("active") else ended.append(True))
-    if cur is not None and ended:
+    cur = linked or update_loop_state(base, lambda cur: {**cur, **end} if cur.get("active") else ended.append(True))
+    if cur is not None and (ended or linked):
         # vòng đã kết thúc: giữ `final_verdict` thật cho `unblocked[]`, đợt `done` không mở lại qua stop (review #295)
         print(f"■ Autopilot đã tắt sẵn ({_final_verdict(cur) or 'không có final_verdict'}) — giữ nguyên.")
         return 0

@@ -815,18 +815,20 @@ class PromotionTest(ReleaseCase):
         self.go_no_go()
         for flag in ("assume-unchanged", "skip-worktree"):
             with self.subTest(flag=flag):
-                self.git("update-index", f"--{flag}", tracked.name)
-                tracked.write_text("print(2)\n", encoding="utf-8")
-                self.assertEqual(self.git("status", "--porcelain"), "")
-                rc, result, promotion = self.promotion()
-                self.assertEqual((rc, result["fails"], promotion["state"]), (1, ["tree"], "blocked"))
-                self.assertIn(flag, self.by_id(result)["tree"]["evidence"])
-                self.assertIsNone(result["subject"]["tree"])
-                self.assertIsNone(result["subject"]["content"])
-                self.git("update-index", f"--no-{flag}", tracked.name)
-                # ghi lại nội dung thật: `git restore` tin stat cùng kích thước nên có thể để nguyên `print(2)` — cây
-                # vẫn bẩn, hàng `tree` so nội dung với HEAD bắt được (AUD-HAR-374)
-                tracked.write_text("print(1)\n", encoding="utf-8")
+                try:  # AUD-TEST-116: subTest đỏ vẫn gỡ cờ và trả nội dung trước subTest sau
+                    self.git("update-index", f"--{flag}", tracked.name)
+                    tracked.write_text("print(2)\n", encoding="utf-8")
+                    self.assertEqual(self.git("status", "--porcelain"), "")
+                    rc, result, promotion = self.promotion()
+                    self.assertEqual((rc, result["fails"], promotion["state"]), (1, ["tree"], "blocked"))
+                    self.assertIn(flag, self.by_id(result)["tree"]["evidence"])
+                    self.assertIsNone(result["subject"]["tree"])
+                    self.assertIsNone(result["subject"]["content"])
+                finally:
+                    self.git("update-index", f"--no-{flag}", tracked.name)
+                    # ghi lại nội dung thật: `git restore` tin stat cùng kích thước nên có thể để nguyên `print(2)` —
+                    # cây vẫn bẩn, hàng `tree` so nội dung với HEAD bắt được (AUD-HAR-374)
+                    tracked.write_text("print(1)\n", encoding="utf-8")
                 self.assertEqual(self.promotion()[2]["state"], "approved")
 
     def test_status_config_cannot_hide_dirty_tree(self):
@@ -860,11 +862,13 @@ class PromotionTest(ReleaseCase):
         for key, value in (("submodule.sub.ignore", "all"), ("diff.ignoreSubmodules", "all")):
             with self.subTest(key=key):
                 self.git("config", key, value)
-                self.assertEqual(self.git("status", "--porcelain"), "")
-                rc, result, promotion = self.promotion()
-                self.assertEqual((rc, result["fails"], promotion["state"]), (1, ["tree"], "blocked"))
-                self.assertIn("sub", self.by_id(result)["tree"]["evidence"])
-                self.git("config", "--unset", key)
+                try:  # AUD-TEST-116: subTest đỏ vẫn gỡ khoá cấu hình trước subTest sau
+                    self.assertEqual(self.git("status", "--porcelain"), "")
+                    rc, result, promotion = self.promotion()
+                    self.assertEqual((rc, result["fails"], promotion["state"]), (1, ["tree"], "blocked"))
+                    self.assertIn("sub", self.by_id(result)["tree"]["evidence"])
+                finally:
+                    self.git("config", "--unset", key)
 
     def test_sparse_checkout_blocks_promotion(self):
         source = self.repo / "src"

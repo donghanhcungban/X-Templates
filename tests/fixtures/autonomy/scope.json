@@ -659,7 +659,7 @@
    "ids": []
   },
   {
-   "reason": "Trường `milestone_audit` của `loop status` theo pha (harden → `signoff`, build → `now`/`g7`; D-500) — lời nhắc tiến trình của vòng, không phải quyết định cho/chặn của PR, rollup, review hay guard; đỡ bằng tests.test_audit_dot4_har.MilestoneAuditPhaseTest và tests.test_xt_core -k test_milestone_done",
+   "reason": "Trường `milestone_audit` của `loop status` theo pha (harden → `signoff`, build → `g7`; D-500) — lời nhắc tiến trình của vòng, không phải quyết định cho/chặn của PR, rollup, review hay guard; đỡ bằng tests.test_audit_dot4_har.MilestoneAuditPhaseTest và tests.test_xt_core -k test_milestone_done",
    "ids": [
     "AUD-HAR-412"
    ]
