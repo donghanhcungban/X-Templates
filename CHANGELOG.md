@@ -229,6 +229,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-560/561/602/653/667/747/754, AUD-HAR-349, AUD-TEST-096/097/099 (T-3918): guard chặn merge REST theo id
+  `repositories/<id>/pulls/N/merge` (UNVERIFIED), `git credential fill`/`git credential-<helper> get` (in token), xoá
+  nhánh trùng tên trên remote/repo khác `origin`, `python3 -m git_filter_repo`, mở rộng lồng/`~-` đứng đầu từ của `gh`,
+  hàm thân `if`/`while`/`for` đăng `gh`, glob đầu từ của `git push`, và ở `XT_GUARD_POLICY=strict` không còn chỉ hỏi
+  với `$!--admin`/`$X-f`; cho qua `grep … xt.py -e decide-prod`, `git filter-repo --help|--version`, pathspec/`-n N`/ref
+  lặp của `filter-branch`, `git push -n|--dry-run … --delete`, `git push . :<nhánh>`. Test: `tests/test_green_shell.py`;
+  `GuardReview429Test` xanh khi checkout dưới `/tmp`; ca `aud605-ctl-*` đổi origin `control`.
 - AUD-HAR-342/356/357/360/364/365/366, AUD-SEC-562/565/589/601/603 (T-3917): guard cho qua dạng trợ giúp gh in thật
   (`release-sign --help`, `-h=false`, `gh pr -R o/r merge 12 --help`, `gh --help -X DELETE api …`, `gh repo --help
   edit …`), `gh 2>&1 pr view`, message `git commit` nhắc `gh pr … review`; chặn `gh pr merge --delete-branch`
