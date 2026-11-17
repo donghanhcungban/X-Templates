@@ -1241,5 +1241,57 @@ class ReleaseSignGuardTest(TmpRepoCase):
         self.assertIn("Không ghi dòng ký §5", reason)
 
 
+class GoInvisibleSignerTest(unittest.TestCase):
+    """AUD-SEC-629: ô Tên chỉ gồm ký tự điều khiển/định dạng/khoảng trắng (NUL, `\\x01`, U+200B…) không phải người ký —
+    hàng `go_no_go` không PASS, `promotion` không `approved`, `release-sign` vẫn coi §5 đã có dòng (chiều chặt)."""
+
+    REL = "docs/ops/GO-NO-GO-v1.2.0.md"
+    ZWSP, BOM = chr(0x200B), chr(0xFEFF)  # chr(): không để ký tự vô hình nguyên văn trong mã nguồn
+    NAMES = ("\x00", "\x00\x00 ", " \x01 ", "\x7f", "\x9f", ZWSP, BOM, "\x00" + ZWSP + "\t")
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.base, True))
+        (self.base / "docs/ops").mkdir(parents=True)
+        (self.base / "VERSION").write_text("1.2.0\n", encoding="utf-8")
+        self.today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+
+    def doc(self, name: str) -> str:
+        return GO_DOC.replace("| Chủ repo | | GO / NO-GO | |", f"| Chủ repo | {name} | GO | {self.today} |")
+
+    def put(self, text: str) -> None:
+        (self.base / self.REL).write_bytes(text.encode("utf-8"))
+
+    def test_invisible_name_is_not_a_signer(self):
+        for name in self.NAMES:
+            with self.subTest(name=repr(name)):
+                self.put(self.doc(name))
+                text = (self.base / self.REL).read_text(encoding="utf-8")
+                self.assertEqual(xt._go_signers(text), [])
+                self.assertFalse(xt._go_no_go_signed(text))
+                self.assertNotEqual(xt._release_go_no_go(self.base)["result"], "PASS")
+                self.assertNotEqual(xt._release_promotion(self.base, [], [], SUBJECT)["state"], "approved")
+                self.assertTrue(xt._go_sign_rows(text))  # dòng vẫn là dòng ký thô: `release-sign` không ký thêm
+
+    def test_visible_name_still_signs(self):
+        for name in ("An", "\x00An", "An" + self.ZWSP, "李"):
+            with self.subTest(name=repr(name)):
+                self.put(self.doc(name))
+                text = (self.base / self.REL).read_text(encoding="utf-8")
+                self.assertTrue(xt._go_no_go_signed(text))
+                self.assertEqual(xt._release_go_no_go(self.base)["result"], "PASS")
+                got = xt._release_promotion(self.base, [], [], SUBJECT)
+                self.assertEqual((got["state"], got.get("by")), ("approved", [name.strip()]))
+
+    def test_invisible_row_next_to_real_signer_still_checked(self):
+        """Dòng tên vô hình nằm cạnh chữ ký thật vẫn được xét quyết định/ngày (không lọc khỏi `_approval_problem`)."""
+        text = self.doc("An").replace(
+            "|---|---|---|---|\n", f"|---|---|---|---|\n| Phụ | \x00 | Hold | {self.today} |\n"
+        )
+        self.put(text)
+        got = xt._release_promotion(self.base, [], [], SUBJECT)
+        self.assertEqual(got["state"], "pending_human", got)
+
+
 if __name__ == "__main__":
     unittest.main()

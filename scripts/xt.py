@@ -13189,8 +13189,17 @@ def _go_no_go_refusals(text: str) -> List[str]:
 
 
 def _go_no_go_signed(text: str) -> bool:
-    """§5 (Ký) của GO-NO-GO có ít nhất một dòng ký có tên và ngày."""
-    return bool(_go_sign_rows(text))
+    """§5 (Ký) của GO-NO-GO có ít nhất một dòng ký có tên nhìn thấy (`_go_signers`) và ngày."""
+    return bool(_go_signers(text))
+
+
+GO_INVISIBLE_CATS = frozenset({"Cc", "Cf", "Cs"})  # điều khiển, định dạng (U+200B, BOM…), surrogate lẻ
+
+
+def _go_visible_name(name: str) -> bool:
+    """AUD-SEC-629: ô tên có ít nhất một ký tự không phải khoảng trắng/điều khiển/định dạng — ô chỉ NUL (guard thấy
+    khoảng trắng sau `clean_payload`), `\\x01`, U+200B… không phải người ký. Lời từ chối không lọc theo tên (chặt)."""
+    return any(not ch.isspace() and unicodedata.category(ch) not in GO_INVISIBLE_CATS for ch in name)
 
 
 GO_FRONT_RE = re.compile(r"\A---\n.*?\n---\n", re.S)  # frontmatter: không phải tiêu đề
@@ -13719,10 +13728,11 @@ def _release_promotion(base: Path, fails: List[str], human: List[str], subject: 
 
 
 def _go_signers(text: str) -> List[str]:
-    """Ô tên (cột 2) của các dòng ký §5 hiển thị — cùng phạm vi `_go_sign_rows`."""
+    """Ô tên (cột 2) nhìn thấy (`_go_visible_name`) của các dòng ký §5 hiển thị — cùng phạm vi `_go_sign_rows`."""
     part = re.split(r"^## 5\b.*$", _markdown_shown(text), maxsplit=1, flags=re.M)
     section = re.split(r"^## ", part[-1], maxsplit=1, flags=re.M)[0] if len(part) == 2 else ""
-    return [m[0].strip().strip("|").split("|")[1].strip() for m in GO_SIGN_ROW_RE.finditer(section)]
+    names = (m[0].strip().strip("|").split("|")[1].strip() for m in GO_SIGN_ROW_RE.finditer(section))
+    return [name for name in names if _go_visible_name(name)]
 
 
 def release_check(base: Path, blueprint: str, status: str, unchecked_must: str = "warn") -> Dict[str, Any]:
@@ -14547,7 +14557,7 @@ def release_sign(base: Path, file: str, note: str, rc: Dict[str, Any]) -> str:
         raise ReleaseSignError("`--note` rỗng — ghi vì sao GO (bằng chứng máy đã xét)")
     _sign_scope_check(base)
     rel, text = _sign_doc(base, file)
-    if _go_no_go_signed(text) or _go_no_go_refusals(text):
+    if _go_sign_rows(text) or _go_no_go_refusals(text):  # kể cả ô tên vô hình (AUD-SEC-629): không ký cạnh
         raise ReleaseSignError(f"{rel}: §5 đã có dòng ký hoặc lời từ chối — không ký thêm")
     _sign_remote_check(base)
     problem = _subject_problem(rel, text, rc["subject"])
