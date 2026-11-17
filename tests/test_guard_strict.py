@@ -1531,6 +1531,7 @@ class ReasonCodeLockTest(unittest.TestCase):
         ("BUDGET", "echo " + "a" * guard.CMD_MAX_CHARS),  # vượt ngân sách quét (mẫu ở EXAMPLES là lớp tập con)
         ("BUDGET", "gh pr merge$Z 5"),  # tên lệnh/tên cờ gh có mở rộng (AUD-SEC-587)
         ("BUDGET", "git pus? --force origin main"),  # lệnh con git không đọc chắc (AUD-SEC-635)
+        ("BUDGET", "sed -i s/a/b/ docs/autopilot/DECISIONS.md"),  # Bash ghi sổ quyết định (AUD-SEC-804)
     )
 
     def test_every_marker_blocks_a_real_command(self):

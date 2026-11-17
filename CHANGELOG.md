@@ -243,6 +243,17 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   format`/`format-file` bỏ qua thư mục không đọc được khi chụp GO-NO-GO (lỗi `find` khác vẫn dừng formatter); log cổng
   tách "runtime không phải CPython 3.15" khỏi "guard cấm lệnh". Dự án đích: chạy lại `install.py`.
 
+- AUD-SEC-804/805/806/807/808/811 (T-3925, ADR-0080): guard so sổ quyết định `DECISIONS*.md` (mọi hoa/thường,
+  qua symlink) SAU lần Edit/MultiEdit/Write với đĩa — dòng `Khi chạy thật đã quyết` mới (cả Edit hai bước, lộ khỏi chú
+  thích, đổi mục) → deny; Bash ghi sổ (đích ghi, liên kết, lệnh lạ nêu tên) → BUDGET, trừ `xt.py loop decide`; lệnh chỉ
+  đọc nhắc cụm (`git grep`, `git log -S`, `cd … && grep`, `| sed -n`) cho chạy. Autocorrect của git chỉ tin
+  `git-<tên>` ở exec-path mặc định agent không đổi được (bỏ PATH). `gh api` ghi nhánh `@tệp`/`{branch}` tính như nhánh
+  chính. Thêm `fetch-pack --upload-pack/--exec`, `instaweb --httpd/-d`, `send-email --*-cmd`, `clone -c/--config`
+  vào luật lệnh lồng/khoá cấu hình. Cắt chuỗi biến đã gán (`${X:2}`, `${X#a}`, `${X%%z*}`) ra giá trị; dạng không
+  tính chắc → BUDGET. Test: `tests/test_guard_audit_orange.py`; ca bench `aud804-*`…`aud811-*`.
+- AUD-SEC-812/813 (T-3925): guard quét bộ lọc shell của `git filter-branch` (`--*-filter`, `--setup`) như `sh -c`;
+  chặn (BUDGET) `git send-email --smtp-server=<đường chương trình>` (tên máy vẫn chạy) và viết tắt
+  `git clone|init --templ=<dir>`; ca bench `aud812-*`, `aud813-*`.
 - AUD-SEC-801/802/803 (T-3924, ADR-0080): guard chặn hàm có biến gán muộn bằng `for`/`select`, `${X:=…}`,
   `getopts`, `unset` (BUDGET); `eval -- <lệnh>` quét như `eval <lệnh>`; mở rộng tham số có từ thay thế (`${X:+từ}`,
   `${X+từ}`, `${X/mẫu/từ}`, mặc định lồng `${X:-$HOME}`) quét thêm bản thay từ, đổi hoa/thường biến đã gán
