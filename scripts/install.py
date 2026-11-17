@@ -1078,13 +1078,25 @@ def git_hooks_dir(target: Path) -> Path | None:
 
 
 def hooks_symlink(target: Path, hooks: Path) -> bool:
-    """Thư mục hook nằm trong dự án mà đi qua symlink (`.githooks → ../out`, `.husky → ../out` với `.husky/_`) → ghi
-    hook xuyên ra ngoài dự án (AUD-SEC-650, cùng lớp AUD-SEC-619). Thư mục hook ngoài dự án (git common dir của
-    worktree, `core.hooksPath` tuyệt đối) là cấu hình git của người dùng — không xét. `target` đã `resolve()`."""
-    # "trong dự án" xét trên đường đã chuẩn hoá; symlink xét trên đường THÔ — `normpath` xoá thành phần symlink đứng trước
-    # `..` (`.githooks/../x` với `.githooks → ../out` ghi ra `x` ngoài dự án; review T-3747 🔴)
-    inside = Path(os.path.normpath(hooks)).is_relative_to(target)
-    return inside and parent_symlink(hooks / GIT_HOOKS[0])
+    """Thư mục hook đi qua dự án mà nơi ghi THẬT ra ngoài dự án (`.githooks → ../out`, `.husky → ../out` với `.husky/_`,
+    `.githooks/../x`) → ghi hook xuyên ra ngoài (AUD-SEC-650, cùng lớp AUD-SEC-619); cả đường tuyệt đối qua tổ tiên symlink
+    vào dự án (`via → proj`, `core.hooksPath=<…>/via/.githooks` — AUD-SEC-670). Nơi thật trong git dir của repo (`.git →
+    ../realgit`, như worktree) hay trong dự án (`.git/hooks → ../hooks-shared`) thì cài (AUD-HAR-404). Thư mục hook không
+    đi qua dự án (git common dir của worktree, `core.hooksPath` tuyệt đối) là cấu hình git của người dùng — không xét."""
+    root = target.resolve()
+    try:
+        real = hooks.resolve()
+        # đi qua dự án: đường đã chuẩn hoá trong dự án, hay một tổ tiên (theo symlink) nằm trong dự án; `normpath` xoá
+        # thành phần symlink đứng trước `..` nên nơi thật lấy từ `resolve()` trên đường THÔ (review T-3747 🔴)
+        via = Path(os.path.normpath(hooks)).is_relative_to(root) or any(
+            p.resolve().is_relative_to(root) for p in hooks.parents
+        )
+    except (OSError, RuntimeError):  # vòng symlink: không biết nơi ghi → không ghi
+        return True
+    if not via or real.is_relative_to(root):
+        return False
+    common = git_common_dir(target)
+    return common is None or not real.is_relative_to(common)
 
 
 def git_hooks_path_error(target: Path, no_harness: bool, no_git_hooks: bool) -> str | None:
