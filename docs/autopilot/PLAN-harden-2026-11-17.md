@@ -40,11 +40,23 @@
 
 ### Lát J — guard
 - [x] `T-3917` 🟢 lệnh `gh`: chặn oan dạng trợ giúp, `GH_POST_RE`/`GH_PR_TEXT_RE`, token qua `gh auth git-credential`/`gh config get`, `DELETE …/labels/%2F`, `updateRef force`, `--delete-branch` (AUD-HAR-342/356/357/360/363…366, AUD-SEC-562/565/589/601/603) — Gate: `python3 -m unittest tests.test_green_gh` (files: .claude/hooks/guard.py, tests/test_green_gh.py)
-- [ ] `T-3918` 🟢 đọc shell: `REMOTE_DELETE` theo remote, `git_filter_repo`, fd nhiều chữ số, glob/`$!` dính cờ, chặn oan hẹp (AUD-SEC-560/561/602/653/658/667/701/712/720/732/747/751/754/755, AUD-HAR-349/358/359, AUD-TEST-096/097/099) — Gate: `python3 -m unittest tests.test_green_shell` (sau: T-3917; files: .claude/hooks/guard.py, tests/test_green_shell.py)
+- [x] `T-3918` 🟢 đọc shell: `REMOTE_DELETE` theo remote, `git_filter_repo`, fd nhiều chữ số, glob/`$!` dính cờ, chặn oan hẹp (AUD-SEC-560/561/602/653/658/667/701/712/720/732/747/751/754/755, AUD-HAR-349/358/359, AUD-TEST-096/097/099) — Gate: `python3 -m unittest tests.test_green_shell` (sau: T-3917; files: .claude/hooks/guard.py, tests/test_green_shell.py)
 ### Lát K — phát hành, cài đặt, CI
 - [x] `T-3919` 🟢 `release-sign`/`release-check`/`stage` (AUD-HAR-335…338/343…346/348/372…374/384/402/403, AUD-TEST-093/098/103, AUD-DOC-279/280) — Gate: `python3 -m unittest tests.test_green_release tests.test_release_signoff` (files: scripts/xt.py, docs/adr/, tests/)
 - [x] `T-3920` 🟢 `install.py`, chụp–khôi phục GO-NO-GO của `dev-task.sh` (AUD-SEC-652, AUD-TEST-101/102/104, AUD-HAR-396…399) — Gate: `python3 -m unittest tests.test_green_install tests.test_install` (files: scripts/install.py, scripts/dev-task.sh, tests/)
 - [x] `T-3921` 🟢 CI/phụ thuộc, bộ kiểm index của `web-api-ts`, tài liệu (AUD-DEP-023…025/027…029, AUD-DATA-014…018, AUD-DOC-275/276/278/290/291, AUD-SEC-723/728) — Gate: `python3 -m unittest tests.test_green_ci tests.test_ci tests.test_packs` (files: .github/, framework/templates/packs/, docs/, tests/)
 ### Lát L — đóng đợt
-- [ ] `T-3922` Chấp nhận có hạn các mục D-499 còn lại (AUD-HAR-341/347/368/375/376, AUD-PERF-026, AUD-SEC-563/564/568/647/662, AUD-DEP-026, AUD-DOC-277/292) — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md` (sau: T-3917, T-3918, T-3919, T-3920, T-3921; files: docs/ops/AUDIT-STATUS.md)
-- [ ] `T-3923` Sổ không còn nợ review mở — Gate: `python3 scripts/xt.py audit check --strict docs/ops/AUDIT-STATUS.md 2>&1 | grep -c 'nợ review còn mở' | grep -qx 0` (sau: T-3922; files: docs/ops/AUDIT-STATUS.md)
+- [x] `T-3922` Chấp nhận có hạn các mục D-499 còn lại (AUD-HAR-341/347/368/375/376, AUD-PERF-026, AUD-SEC-563/564/568/647/662, AUD-DEP-026, AUD-DOC-277/292) — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md` (sau: T-3917, T-3918, T-3919, T-3920, T-3921; files: docs/ops/AUDIT-STATUS.md)
+- [x] `T-3923` Sổ không còn nợ review mở — Gate: `test "$(python3 scripts/xt.py audit check --strict docs/ops/AUDIT-STATUS.md 2>&1 | grep -c 'nợ review còn mở')" = 0` (sau: T-3922; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 4 — sửa phát hiện audit delta cổng ký (ADR-0080, [báo cáo](../ops/AUDIT-REPORT-2026-11-17-delta.md))
+> Cổng ký lần 1 (ứng viên `fa81dd3e`): 🔴 3 · 🟠 10 · 🟢 12 → FAIL → đợt này, rồi audit delta lần 2 trên phần sửa và phần INCONCLUSIVE. D-500: harden không audit theo mốc.
+
+### Lát M — guard
+- [ ] `T-3924` 🔴 AUD-SEC-801/802/803: gán muộn `for`/`select`/`${X:=}`/`getopts` trong phạm vi hàm, `eval --`, mở rộng `${X:+…}`/`${X/…}`/mặc định lồng — Gate: `python3 -m unittest tests.test_guard_audit_red` (files: .claude/hooks/guard.py, tests/test_guard_audit_red.py)
+- [ ] `T-3925` 🟠 AUD-SEC-804/805/806/807, 🟢 AUD-SEC-808: DECISIONS hai bước Edit/hoa thường/Bash, `_git_external` không tin PATH, `-F branch=@tệp`/`{branch}`, `fetch-pack`/`clone -c`/`instaweb`/`send-email` — Gate: `python3 -m unittest tests.test_guard_audit_orange` (sau: T-3924; files: .claude/hooks/guard.py, tests/test_guard_audit_orange.py)
+### Lát N — máy, harness, tài liệu
+- [ ] `T-3926` 🟠 AUD-HAR-412/413, AUD-TEST-109; 🟢 AUD-HAR-414, AUD-TEST-110/111, AUD-DOC-294/295/297, AUD-DEP-030 — Gate: `python3 -m unittest tests.test_audit_dot4_har` (files: scripts/xt.py, .claude/skills/, framework/, tests/, README.md, CONTRIBUTING.md, docs/ops/RUNBOOK-PR-STEWARD.md, requirements*.txt)
+- [ ] `T-3927` 🟠 AUD-HAR-415/416/417; 🟢 AUD-HAR-418, AUD-DOC-296: Stop hook kẹt khi `.autopilot` là symlink, `--separate-git-dir`, `go_snapshot` gặp thư mục không đọc được — Gate: `python3 -m unittest tests.test_audit_dot4_scripts` (sau: T-3926; files: scripts/xt.py, scripts/dev-task.sh, tests/test_audit_dot4_scripts.py)
+### Lát O — cổng ký lần 2
+- [ ] `T-3928` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3924, T-3925, T-3926, T-3927; files: docs/ops/AUDIT-STATUS.md)

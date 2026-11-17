@@ -531,3 +531,10 @@
 - Chọn: Sửa mặc định kèm test hồi quy; chấp nhận có hạn 2027-01-21 khi là nghi ngờ chưa tái hiện, ranh giới sandbox, hiệu năng guard (đo ở T-3709), đổi thiết kế, hay lịch sử không viết lại được
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: lỗi thật có tái hiện được sửa với test, chiều chặt hơn khi xung đột (D-415). Giữ đường lùi: mục chấp nhận có chủ và hạn, xét lại cùng mốc hàng rào 2027-01-21. Phương án 2 kéo thiết kế mới vào harden (rủi ro cao hơn lợi); phương án 3 bỏ lỗi đã biết. Test mới ở file riêng mỗi lát để chạy song song không đụng nhau.
 - Đường lùi: Đổi các dòng chấp nhận về mở, lập lát sửa
+
+### D-500 · 2026-11-17T05:59:16+00:00 · AUD-HAR-412: ở pha harden máy vẫn trả milestone_audit: now (audit delta theo mốc) trái ADR-0080 (vét việc không audit, audit dồn về cổng ký). Sửa máy hay sửa ADR?
+
+- Phương án: (1) Sửa máy: ở delivery_phase harden, loop status không đòi audit theo mốc (milestone_audit bỏ/none), audit delta chỉ ở cổng ký; sửa README bước 10, autopilot bước 5, audit.md §1 cho khớp; giữ hành vi pha build · (2) Sửa ADR-0080 cho khớp máy: audit theo mốc cả ở harden · (3) Giữ cả hai, ghi chú ngoại lệ trong skill
+- Chọn: Sửa máy: ở delivery_phase harden, loop status không đòi audit theo mốc (milestone_audit bỏ/none), audit delta chỉ ở cổng ký; sửa README bước 10, autopilot bước 5, audit.md §1 cho khớp; giữ hành vi pha build
+- Lý do (tiêu chí chất lượng cuối): Đúng: chủ dự án yêu cầu không review/audit giữa đợt, chỉ ở cổng ký (D-494); máy in lệnh audit theo mốc làm vòng không hội tụ. Bền: một nguồn thật (máy) khớp ADR; test ghim cả hai pha. Phương án 2 đi ngược yêu cầu; 3 để mâu thuẫn tồn tại.
+- Đường lùi: Revert PR sửa máy; milestone_audit trở lại ở harden
