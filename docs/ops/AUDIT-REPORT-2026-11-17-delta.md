@@ -33,3 +33,15 @@ Năm lô: phần sửa của guard (#628/#630/#632), hai lô phần guard INCONC
 | harness/tài liệu/DEP | HAR có phát hiện; README, ADR-0074/0078 sạch; DEP pip sạch | 🟠 AUD-HAR-420, AUD-SEC-827 · 🟢 AUD-DOC-298/299, AUD-HAR-421 |
 
 Mỗi vòng rà đối kháng sâu hơn lại ra lỗ có từ trước của bộ đọc shell heuristic → D-502: sửa theo LỚP (giá trị không tính chắc ở đích/cờ của lệnh có luật → BUDGET; kênh chạy lệnh → BUDGET), cổng ký lần 3 rà diff sửa + hồi quy. Đợt 5: T-3929…T-3933.
+
+## Cổng ký lần 3 (ứng viên `b5de13e9`, sau đợt 5)
+
+Ba lô theo D-502 (diff sửa + hồi quy): #637, #638/#639, #636. Không hồi quy chậm (lệnh 14–30 KB: 1,0–1,2× nền); blueprint `--run` exit 0; idiom lành trong brief đều qua.
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| #637 lớp giá trị | CÓ PHÁT HIỆN (biến thể trong lớp, có từ trước) | 🔴 AUD-SEC-836…843 · 🟠 AUD-SEC-844 · 🟢 AUD-SEC-854 |
+| #638/#639 kênh chạy lệnh, heredoc, dữ liệu | CÓ PHÁT HIỆN (biến thể trong lớp, có từ trước) | 🔴 AUD-SEC-846…850 · 🟠 AUD-SEC-851/852, AUD-HAR-424/425 · 🟢 AUD-SEC-853, AUD-HAR-426 |
+| #636 scripts/tests | CÓ PHÁT HIỆN | 🟠 AUD-TEST-117 · 🟢 AUD-HAR-427/428, AUD-TEST-118 |
+
+Liệt kê biến thể trong lớp không hội tụ → D-503: mặc định chặn (BUDGET) trong lệnh có luật kèm danh sách cho phép hẹp; cổng ký lần 4 kiểm bất biến bằng fuzz có hướng + hồi quy. Đợt 6: T-3934…T-3936.
