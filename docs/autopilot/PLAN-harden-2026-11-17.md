@@ -18,7 +18,7 @@
 - [x] `T-3905` 🟠 AUD-SEC-591/592/593/746: mở rộng đứng riêng/dính ở vị trí cờ của lệnh gh có luật cờ, lệnh đăng chữ có `$X` riêng → BUDGET — Gate: `python3 -m unittest tests.test_hooks.GuardGhDynFlagTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 - [x] `T-3906` 🟠 AUD-SEC-600/604: `xargs` nối cờ vào lệnh gh; `-F=force=true` đọc như pflag — Gate: `python3 -m unittest tests.test_hooks.GuardGhXargsFieldTest` (sau: T-3905; files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát C — nhánh/ref phía máy chủ
-- [ ] `T-3907` 🟠 AUD-SEC-554/623/626/544: `switch` rồi `push -d HEAD`, `gh repo sync --force`, graphql gỡ bảo vệ nhánh, ghi thẳng nhánh chính qua `gh api` — Gate: `python3 -m unittest tests.test_hooks.GuardRemoteRefTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
+- [x] `T-3907` 🟠 AUD-SEC-554/623/626/544: `switch` rồi `push -d HEAD`, `gh repo sync --force`, graphql gỡ bảo vệ nhánh, ghi thẳng nhánh chính qua `gh api` — Gate: `python3 -m unittest tests.test_hooks.GuardRemoteRefWriteTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
 ### Lát D — chữ ký và duyệt giai đoạn
 - [ ] `T-3908` 🟠 AUD-SEC-545/625/637/654/641: nhận dạng lệnh `release-sign`/`stage approve`/`loop decide-prod` qua `python3 -m`, glob, bản sao; khoá đọc từ remote — Gate: `python3 -m unittest tests.test_hooks.GuardSignApproveTest` (files: .claude/hooks/guard.py, scripts/xt.py, tests/)
 - [ ] `T-3909` 🟠 AUD-SEC-629/630, AUD-HAR-385: ô Tên có ký tự điều khiển, `subject:` trang trí cuối dòng, hàng N/A BLOCKER của promotion — Gate: `python3 -m unittest tests.test_guard_go_no_go tests.test_release_signoff` (files: .claude/hooks/guard.py, scripts/xt.py, tests/)

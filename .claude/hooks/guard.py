@@ -2407,6 +2407,7 @@ GH_POST_SUBS = frozenset(
 )
 GH_POST_SUBS |= frozenset({("issue", "edit"), ("pr", "review"), ("release", "create"), ("release", "edit")})
 GH_ANYPOS_SUBS = frozenset({("cache", "delete")})  # `"$X"` = `--all` xoá mọi cache (GH_DESTROY_FLAGS)
+GH_ANYPOS_SUBS |= frozenset({("repo", "sync")})  # `"$X"` = `--force` (AUD-SEC-623)
 
 
 def _unquoted_dollar(word: str) -> bool:
@@ -9624,9 +9625,24 @@ def _gh_own_rule(args: List[str], root: str, cwd: str) -> Tuple[str, str]:
         return _pr_flag_merge_rule(args, rest, root)
     if args[:2] == ["alias", "import"]:  # `alias set`: ADR-0063 lát C chặn trước
         return "ask", "gh alias đặt lệnh tắt — guard không thấy lệnh thật khi alias chạy"
+    if args[:2] == ["repo", "sync"] and _gh_sync_force(args[2:]):
+        return "deny", GH_SYNC_FORCE_WHY
     if args[:1] == ["api"] and _gh_api_writes(args[1:]):
         return _gh_api_write_rule(args[1:], root)
     return "", ""
+
+
+# AUD-SEC-623: `gh repo sync --force` gọi `PATCH …/git/refs/heads/<b>` `force:true` (gh 2.89 "Hard reset the branch").
+GH_SYNC_FORCE_WHY = f"{PUSH_FORCE_WHY}: `gh repo sync --force` đặt lại cứng nhánh đích (AUD-SEC-623)"
+
+
+def _gh_sync_force(args: List[str]) -> bool:
+    """`--force` (cả `--force=…` khác `false`, viết tắt `--for`) trước `--`."""
+    for a in itertools.takewhile(lambda a: a not in OPTS_END, args):
+        key, eq, val = a.partition("=")
+        if len(key) >= 5 and "--force".startswith(key) and (not eq or val.lower() != "false"):
+            return True
+    return False
 
 
 def _gh_api_write_rule(args: List[str], root: str) -> Tuple[str, str]:
@@ -9634,7 +9650,27 @@ def _gh_api_write_rule(args: List[str], root: str) -> Tuple[str, str]:
     còn lại luật merge REST."""
     if _gh_api_ref_force(args):
         return "deny", GH_API_FORCE_WHY
-    return ("ask", DESTROY_ASK) if _gh_api_destroy(args) else _gh_api_merge_rule(args, root)
+    if _gh_api_destroy(args):  # xoá ref `heads/main` giữ mã DESTROY (huỷ không đảo ngược)
+        return "ask", DESTROY_ASK
+    return ("deny", GH_API_MAIN_WHY) if _gh_api_main_write(args) else _gh_api_merge_rule(args, root)
+
+
+# AUD-SEC-544: ghi thẳng nhánh chính qua REST — contents PUT/DELETE với `branch` chính (hay không nêu = mặc định), ghi
+# ref `heads/main` (PATCH …/git/refs/heads/main, POST …/git/refs `ref=refs/heads/main`) — như tool MCP ghi commit.
+GH_API_CONTENTS_RE = re.compile(r"/?repos/[^/\s]+/[^/\s]+/contents(?:/.*)?")
+GH_API_MAIN_WHY = "push thẳng nhánh chính qua `gh api` REST — khung yêu cầu đi qua PR (AUD-SEC-544)"
+
+
+def _gh_api_main_write(args: List[str]) -> bool:
+    pos = _positionals(args, GH_API_VALUE_FLAGS)
+    path = _api_path(pos[0]) if len(pos) == 1 else ""
+    fields = dict(f.partition("=")[::2] for f in _gh_api_field_values(args))
+    if GH_API_CONTENTS_RE.fullmatch(path):
+        branch = fields.get("branch")
+        return branch is None or branch.strip() in MCP_MAIN_BRANCHES or "$" in branch
+    ref = GH_API_REF_RE.fullmatch(path)
+    target = ref.group(1) if ref else fields.get("ref", "") if GH_API_REF_WRITE_RE.fullmatch(path) else ""
+    return target.removeprefix("refs/").removeprefix("heads/") in MAIN_BRANCHES
 
 
 # `PATCH …/git/refs/<ref>` (cả POST `…/git/refs`, số ít `git/ref/` — chặt) có trường `force` khác `false` ghi đè ref
@@ -9850,7 +9886,11 @@ GH_API_DELETE_DESTROY_RE = re.compile(
     r"|/?(?:gists|user/codespaces|projects)/[^/]+/?"
 )
 # Mutation graphql huỷ/chuyển repo — như `gh repo delete|archive`.
-GRAPHQL_DESTROY_RE = re.compile(r"\b(deleteRepository|transferRepository|archiveRepository)\b")
+# AUD-SEC-626: cả mutation gỡ lớp đỡ phía máy chủ — REST tương đương (`…/branches/main/protection`, `…/rulesets/5`) đã DESTROY.
+GRAPHQL_DESTROY_RE = re.compile(
+    r"\b(deleteRepository|transferRepository|archiveRepository|deleteBranchProtectionRule|updateBranchProtectionRule"
+    r"|deleteRepositoryRuleset|updateRepositoryRuleset|deleteEnvironment)\b"
+)
 
 
 def _gh_api_destroy(args: List[str]) -> bool:
@@ -13735,10 +13775,14 @@ def _dyn_exec_check(placed: "PlacedCmds") -> None:
     """ADR-0063 lớp mã động: công cụ chạy chữ guard không thấy như lệnh → chặn (không đoán nội dung): sed `e`/`s///e`
     (pattern space là đầu vào), awk `system(`/ống với lệnh không phải chuỗi nguyên văn, chương trình sed/awk đọc từ stdin
     (`-f -`), ghi `BASH_ENV`/`PS0…PS4`/`PROMPT_COMMAND` bằng lệnh dựng sẵn (`printf -v`, `mapfile`, `read`, `declare`…)."""
+    switched = False
     for c, _ in placed:
         n = normalize(c)
         name, args = (n[0], n[1:]) if n else ("", [])
         why = _dyn_exec_why(name, args) or _special_var_why(c, name, args) or _exec_env_why(c, name, args)
+        if switched and n[:2] == ["git", "push"] and _push_reads_head(n[2:]):
+            why = why or "`git push` theo `HEAD` sau khi `switch`/`checkout` trong cùng lệnh (AUD-SEC-554)"
+        switched = switched or n[:2] in (["git", "switch"], ["git", "checkout"])
         why = why or _env_file_why(c) or _cmd_env_why(c, name, args) or _runner_why(name, args, n) or _xargs_gh_why(c)
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
@@ -13918,6 +13962,13 @@ def _runner_why(name: str, args: List[str], n: List[str]) -> str:
     if name in SESSION_RUNNERS and runs:
         return f"`{name}` chạy lệnh trong phiên khác (AUD-SEC-608)"
     return ""
+
+
+def _push_reads_head(args: List[str]) -> bool:
+    """AUD-SEC-554: push mà nhánh đích lấy từ `HEAD` lúc chạy — không nêu refspec (nhánh hiện tại/upstream) hay refspec
+    nhắc `HEAD`/`@`; luật "nhánh hiện tại" của guard đọc `HEAD` lúc xét, trước `switch`/`checkout` của cùng lệnh."""
+    pos = [a for a in args if a[:1] != "-"]
+    return len(pos) < 2 or any("HEAD" in a or a == "@" or a.startswith(("@:", "+@")) for a in pos[1:])
 
 
 def _xargs_gh_why(c: List[str]) -> str:

@@ -3392,7 +3392,7 @@ class GuardBashWave3Test(unittest.TestCase):
             "gh workflow run release.yml",
             "gh repo edit --visibility public",
             "gh variable set X --body 1",
-            "gh repo sync --force",
+            "gh repo sync",  # `--force` = đặt lại cứng nhánh đích → chặn như push --force (AUD-SEC-623)
             "npm dist-tag add x@1 latest",
         ):
             with self.subTest(cmd):
@@ -7994,6 +7994,53 @@ class GuardReaderExecOptTest(unittest.TestCase):
         for cmd in self.ALLOW:
             with self.subTest(cmd=cmd):
                 self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+
+class GuardRemoteRefWriteTest(unittest.TestCase):
+    """AUD-SEC-554/623/626/544 (T-3907): push theo `HEAD` sau `switch`/`checkout` cùng lệnh, `gh repo sync --force`, graphql
+    gỡ bảo vệ nhánh/ruleset/môi trường, `gh api` REST ghi thẳng nhánh chính."""
+
+    DENY = (
+        ("git switch feat/other; git push origin -d HEAD", "BUDGET"),
+        ("git checkout feat/other && git push origin --delete HEAD", "BUDGET"),
+        ("git checkout feat/other && git push", "BUDGET"),
+        ("gh repo sync o/r --branch main --force", "RULE_DENY"),
+        ("gh repo sync --force=true o/r", "RULE_DENY"),
+        ("gh repo sync o/r $X", "BUDGET"),
+        ("gh api graphql -f query='mutation { deleteBranchProtectionRule(input:{x:1}) { a } }'", "DESTROY"),
+        ("gh api graphql -f query='mutation { updateRepositoryRuleset(input:{x:1}) { a } }'", "DESTROY"),
+        ("gh api graphql -f query='mutation { deleteEnvironment(input:{id:1}) { a } }'", "DESTROY"),
+        ("gh api -X PUT repos/o/r/contents/x -f branch=main -f message=m -f content=eA==", "PUSH_MAIN"),
+        ("gh api -X DELETE repos/o/r/contents/x -f message=m -f sha=1", "PUSH_MAIN"),
+        ("gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc", "PUSH_MAIN"),
+        ("gh api -X POST repos/o/r/git/refs -f ref=refs/heads/main -f sha=abc", "PUSH_MAIN"),
+    )
+    ALLOW = (
+        "git switch feat/x && git push origin feat/x",
+        "gh repo sync o/r --force=false",
+        "gh api -X PUT repos/o/r/contents/x -f branch=feat/x -f message=m -f content=eA==",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_remote_ref_writes_denied(self):
+        for cmd, code in self.DENY:
+            with self.subTest(cmd=cmd):
+                res = self.decide(cmd)
+                self.assertEqual((res["decision"], res.get("code")), ("deny", code), res)
+
+    def test_feature_branch_writes_not_denied(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertNotEqual(self.decide(cmd)["decision"], "deny", cmd)
 
 
 class GuardGhXargsFieldTest(unittest.TestCase):
