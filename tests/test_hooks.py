@@ -10250,8 +10250,10 @@ class GuardReviewForgeKeptTest(_GuardDebtCase):
         "gh issue comment$Z 5 -F r.md",
         "gh pr create$Z -t x -F r.md",
     )
-    FORGE_586 = (
-        "sh -c 'gh pr \"$@\"' x comment 5 --body '<MARK>'",
+    FORGE_586 = ("sh -c 'gh pr \"$@\"' x comment 5 --body '<MARK>'",)
+    # T-3937: thân `sh -c` gắn tham số vị trí quét lại ở tầng lồng — `gh … -F -` ở đó không thấy stdin `< r.md` → BUDGET
+    # trước luật dấu review (vẫn chặn)
+    FORGE_586_BOUND = (
         "bash -c 'gh pr \"$1\" 5 -F -' _ review < r.md",
         "sh -c 'gh api \"$@\"' x repos/o/r/issues/5/comments -F body=@- < r.md",
     )
@@ -10279,7 +10281,7 @@ class GuardReviewForgeKeptTest(_GuardDebtCase):
     def test_forms_with_mark_denied(self):  # AUD-SEC-585/586: hồi quy của bản rút (D-410)
         """Mọi dạng ghim (lệnh con dính mở rộng, lệnh bọc `sh -c`/`bash -c`, editor git) → REVIEW_FORGE."""
         self.assert_code(self.cmds(self.FORGE_585 + self.FORGE_586), "REVIEW_FORGE")
-        self.assert_code(self.cmds(self.FORGE_EDITOR), "BUDGET")
+        self.assert_code(self.cmds(self.FORGE_EDITOR + self.FORGE_586_BOUND), "BUDGET")
         # D-503: `$0` ở lệnh con gh là biến bash tự gán → BUDGET trước luật dấu review (trước REVIEW_FORGE)
         self.assert_code(self.cmds(("sh -c 'gh pr $0 5 -F -' comment < r.md",)), "BUDGET")
 
@@ -11752,7 +11754,7 @@ class GuardQuotedOperatorTest(_GuardDebtCase):
         ("git > '|' rm .claude/hooks/_lib.sh", "ask", "deny", "HOOK_BYPASS"),
         ("npx 2> ';' gh -R o/r repo delete o/r --yes", "ask", "deny", "DESTROY"),
         ("typeset -x ';' HOME=.claude; rm -f ~/settings.json", "ask", "deny", "HOOK_BYPASS"),
-        ("echo ~ | xargs rm -rf ';'", "ask", "deny", "WIPE_OUTSIDE"),
+        ("echo ~ | xargs rm -rf ';'", "deny", "deny", "BUDGET"),  # T-3937: xargs rm có đích chữ (`;`)
         ('python3 -c \'import subprocess; subprocess.run(["bash", "-c", "\\n" "rm -rf ~"])\'', "ask", "", "OTHER_ASK"),
         ("echo '>' ; git commit --no-verify -m x", "deny", "deny", "RULE_DENY"),
         ("cat < '<' ; gh api repos/o/r/merges --input b.json", "ask", "deny", "REVIEW_FORGE"),

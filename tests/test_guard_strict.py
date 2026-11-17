@@ -3627,9 +3627,10 @@ class GuardAud612FormsTest(unittest.TestCase):
         "cat <(echo) <<EOF | bash\nrm -rf ~\nEOF",
     )
     # D-503: `echo x > "$(echo)"out.txt`, `rm -rf "$(git rev-parse --show-toplevel)/build"` nay BUDGET (thay lệnh ở đích
-    # chuyển hướng ghi/lệnh xoá); `$(mktemp …)` guard biết là đường mới nên vẫn chạy
+    # chuyển hướng ghi/lệnh xoá); `$(mktemp …)` guard biết là đường mới nên vẫn chạy. T-3937: `cp`/`mv`/`tee`… là lệnh
+    # ghi có luật hẹp — `cp /tmp/x "$(echo)"notes.txt` nay BUDGET (`StrictAllowlistSignOff4` ghim)
     ALLOW = (
-        'cp /tmp/x "$(echo)"notes.txt',
+        'cp /tmp/x "$(mktemp -d)"/notes.txt',
         'echo x > "$(mktemp -d)/out.log"',
         'tar -xf a.tar -C "$(mktemp -d)"',
         "printf 'echo %s\\n' hi | bash",

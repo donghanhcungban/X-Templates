@@ -1,0 +1,55 @@
+"""D-503 (T-3937): hồi quy tất định của fuzz bất biến cổng ký lần 4 — mọi tổ hợp nguy hiểm (đã xác nhận bằng bash thật
+trong hộp cát) không được cho qua.
+
+`tests/fixtures/autonomy/d503_invariant.jsonl`: tập con cố định của bộ sinh có hướng (lệnh có luật × dạng mở rộng ở vị
+trí tên/cờ/lệnh con/đích × gốc lọt): một nửa số ca lọt của MỖI gốc (thứ tự id, chỉ số chẵn) — biến gán ngoài mô hình,
+tham số vị trí `sh -c`, hậu tố/tên lệnh động sau trình chạy, `cd` vào thay lệnh, xargs, lệnh ghi — cộng mọi dạng trơn."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import unittest
+import unittest.mock as mock
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+os.environ.setdefault("XT_GUARD_PHASE", "harden")
+sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
+import guard
+
+FIXTURE = ROOT / "tests" / "fixtures" / "autonomy" / "d503_invariant.jsonl"
+ROOTS_MIN = 28  # số gốc lọt của bộ sinh phải có mặt
+
+
+def decide(cmd: str) -> dict:
+    with (
+        mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(ROOT), "XT_GUARD_POLICY": ""}),
+        mock.patch.object(guard, "_current_branch", return_value="feat"),
+    ):
+        return guard.apply_policy(guard.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+
+class D503InvariantTest(unittest.TestCase):
+    def test_fixture_covers_every_root(self):
+        rows = [json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines()]
+        roots = {r["root"] for r in rows}
+        self.assertGreaterEqual(len(roots - {"plain"}), ROOTS_MIN)
+        self.assertIn("plain", roots)
+        self.assertGreaterEqual(len(rows), 300)
+
+    def test_no_dangerous_combination_allowed(self):
+        start = time.monotonic()
+        leaked = []
+        for line in FIXTURE.read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            if decide(row["cmd"])["decision"] not in ("deny", "ask"):
+                leaked.append(row["id"])
+        self.assertEqual(leaked, [])
+        self.assertLess(time.monotonic() - start, 60)
+
+
+if __name__ == "__main__":
+    unittest.main()

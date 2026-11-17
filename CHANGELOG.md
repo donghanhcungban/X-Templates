@@ -238,9 +238,21 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3937 (D-503, cổng ký lần 4 + fuzz bất biến): guard chặn (BUDGET) lệnh có luật hẹp sau `cd`/`pushd` vào thay lệnh
+  chưa tính được, biến gán ngoài mô hình (`eval X=…`, `${X:=…}`, mảng, vế phải có toán tử, `unset`, `set --`,
+  `source`), tham số vị trí `sh -c` không gắn được vào đối số chữ (gắn được thì quét thân đã gắn), hậu tố và tên lệnh
+  động sau trình chạy (`uv run`, `uvx`, `direnv exec`), xargs `-I`/đích chữ vào `rm`, lệnh ghi (`tee`/`cp`/`mv`/`ln`/
+  `install`/`truncate`/`sed`) như lệnh xoá. Hết chặn oan: thân commit ở cụm cờ `-am`/`-asm`, `${TMPDIR:-/tmp}`,
+  `cd` vào giá trị mờ khi sau đó không có lệnh có luật, `find` không hành động ghi, `gh api` GET. `-m` chỉ là cờ chữ ở
+  lệnh con git nhận thông điệp (`git checkout -m "$(…)"` nay chặn). Test `test_guard_signoff4`,
+  `test_guard_d503_invariant` (tổ hợp tất định); AUD-TEST-119: test song song không còn để lại env cho `test_hooks`.
+  Bộ theo dõi thư mục giải `cd "$HOME…"`/`"$PWD…"`/`"$(pwd)…"` như `~`/thư mục hiện tại (`$PWD` giữ thêm ứng viên
+  không biết, review #186); nguồn chữ trơn của xargs (`echo`/`printf '%s\n'`/`ls`) nối vào argv lệnh ghi/xoá rồi quét.
+
 - Gói `web-api-ts`: `pnpm audit` đỏ vì GHSA-fc5q-39xc-vjpf (picomatch, chưa có bản vá, chỉ qua devDependency vitest);
   ngoại lệ hẹp `auditConfig.ignoreGhsas` trong `starter/pnpm-workspace.yaml` + `starter/audit-exceptions.json` (hạn
   2026-12-18, BASE-DEP-004, D-504); CI giữ `--audit-level moderate`, test ghim hai file khớp nhau và chưa hết hạn.
+
 - T-3934 (D-503): guard mặc định chặn (BUDGET) theo cấu trúc ở lệnh có luật hẹp (xoá tệp, git trừ lệnh con chỉ đọc/
   `add`, gh trừ lệnh đọc, phá dữ liệu, `mkfs*`, đích chuyển hướng ghi): thay lệnh/tiến trình, toán tử trên biến không gán
   chữ (`${HOME%/*}`, `${X%/x}` với `X=$HOME/x`), biến bash tự gán (`$BASH_*`, `$DIRSTACK`, `$0`…), biến từ `read`/
