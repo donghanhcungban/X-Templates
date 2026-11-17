@@ -7,9 +7,9 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 2
-    # BASE-DEP-016/019: chỉ nhận bản đã phát hành ≥ 3 ngày (bản bị rút/tiêm mã thường lộ trong vài ngày đầu).
+    # BASE-DEP-016/019: chỉ nhận bản đã phát hành ≥ 7 ngày (AUD-DEP-025: zizmor `dependabot-cooldown` đòi ≥ 7; bản bị rút/tiêm mã thường lộ trong vài ngày đầu).
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -21,7 +21,7 @@ updates:
       day: monday
     open-pull-requests-limit: 2
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       pack-npm:
         patterns: ["*"]
@@ -33,7 +33,7 @@ updates:
       day: monday
     open-pull-requests-limit: 2
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       dev-tools:
         patterns: ["*"]
