@@ -56,6 +56,7 @@ DENY = {
         'X=$(cat f); rm -rf "$X"',
         "X=abc; git reset ${X@E}",
         'true && : @H; rm -rf "$_"',  # lệnh trước `$_` đứng sau `&&`: có thể không chạy
+        'true && : @H; cd "$_"; rm -rf zz',  # `cd` vào `$_` không tính được
     ),
     "b-runner": (
         "uv run --with rm git push --force",
@@ -86,6 +87,9 @@ DENY = {
 ALLOW = (
     'mkdir -p build/out && cp README.md "$_"',
     'mkdir -p build/out; cp README.md "$_/x"',
+    'true && mkdir -p build/out && chmod 755 "$_"',
+    'mkdir -p d && cd "$_"',
+    'cd "${CLAUDE_PROJECT_DIR:-.}" && git status',
     'git -C "${CLAUDE_PROJECT_DIR:-.}" status --short',
     'while IFS= read -r; do git add -- "$REPLY"; done < files.txt',
     'for f in *.txt; do rm "$f"; done',
@@ -197,6 +201,8 @@ class DirectedFuzzTest(unittest.TestCase):
         allowed = []
         for seed in FUZZ_SEEDS:
             for prefix, form in FUZZ_FORMS:
+                if seed.startswith("echo x >") and form.startswith("<("):
+                    continue  # chuyển hướng vào thay tiến trình ghi vào tiến trình, không phải tệp (`exec > >(tee log)`)
                 cmd = prefix + seed.replace("W", form)
                 if decide(cmd)["decision"] != "deny":
                     allowed.append(cmd)

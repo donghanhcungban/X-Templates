@@ -244,8 +244,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   dưới trình chạy → BUDGET; commit/heredoc dưới trình chạy và here-string vào commit đọc như dạng trơn. xargs vào shell
   có `$1`, trình bọc thiếu lệnh, lệnh xoá khác `rm`, git ghi → BUDGET; `--rep=Z` viết tắt nhận ra. `dropdb --ho`,
   `--maintenance-db=URI` đọc máy chủ; `printf '\x..' | rev | sh` không giải đoán. Chặt hơn (trước cho qua):
-  `rm -rf "${TMPDIR%/}/x"`, `rm -f "${f%.txt}.md"`, `for f in *.txt; do rm -f "${f/.txt/.bak}"; done`; nới có tính:
-  `git <status|add|…> "$REPLY"`, `cp f "$_"` khi `$_` tính được.
+  `rm -rf "${TMPDIR%/}/x"`, `rm -f "${f%.txt}.md"`, `for f in *.txt; do rm -f "${f/.txt/.bak}"; done`,
+  `R=$(git rev-parse --show-toplevel); rm -rf "$R"/build`, `read … b; git checkout $b`, `git push origin $(echo x)`,
+  `echo x > "$(echo)"out.txt`, `gh pr close 5 "$(…)"`, `… | xargs git branch -D|tag -d|checkout --|<alias>`,
+  `xargs -0 bash -c`; mã đổi: `: ~; rm -rf "$_"` thành RULE_DENY, `sh -c 'gh pr $0 …'` thành BUDGET. Nới có tính:
+  `git <status|add|…> "$REPLY"`, `cp f "$_"` khi `$_` tính được, `$(pwd)`/`$(git branch --show-current)`/`$(mktemp)`.
 
 - AUD-HAR-419/420, AUD-SEC-818 (T-3931, D-502): thân heredoc tới `git commit`/`gh pr` đọc theo token (tên lệnh có nháy,
   nhóm `{…}`, `exec N<<`, `git -c $'…'`, `sh -c 'git commit -F -' <<E`) nên dòng ghi công AI không còn lọt

@@ -2506,7 +2506,8 @@ OPAQUE_VARS |= frozenset(
 SELF_ASSIGNED_PREFIXES = ("BASH_", "COMP_", "READLINE_")
 OPAQUE_ANY = "*"  # tên đích động: mọi biến mờ
 OPAQUE_PASSIVE = frozenset(
-    "cd pushd popd set for select shopt read readarray mapfile declare typeset local export readonly let printf getopts".split()
+    # D-503: `cd`/`pushd` ra khỏi tập này — đích tương đối phía sau theo thư mục đó (`: ~; cd "$_"; rm -rf zz`)
+    "popd set for select shopt read readarray mapfile declare typeset local export readonly let printf getopts".split()
 )
 RULED_ENV_OP_RE = re.compile(r"\$\{(HOME|PWD|OLDPWD|BASH|SHELL|CLAUDE_PROJECT_DIR|0)(?=[^}\w])")  # `${0%bash}`
 VAR_REF_NAME_RE = re.compile(r"\$(?:\{(!)|\{?([A-Za-z_]\w*|[0-9-]))")  # cả `$0`, `$1`, `$-` (D-503)
@@ -2626,15 +2627,18 @@ def _ruled_env_op(word: str, assigned: Set[str]) -> bool:
 def _opaque_checked(seg: List[str], words: List[str]) -> List[Tuple[str, int]]:
     """(từ, mức xét) cần xét: đích chuyển hướng ghi của mọi lệnh đơn và đối số của lệnh có luật hẹp (`_dd_full`, D-503)
     ở `DD_FULL`; đối số lệnh có luật khác trừ lệnh chỉ đặt biến/thư mục ở `DD_BASIC` (biến mờ cơ sở như D-502)."""
-    out = [(b, DD_FULL) for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a]
+    # `> >(tee -a log)`: ghi vào tiến trình, không phải tệp
+    out = [(b, DD_FULL) for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a and b != PROCSUB_WORD]
     name = posixpath.basename(_dequote(words[0])) if words else ""
     full = _dd_full(name) and not (name == "git" and _git_read_sub(words[1:]))
-    if full or name in GATE_NAMES and name not in OPAQUE_PASSIVE:
+    if name in ("cd", "pushd"):  # chỉ biến mờ cơ sở: `cd "${CLAUDE_PROJECT_DIR:-.}"` vẫn chạy
+        out += [(w, DD_NAMES) for w in words[1:]]
+    elif full or name in GATE_NAMES and name not in OPAQUE_PASSIVE:
         out += [(w, DD_FULL if full else DD_BASIC) for w in _dd_args(name, words[1:])]
     return out
 
 
-DD_BASIC, DD_FULL = 0, 1
+DD_NAMES, DD_BASIC, DD_FULL = -1, 0, 1
 GIT_READ_SUBS = frozenset("diff log show shortlog range-diff whatchanged".split())  # chỉ đọc: mức D-502
 
 
@@ -2651,7 +2655,7 @@ def _git_read_sub(args: List[str]) -> bool:
 # `select`/`for` không chữ (`_weak_seeds`), mở rộng tham số có toán tử trên biến không gán chữ (`_dd_op_ok`). Cho phép:
 # biến gán chữ trước lần dùng (`_lit_names`), `$HOME`/`$PWD`/`$TMPDIR` và biến môi trường khác TRẦN, `"$@"`/`$1`, số
 # học, `$_` khi lệnh trước là lệnh đơn có đối số cuối là chữ (`_last_arg_splice` — bản thay quét như lệnh).
-DD_DELETERS = frozenset({"rm", "shred", "unlink", "rmdir", "find", "rsync", "dd", "srm", "wipefs"})
+DD_DELETERS = frozenset({"rm", "shred", "unlink", "rmdir", "find", "rsync", "dd"})
 GIT_VALUE_SAFE = frozenset(
     "status add ls-files rev-parse blame describe cat-file rev-list merge-base show-ref ls-tree version".split()
 )
@@ -2747,8 +2751,8 @@ def _subst_computed(word: str, i: int) -> bool:
 def _dd_word_bad(word: str, names: Set[str], lit: Set[str], mode: int) -> bool:
     if _opaque_ref(_var_refs(word), names):
         return True
-    if mode == DD_BASIC:
-        return _ruled_env_op(word, lit)
+    if mode != DD_FULL:
+        return mode == DD_BASIC and _ruled_env_op(word, lit)
     return any(not _dd_op_ok(n, op, lit) for n, op in _dd_params(word)) or _dd_subst(word)
 
 
@@ -2820,7 +2824,8 @@ def _last_arg_splice(cmd: str) -> Optional[str]:
     for k, (seg, _) in enumerate(cmds):
         uses = sum(len(_underscores(w)) for w in seg)
         prev = _no_redirects(cmds[k - 1][1]) if k else []
-        ran = k < 2 or seps[k - 2] != "&&"  # lệnh trước chắc đã chạy: không đứng sau `&&`
+        # lệnh trước chắc đã chạy: nối với lệnh này bằng `&&` (nó thành công), hay chính nó không đứng sau `&&`
+        ran = k < 2 or seps[k - 1] == "&&" or seps[k - 2] != "&&"
         last = prev[-1] if prev and ran else ""
         if uses and not (LAST_ARG_WORD_RE.fullmatch(last) and not re.search(r"[*?\[]", last)):
             return None
@@ -2906,7 +2911,7 @@ def _opaque_value_why(cmd: str) -> str:
     lit = _lit_names(cmds, cmd)
     for seg, words in cmds:
         for w, mode in _opaque_checked(seg, words):
-            if _dd_word_bad(w, weak if mode else names, lit, mode):
+            if _dd_word_bad(w, weak if mode == DD_FULL else names, lit, mode):
                 return OPAQUE_VALUE_WHY.format(clean_text(w)[:80])
     return ""
 
@@ -18621,7 +18626,7 @@ GATE_PASSIVE: FrozenSet[str] = frozenset(
     "python python3 node perl ruby php cat tac head tail wc grep egrep fgrep zgrep diff cmp jq echo"
     " date true false nproc pwd ls whoami hostname uname id test [ [[ basename dirname readlink realpath stat file"
     " du md5sum sha1sum sha224sum sha256sum sha384sum sha512sum b2sum cksum more ps pgrep cut type which"
-    " printenv tr :".split()
+    " printenv tr : mktemp".split()  # D-503: `$(mktemp …)` là đường mới (`_subst_computed`)
 )
 # Tên lệnh có luật — mọi tên luật rẽ nhánh, gồm cả `GATE_PASSIVE`: tập để hỏi "tên này có luật không" (đọc lại hậu tố của
 # lát 6, D-432), còn `GATE_NAMES` chỉ để kích hoạt cổng. Đúng bằng tập tên rẽ nhánh mà bộ đọc mã của `GuardGateNamesTest`
@@ -18632,7 +18637,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     # Review #526: `m4` (`_is_m4`), `mkfs` (`GLOB_COMMANDS` định nghĩa sau), `for` (`_argv_split_trigger`), `alias`
     # (`_alias_rule` khớp mẫu `_may_be_alias`). Từ khoá shell (`SHELL_KEYWORDS`: `if then else elif while until do !`)
     # không thuộc tập: `_strip_prefixes` bỏ chúng trước khi lấy tên nên cổng không bao giờ gặp chúng làm tên lệnh.
-    + "m4 mkfs for alias".split()
+    + "m4 mkfs for alias mktemp".split()
 ).union(
     IMPLICIT_TOOL_HEADS,  # công cụ nạp tệp ngầm: `just`, `pytest`, `mvn`… (`_implicit_tools`)
     HEREDOC_RUN_SAFE - {""},  # `:`, `tr` (`_heredoc_runner`)

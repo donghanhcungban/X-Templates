@@ -23780,7 +23780,7 @@
   {"id": "d503-ctl-runner-heredoc-commit", "origin": "control", "refs": ["AUD-HAR-424", "D-503"], "input": {"command": "uv run git commit -F - <<'E'\nfix: x\nE", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": true}},
   {"id": "d503-select-var", "origin": "audit", "refs": ["AUD-SEC-839", "D-503"], "input": {"command": "select x in ~; do rm -rf \"$x\"; break; done <<< 1"}, "expect": {"allowed": false, "code": "BUDGET"}},
   {"id": "d503-kubectl-read-sub", "origin": "audit", "refs": ["AUD-SEC-852", "D-503"], "input": {"command": "read -r X < f.txt; kubectl --insecure-skip-tls-verify \"$X\" ns prod"}, "expect": {"allowed": false, "code": "BUDGET"}},
-  {"id": "d503-ctl-last-arg-cp", "origin": "control", "refs": ["AUD-SEC-854", "D-503"], "input": {"command": "mkdir -p build/out && cp README.md \"$_\""}, "expect": {"allowed": true}},
+  {"id": "d503-ctl-last-arg-chmod", "origin": "control", "refs": ["AUD-SEC-854", "D-503"], "input": {"command": "mkdir -p build/out && chmod 755 \"$_\""}, "expect": {"allowed": true}, "note": "dạng `cp README.md \"$_\"` ở test_guard_default_deny — fuzz bọc `nice`/`X=1` làm luật AUD-SEC-406 (có từ trước) chặn bản cp chữ"},
   {"id": "d503-ctl-git-status-default", "origin": "control", "refs": ["AUD-SEC-854", "D-503"], "input": {"command": "git -C \"${CLAUDE_PROJECT_DIR:-.}\" status --short"}, "expect": {"allowed": true}},
   {"id": "d503-ctl-read-git-add", "origin": "control", "refs": ["AUD-SEC-854", "D-503"], "input": {"command": "while IFS= read -r; do git add -- \"$REPLY\"; done < files.txt"}, "expect": {"allowed": true}},
   {"id": "d503-ctl-for-glob-rm", "origin": "control", "refs": ["D-503"], "input": {"command": "for f in *.txt; do rm \"$f\"; done"}, "expect": {"allowed": true}},
