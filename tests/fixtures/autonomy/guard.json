@@ -23750,6 +23750,11 @@
   {"id": "aud818-printenv", "origin": "audit", "refs": ["AUD-SEC-818"], "input": {"command": "printenv GH_TOKEN"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
   {"id": "aud818-echo", "origin": "audit", "refs": ["AUD-SEC-818"], "input": {"command": "echo \"$GH_TOKEN\""}, "expect": {"allowed": false, "code": "RULE_DENY"}},
   {"id": "aud818-ctl-gh-repo", "origin": "control", "refs": ["AUD-SEC-818"], "input": {"command": "echo \"$GH_REPO\""}, "expect": {"allowed": true}},
-  {"id": "aud818-ctl-auth-status", "origin": "control", "refs": ["AUD-SEC-818"], "input": {"command": "gh auth status"}, "expect": {"allowed": true}}
+  {"id": "aud818-ctl-auth-status", "origin": "control", "refs": ["AUD-SEC-818"], "input": {"command": "gh auth status"}, "expect": {"allowed": true}},
+  {"id": "aud419-sh-c-commit", "origin": "audit", "refs": ["AUD-HAR-419"], "input": {"command": "sh -c 'git commit -F -' <<'E'\nfix: x\n\nClaude-Session: x\nE", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud419-ctl-sh-c-commit-clean", "origin": "control", "refs": ["AUD-HAR-419"], "input": {"command": "sh -c 'git commit -F -' <<'E'\nfix: x\nE", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": true}},
+  {"id": "aud419-exec-stdin-bash", "origin": "audit", "refs": ["AUD-HAR-419"], "input": {"command": "exec <<'E'\nrm -rf ~\nE\nbash"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud419-group-bash", "origin": "audit", "refs": ["AUD-HAR-419"], "input": {"command": "( bash ) <<'E'\nrm -rf ~\nE"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud419-ctl-exec-stdin-cat", "origin": "control", "refs": ["AUD-HAR-419"], "input": {"command": "exec <<'E'\nrm -rf ~\nE\ncat"}, "expect": {"allowed": true}}
  ]
 }

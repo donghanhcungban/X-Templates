@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 import unittest.mock as mock
 from pathlib import Path
@@ -17,6 +18,7 @@ os.environ.setdefault("XT_GUARD_PHASE", "harden")
 sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
 import guard
 
+H = chr(126)  # `~` dựng bằng chr: chữ xoá home không nguyên văn trong tệp test
 A = "Co-Authored-By: " + "Cla" + "ude " + "Op" + "us 5 <x@y>"  # dòng ghi công AI (xt.yaml repo: `forbid`)
 
 
@@ -25,7 +27,7 @@ def decide(cmd: str) -> dict:
         mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(ROOT), "XT_GUARD_POLICY": ""}),
         mock.patch.object(guard, "_current_branch", return_value="feat"),
     ):
-        return guard.apply_policy(guard.bash_decision(cmd.replace("@A", A), str(ROOT)))
+        return guard.apply_policy(guard.bash_decision(cmd.replace("@A", A).replace("@H", H), str(ROOT)))
 
 
 def here(head: str, body: str = "fix: x\n\n@A", tail: str = "") -> str:
@@ -44,6 +46,16 @@ DENY = {
         here("git -c $'user.name=a\\';b' commit -F - <<'E'"),
         here("\"gh\" pr create --title 'fix: x' --body-file - <<'E'", "body\n\n@A"),
         here("g''h pr create --title 'fix: x' --body-file - <<'E'", "body\n\n@A"),
+        # shell con thừa stdin chạy commit/PR (lượt 2 của T-3931)
+        here("sh -c 'git commit -F -' <<'E'"),
+        here("bash -lc \"git -C . commit -F -\" <<'E'"),
+        here("sh -c 'sh -c \"git commit -F -\"' <<'E'"),
+        here("bash -c 'gh pr create --title \"fix: x\" --body-file -' <<'E'", "b\n\n@A"),
+        # heredoc vào shell gắn theo token: thân là lệnh, quét như `bash <<'E'`
+        here("{ bash; } <<'E'", "rm -rf @H"),
+        here("( bash ) <<'E'", "rm -rf @H"),
+        here("exec <<'E'", "rm -rf @H", "bash"),
+        here("echo $((1<<2)); { bash; } <<'E'", "rm -rf @H"),
     ),
     "AUD-HAR-420": (
         'psql -h db.example.com -c "DROP DATABASE prod"',
@@ -83,6 +95,11 @@ ALLOW = {
         here("exec 3<<'E'", "@A", "echo hi"),
         here("git commit -m 'fix: y'; cat <<'E'", "@A"),
         "{ cat <<'E'; } ; git commit -m 'fix: x'\n@A\nE",
+        here("sh -c 'git commit -F -' <<'E'", "fix: x"),
+        here("sh -c 'echo hi' <<'E'", "@A"),
+        here("exec <<'E'", "echo hi", "bash"),
+        here("exec <<'E'", "rm -rf @H", "cat"),
+        here("echo $((1<<2)); cat <<'E'", "rm -rf @H"),
         here("echo $((1<<2)); { git commit -F -; } <<'E'", "fix: x"),
         here("python3 - <<'E'", "print(1)"),
     ),
@@ -134,6 +151,8 @@ class HarClassTest(unittest.TestCase):
 
     def test_attribution_reason(self):
         for cmd in DENY["AUD-HAR-419"]:
+            if "@A" not in cmd or "--body-file -'" in cmd:  # thân lệnh shell / `--body-file -` lồng: luật khác chặn
+                continue
             with self.subTest(cmd=cmd):
                 self.assertIn("LOOP-HARNESS-027", decide(cmd)["reason"])
 
@@ -188,10 +207,15 @@ class HarHelperTest(unittest.TestCase):
         self.assertEqual(guard._here_reach(t, t.index("<<")), (0, len(t)))
 
     def test_attribution_kind(self):
-        self.assertEqual(guard._attribution_kind(["git", "commit"]), "commit")
-        self.assertEqual(guard._attribution_kind(["gh", "pr", "create"]), "pr")
-        self.assertEqual(guard._attribution_kind(["gh", "pr", "view"]), "")
-        self.assertEqual(guard._attribution_kind(["}", "<<", "E"]), "")
+        self.assertEqual(guard._attribution_kinds(["git", "commit"]), {"commit"})
+        self.assertEqual(guard._attribution_kinds(["gh", "pr", "create"]), {"pr"})
+        self.assertEqual(guard._attribution_kinds(["gh", "pr", "view"]), set())
+        self.assertEqual(guard._attribution_kinds(["}", "<<", "E"]), set())
+        both = ["sh", "-c", "git commit -m x; gh pr create -t 'fix: x' -b y"]
+        self.assertEqual(guard._attribution_kinds(both), {"commit", "pr"})
+        self.assertEqual(guard._attribution_kinds(["sh", "-c", "git commit"], guard.STRICT_EVAL_DEPTH), set())
+        self.assertEqual(guard._attribution_targets(["sh", "-c", "echo"], None, "/r"), [])
+        self.assertEqual(guard._attribution_targets(["sh", "-c", "git commit"], None, "/r"), [("/r", [], "commit")])
 
     def test_here_owned(self):
         cmd = "git commit -m x"
@@ -207,6 +231,17 @@ class HarHelperTest(unittest.TestCase):
         guard._here_unread_attribution(here("echo $((1<<2)); git commit -F - <<'E'", "x"), "commit")
         with self.assertRaises(guard.ScanTooComplex):
             guard._here_unread_attribution(here("echo $((1<<2)); git commit -F - <<'E'", A), "commit")
+
+    def test_attribution_needs_forbid_key(self):
+        cmd = here("sh -c 'git commit -F -' <<'E'", A)
+        with tempfile.TemporaryDirectory() as d:  # không có xt.yaml khai `forbid`: không xét
+            self.assertEqual(guard.ai_attribution(cmd, [(["sh", "-c", "git commit -F -"], d)], d), "")
+
+    def test_heredoc_scripts_token(self):
+        self.assertEqual(guard._heredoc_scripts("echo hi"), [])
+        self.assertEqual(guard._heredoc_scripts(here("{ bash; } <<'E'", "ls")), ["ls"])
+        self.assertEqual(guard._heredoc_scripts(here("echo $((1<<2)); { bash; } <<'E'", "ls")), ["ls"])
+        self.assertEqual(guard._heredoc_scripts(here("echo $((1<<2)); { cat; } <<'E'", "ls")), [])
 
     def test_destroy_local(self):
         for h in ("", "localhost", "127.0.0.1", "::1", "[::1]", "/tmp", ".", "(local)", "tcp:localhost,1433", ".\\X"):

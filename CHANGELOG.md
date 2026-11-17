@@ -237,8 +237,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 ### Fixed
 
 - AUD-HAR-419/420, AUD-SEC-818 (T-3931, D-502): thân heredoc tới `git commit`/`gh pr` đọc theo token (tên lệnh có nháy,
-  nhóm `{…}`, `exec N<<`, `git -c $'…'`) nên dòng ghi công AI không còn lọt `ai_attribution: forbid`; không đọc chắc mà
-  có chữ ghi công → BUDGET. Mã mới `DATA_DESTROY`: client CSDL phá dữ liệu tới máy chủ không cục bộ bị chặn (tài liệu
+  nhóm `{…}`, `exec N<<`, `git -c $'…'`, `sh -c 'git commit -F -' <<E`) nên dòng ghi công AI không còn lọt
+  `ai_attribution: forbid`; không đọc chắc mà có chữ ghi công → BUDGET. Heredoc vào shell cũng gắn theo token
+  (`( bash ) <<E`, `exec <<E` rồi `bash`): thân quét như script. Mã mới `DATA_DESTROY`: client CSDL phá dữ liệu tới máy chủ không cục bộ bị chặn (tài liệu
   `stop-points-and-escalation.md` khớp hành vi). In biến token GitHub (`printenv GH_TOKEN`, `echo "$GH_TOKEN"`) chặn như
   `gh auth token`. Dự án đích: chạy lại `install.py`.
 

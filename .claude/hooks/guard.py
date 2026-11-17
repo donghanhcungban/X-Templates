@@ -13499,43 +13499,56 @@ def _group_delta(t: str) -> int:
     return {"{": 1, "}": -1}.get(t, 0)
 
 
-def _here_reach(tokens: List[str], k: int) -> Tuple[int, int]:
+def _level_table(tokens: List[str]) -> Tuple[List[int], List[int]]:
+    """(L, P): `L[j]` độ sâu nhóm trước token j, `P[j]` = min(L[0..j]) — tính một lần cho mọi heredoc của lệnh (nhiều
+    heredoc không thành bậc hai: `cat <<A; cat <<A; …`)."""
+    lv, pm = [0], [0]
+    for t in tokens:
+        lv.append(lv[-1] + _group_delta(t))
+        pm.append(min(pm[-1], lv[-1]))
+    return lv, pm
+
+
+def _here_reach(tokens: List[str], k: int, table: Optional[Tuple[List[int], List[int]]] = None) -> Tuple[int, int]:
     """[đầu, cuối) các token mà thân heredoc ở toán tử `tokens[k]` có thể tới: mức ngoài cùng = ra khỏi mọi nhóm bao
     nó (`{ a; cat <<E; } | c` — đầu ra của nhóm vào `c`); lùi/tiến tới dấu nối danh sách ở mức đó; `exec` không lệnh →
     tới hết lệnh Bash."""
-    level = low = 0
+    lv, pm = table or _level_table(tokens)
+    low, lo = pm[k], k
     for j in range(k - 1, -1, -1):
-        level -= _group_delta(tokens[j])
-        low = min(low, level)
-    level, lo = 0, k
-    for j in range(k - 1, -1, -1):
-        level -= _group_delta(tokens[j])
-        if level == low and tokens[j] in HERE_LIST_SEPS:
+        if lv[j] == low and tokens[j] in HERE_LIST_SEPS:
             break
         lo = j
     start = next((j + 1 for j in range(k - 1, -1, -1) if _is_punct(tokens[j]) and not _is_redirect(tokens[j])), 0)
     if posixpath.basename(tokens[start]) == "exec":
         return lo, len(tokens)
-    level, hi = 0, k
+    hi = k
     for j in range(k, len(tokens)):
-        level += _group_delta(tokens[j])
-        if level <= low and tokens[j] in HERE_LIST_SEPS:
+        if lv[j] <= low and tokens[j] in HERE_LIST_SEPS:
             break
         hi = j + 1
     return lo, hi
 
 
-def _attribution_kind(argv: List[str]) -> str:
-    """`commit` (`git commit`), `pr` (`gh pr create|edit|merge`), không thì ''."""
+def _attribution_kinds(argv: List[str], depth: int = 0) -> FrozenSet[str]:
+    """`commit` (`git commit`), `pr` (`gh pr create|edit|merge`) mà lệnh đơn chạy — cả trong `sh -c '…'` (shell con thừa
+    stdin: `sh -c 'git commit -F -' <<E`, sâu tới `STRICT_EVAL_DEPTH` tầng)."""
     n = normalize(argv)
     if n[:2] == ["git", "commit"]:
-        return "commit"
-    return "pr" if any(_gh_pr_text_args(r) is not None for r in _gh_pr_readings(n)) else ""
+        return frozenset({"commit"})
+    if any(_gh_pr_text_args(r) is not None for r in _gh_pr_readings(n)):
+        return frozenset({"pr"})
+    script = _shell_c_script(argv) if depth < STRICT_EVAL_DEPTH else None
+    if not script:
+        return frozenset()
+    return frozenset().union(*(_attribution_kinds(c, depth + 1) for c in split_commands(tokenize(script))))
 
 
-def _here_owned(cmd: str, spans: Tuple[HereSpan, ...], kind: str) -> Optional[FrozenSet[int]]:
-    """Chỉ số (trong `spans`) của heredoc tới lệnh loại `kind` theo token; `<<` của token không khớp số heredoc ngoài
-    `"$(…)"` (`$((1<<2))`, tách thô) → None (không đọc chắc)."""
+def _here_owned_by(
+    cmd: str, spans: Tuple[HereSpan, ...], pred: Callable[[List[str]], bool]
+) -> Optional[FrozenSet[int]]:
+    """Chỉ số (trong `spans`) của heredoc tới lệnh đơn thoả `pred` theo token (`_here_reach`); `<<` của token không khớp
+    số heredoc ngoài `"$(…)"` (`$((1<<2))`, tách thô) → None (không đọc chắc)."""
     idx = [j for j, s in enumerate(spans) if not s[4]]
     if not idx:
         return frozenset()
@@ -13543,8 +13556,14 @@ def _here_owned(cmd: str, spans: Tuple[HereSpan, ...], kind: str) -> Optional[Fr
     ops = [k for k, t in enumerate(tokens[:-1]) if t == "<<"]
     if len(ops) != len(idx):
         return None
-    reach = [split_commands(tokens[slice(*_here_reach(tokens, k))]) for k in ops]
-    return frozenset(j for j, cmds in zip(idx, reach) if any(_attribution_kind(c) == kind for c in cmds))
+    table = _level_table(tokens)
+    reach = [split_commands(tokens[slice(*_here_reach(tokens, k, table))]) for k in ops]
+    return frozenset(j for j, cmds in zip(idx, reach) if any(map(pred, cmds)))
+
+
+def _here_owned(cmd: str, spans: Tuple[HereSpan, ...], kind: str) -> Optional[FrozenSet[int]]:
+    """`_here_owned_by` với lệnh nhận là commit/PR loại `kind`."""
+    return _here_owned_by(cmd, spans, lambda c: kind in _attribution_kinds(c))
 
 
 HERE_UNREAD_WHY = "heredoc có chữ ghi công AI cùng commit/PR mà guard không đọc chắc nó tới lệnh nào (AUD-HAR-419)"
@@ -13674,6 +13693,18 @@ def _attribution_target(
     return (here or root, [x for p in found for x in p], "pr") if found else None
 
 
+def _attribution_targets(
+    argv: List[str], here: Optional[str], root: str
+) -> List[Tuple[str, List[Tuple[str, str]], str]]:
+    """`_attribution_target`; không phải thì commit/PR chạy trong `sh -c '…'` (AUD-HAR-419: shell con thừa stdin —
+    `sh -c 'git commit -F -' <<E`) với thư mục của lệnh, không cặp chữ (chữ `-m` của lệnh trong do lớp lồng quét)."""
+    target = _attribution_target(argv, here, root)
+    if target is not None:
+        return [target]
+    nested = _attribution_kinds(argv) if _shell_c_script(argv) else frozenset()
+    return [(here or root, [], kind) for kind in sorted(nested)]
+
+
 def _gh_pr_readings(n: List[str]) -> List[List[str]]:
     """Phần sau `pr` của mọi cách đọc `gh pr …` (`_gh_readings`, D-409 — `gh -R o/r pr create`, `gh pr --title x
     create`: AUD-SEC-578) của argv đã chuẩn hoá `n`; không phải `gh pr` → []."""
@@ -13685,9 +13716,8 @@ def ai_attribution(cmd: str, commands: List[Tuple[List[str], Optional[str]]], ro
     Xét `git commit` và `gh pr create|edit|merge` qua Bash, chữ thấy được lúc quyết định — không thấy: `echo … | git
     commit -F -`, file `-F` do lệnh trước trong chuỗi tạo, `git merge -m`/`git tag -m` (tool MCP: `mcp_attribution`)
     (LOOP-HARNESS-027)."""
-    for argv, here in commands:
-        target = _attribution_target(argv, here, root)
-        if target is None or not AI_ATTRIBUTION_KEY_RE.search(_read_head(_xt_yaml_for(target[0]))):
+    for target in (t for argv, here in commands for t in _attribution_targets(argv, here, root)):
+        if not AI_ATTRIBUTION_KEY_RE.search(_read_head(_xt_yaml_for(target[0]))):
             continue
         gdir, pairs, kind = target
         # `-F` tương đối tính từ thư mục git chạy (sau `-C`), như git.
@@ -14539,21 +14569,28 @@ def _heredoc_scripts(
 ) -> List[str]:
     """Thân heredoc đưa vào shell (`bash <<'E'` … `E`; `pred` chọn lệnh nhận) — là lệnh, không phải dữ liệu. Mỗi dòng mở
     tìm dấu nối một lần, mỗi pipeline tách token một lần (`cat <<A <<A …` × n: cũ tách lại mỗi heredoc — bậc hai, n=2000
-    ~58 s); quá hạn `budget` → chặn (D-271)."""
+    ~58 s); quá hạn `budget` → chặn (D-271). Chữ thô HỢP với cách đọc theo token (`_here_owned_by`, AUD-HAR-419: nhóm
+    `{ bash; } <<E`, tên có nháy, `exec 0<<E; bash`); token không khớp heredoc mà có lệnh nhận → mọi thân (chặt)."""
+    joined = join_continuations(cmd)
+    spans, lines = _here_scan(joined), joined.split("\n")
+    owned = _here_owned_by(cmd, spans, pred) if spans else frozenset()
+    if owned is None:
+        owned = frozenset(range(len(spans))) if any(map(pred, split_commands(tokenize(cmd)))) else frozenset()
     out: List[str] = []
     seps: Dict[str, List[Tuple[int, int]]] = {}
     hits: Dict[Tuple[str, int, int], bool] = {}
-    for opener, m, body in _heredocs(join_continuations(cmd)):
+    for j, (o, m, a, b, _) in enumerate(spans):
         if budget is not None and budget.overdue():
             raise ScanTooComplex("quá hạn khi đọc heredoc vào shell/trình thông dịch")
+        opener = lines[o]
         if opener not in seps:
             seps[opener] = _unquoted_seps(opener)
         start, end = _segment_at(opener, m.start(), seps[opener])
         key = (opener, start, end)
         if key not in hits:
             hits[key] = any(pred(c) for c in split_commands(tokenize(opener[start:end])))
-        if hits[key]:
-            out.append("\n".join(body))
+        if hits[key] or j in owned:
+            out.append("\n".join(lines[a:b]))
     return out
 
 
@@ -18858,7 +18895,9 @@ def _bash_decision(
     deny_reason = deny_reason or find_root_scan(cmd, root, cwd) or _commit_after_write(commands)
     deny_reason = deny_reason or (
         ai_attribution(cmd, every, root) or title_rule(cmd, every, root)
-        if res["commit"] or GH_PR_TEXT_RE.search(cmd) or any(_gh_pr_readings(normalize(a)) for a, _ in every)
+        if res["commit"]
+        or GH_PR_TEXT_RE.search(cmd)
+        or any(_gh_pr_readings(normalize(a)) or "<<" in cmd and _attribution_kinds(a) for a, _ in every)
         else ""
     )
     if deny_reason:
