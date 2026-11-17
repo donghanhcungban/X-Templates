@@ -8969,7 +8969,8 @@ class GuardRemoteDeleteTest(unittest.TestCase):
 
     def repo(self, branch: str) -> Path:
         path = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
-        for args in (("init", "-q", "-b", branch), ("remote", "add", "origin", "https://example.invalid/o.git")):
+        # origin = repo `o/r`: `gh api … repos/o/r/git/refs/<nhánh phiên>` là repo của phiên (AUD-SEC-560)
+        for args in (("init", "-q", "-b", branch), ("remote", "add", "origin", "https://example.invalid/o/r.git")):
             subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
         return path
 
@@ -11842,22 +11843,24 @@ class GuardQuotedOperatorTest(_GuardDebtCase):
         self.assertEqual(g._join_tokens(toks[:2]), "a ';'")
 
     def test_litword_equality(self):
+        # Kiểm thẳng từng toán tử `==`/`!=` của `LitWord` (assertEqual chỉ gọi một trong hai) — `msg=` cho dễ đọc khi đỏ
+        # (AUD-TEST-099)
         lit = self.g.LitWord(";")
-        self.assertFalse(lit == ";")
-        self.assertFalse(";" == lit)
-        self.assertTrue(lit != ";")
+        self.assertFalse(lit == ";", msg="LitWord(';') == ';' phải False")
+        self.assertFalse(";" == lit, msg="';' == LitWord(';') phải False (toán tử phản xạ)")
+        self.assertTrue(lit != ";", msg="LitWord(';') != ';' phải True")
         self.assertNotIn(lit, (";", "|"))
         self.assertNotIn(lit, {";", "&&"})
-        self.assertTrue(lit == self.g.LitWord(";"))
-        self.assertFalse(lit != self.g.LitWord(";"))
-        self.assertFalse(lit == 1)
+        self.assertTrue(lit == self.g.LitWord(";"), msg="hai LitWord cùng chữ phải bằng nhau")
+        self.assertFalse(lit != self.g.LitWord(";"), msg="hai LitWord cùng chữ: != phải False")
+        self.assertFalse(lit == 1, msg="LitWord so với số phải False")
         self.assertEqual(hash(lit), hash(";"))
         self.assertEqual(str(lit), ";")
         self.assertIs(type(str(lit)), str)
         self.assertFalse(self.g._is_punct(lit))
         self.assertTrue(self.g._is_punct(";"))
         here = self.g.HereWord("EOF")
-        self.assertTrue(here == "EOF")  # chữ thường (không phải dấu) vẫn so như chuỗi
+        self.assertTrue(here == "EOF", msg="HereWord chữ thường so như chuỗi")  # không phải dấu
         self.assertFalse(self.g._is_punct(self.g.HereWord(";")))
 
     def test_dequote_keeps_literal(self):

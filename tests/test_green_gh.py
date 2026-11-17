@@ -85,7 +85,9 @@ class RefSingularTest(_Case):  # AUD-SEC-562
         self.assert_code(("gh api -X PATCH repos/o/r/git/ref/heads/main -F sha=" + SHA,), "PUSH_MAIN")
 
     def test_allow(self):
-        self.assert_runs(("gh api repos/o/r/git/ref/heads/x", "gh api -X DELETE repos/o/r/git/ref/heads/feat"))
+        # nhánh phiên trên repo `origin` (AUD-SEC-560)
+        with mock.patch.object(guard, "_origin_repo", return_value="o/r"):
+            self.assert_runs(("gh api repos/o/r/git/ref/heads/x", "gh api -X DELETE repos/o/r/git/ref/heads/feat"))
 
 
 class MergeDeleteBranchTest(_Case):  # AUD-SEC-565

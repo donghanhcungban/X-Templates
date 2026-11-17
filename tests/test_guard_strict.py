@@ -2702,8 +2702,10 @@ class GuardReview429Test(unittest.TestCase):
             f"HOME=/tmp/x true; cd ~ && rm -rf {p}",
             f"env HOME=/tmp/x true; cd ~ && rm -rf {p}",
         )
-        self.assert_deny(cmds, str(ROOT.parent))
-        self.assert_deny(cmds[:1])  # HOME=/root thật: `~/.ssh`
+        # `~/.ssh` dưới HOME giả: checkout dưới `/tmp` thì HOME giả là thư mục tạm, xoá ở đó được phép (AUD-TEST-097) —
+        # ca `.ssh` đo với HOME ngoài thư mục tạm
+        self.assert_deny(cmds[1:], str(ROOT.parent))
+        self.assert_deny(cmds[:1], "/root")
         self.assertTrue(guard._sets_home(["HOME=/tmp/x"]))
         self.assertTrue(guard._sets_home(["declare", "-x", "HOME=/tmp/x"]))
         self.assertTrue(guard._sets_home(["printf", "-v", "HOME", "%s", "x"]))
@@ -2716,11 +2718,11 @@ class GuardReview429Test(unittest.TestCase):
     def test_r429_2_tilde_captured_before_home_change(self):
         """🔴2: `~` đã lấy vào biến trước khi đổi HOME mở theo home THẬT (bash mở lúc gán)."""
         p = self.P
+        self.assert_deny(("h=~; HOME=/tmp/y; rm -rf $h/.ssh",), "/root")  # HOME ngoài thư mục tạm (AUD-TEST-097)
         self.assert_deny(
             (
                 "x=~; HOME=/tmp/y; rm -rf $x",
                 'x=~; export HOME=/tmp/y; rm -rf "$x"',
-                "h=~; HOME=/tmp/y; rm -rf $h/.ssh",
                 f"x=~/{p}; HOME=/tmp/y; rm -rf $x",
                 f"a=~; HOME=/tmp/y; rm -rf $a/{p}",
                 f"x=~; HOME=/tmp/y; cd $x && rm -rf {p}",

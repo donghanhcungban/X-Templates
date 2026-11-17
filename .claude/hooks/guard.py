@@ -2508,7 +2508,7 @@ def _gate_bad_word(words: List[str]) -> str:
     bad = bad or _gate_bare_dyn(words[1:], skels, interp or name in SHELLS) or _gate_tool_sub1(name, words[1:], skels)
     bad = bad or _gate_runner_tail(name, words[1:])
     bad = bad or (_gh_dyn_word(words[1:], skels) if name == "gh" else "")
-    bad = bad or (_git_cfg_dyn(words[1:]) if name == "git" else "")
+    bad = bad or (_git_cfg_dyn(words[1:]) or _git_push_glob(words[1:], skels) if name == "git" else "")
     return bad or _git_sub2(words[1:], skels) if name == "git" else bad
 
 
@@ -2663,13 +2663,29 @@ def _gate_piece(word: str, i: int, kind: str) -> Tuple[str, int]:
     return GATE_GLOB if glob else "" if c == '"' else c, i + 1
 
 
+def _git_sub_at(plain: List[str]) -> int:
+    """Chỉ số lệnh con của `git` (đối số đã bỏ nháy, sau `git`): bỏ tuỳ chọn toàn cục (kèm giá trị)."""
+    i = 0
+    while i < len(plain) and plain[i].startswith("-"):
+        i += 1 + (plain[i] in GIT_OPTS_WITH_VALUE)
+    return i
+
+
+def _git_push_glob(args: List[str], skels: List[str]) -> str:
+    """AUD-SEC-747: từ của `git push` có glob không nháy đứng đầu (`?d`, `*delete`) bung thành cờ khi có tệp tên `-d`/
+    `--delete` — remote/refspec hợp lệ không mở đầu bằng glob (glob refspec ở giữa: `refs/heads/*`)."""
+    plain = [_dequote(a) for a in args]
+    i = _git_sub_at(plain)
+    if plain[i : i + 1] != ["push"]:
+        return ""
+    return next((a for a, s in zip(args[i + 1 :], skels[i + 1 :]) if s[:1] == GATE_GLOB), "")
+
+
 def _git_sub2(args: List[str], skels: List[str]) -> str:
     """P1 cấp hai: từ đầu tiên không phải cờ sau `git [tuỳ chọn toàn cục] stash|remote|worktree|reflog` có mở
     rộng/glob."""
     plain = [_dequote(a) for a in args]
-    i = 0
-    while i < len(plain) and plain[i].startswith("-"):
-        i += 1 + (plain[i] in GIT_OPTS_WITH_VALUE)
+    i = _git_sub_at(plain)
     # AUD-SEC-742: lệnh con không dựng sẵn có thể là alias (`-c alias.s=stash`, alias trong tệp cấu hình) — xét cấp hai
     if i >= len(plain) or plain[i] not in GIT_SUB2 and plain[i] in GIT_BUILTINS:
         return ""
@@ -4546,7 +4562,9 @@ GH_DYN_RE = re.compile(r"\$[A-Za-z_{(]|`")
 GH_READERS = frozenset({"cat", "head", "tail", "grep", "wc", "sort", "uniq"})
 GH_LITERALS = frozenset({"echo", "printf", "date", "true", "nproc"})
 GH_API_MARK_RE = re.compile(r"(?:^|/)(?:comments|reviews)(?:/|$|\?)|^/?graphql$|[$`]")
-GH_FUNC_RE = re.compile(r"\(\s*\)\s*[{(]|\bfunction\s+\S")
+# Định nghĩa hàm: thân là mọi lệnh ghép — `{`/`(`/`((`, `[[`, và `if`/`while`/`until`/`for`/`case`/`select` không ngoặc
+# (`g() if …; fi` — AUD-SEC-667 ý 6, như `function g if …`).
+GH_FUNC_RE = re.compile(r"\(\s*\)\s*(?:[{(]|\[\[|(?:if|while|until|for|case|select)\b)|\bfunction\s+\S")
 GH_CWD = "\0xt-cwd"  # thư mục đầu khi không biết `cwd`: khác nó = lệnh chạy sau khi đổi thư mục
 GH_STDIN_PATHS = ("-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0")
 
@@ -6394,10 +6412,14 @@ def _push_deleted(refs: List[str], deleting: bool) -> List[str]:
 
 
 def _push_delete_rule(refs: List[str], deleting: bool, cwd: Optional[str]) -> Tuple[str, str]:
-    """D-407: push xoá đích không phải nhánh hiện tại của phiên (ở `cwd`) → deny REMOTE_DELETE."""
-    gone = _push_deleted(refs, deleting)
+    """D-407: push (`refs` = remote rồi refspec) xoá đích không phải nhánh hiện tại của phiên (ở `cwd`) trên `origin` →
+    deny REMOTE_DELETE. Remote khác `origin` (tên khác, URL — AUD-SEC-560): nhánh cùng tên ở đó là của người khác, mọi
+    đích tính. Remote `.` là chính repo này: xoá nhánh cục bộ như `git branch -D` (AUD-HAR-349; nhánh chính và ref
+    `refs/remotes/…` có luật riêng chạy trước)."""
+    remote = refs[0] if refs else ""
+    gone = [] if remote == "." else _push_deleted(refs[1:], deleting)
     cur = _current_branch(cwd) if gone else ""
-    other = next((d for d in gone if not _session_ref(d, cur)), None)
+    other = next((d for d in gone if remote != "origin" or not _session_ref(d, cur)), None)
     return ("deny", REMOTE_DELETE_WHY.format(other, cur or "không rõ")) if other is not None else ("", "")
 
 
@@ -6461,7 +6483,16 @@ def _git_push(args: List[str], cwd: Optional[str] = None) -> Tuple[str, str]:
         verdict = _push_ref_rule(r, deleting, cwd)
         if verdict[0]:
             return verdict
-    return _push_delete_rule(refs[1:], deleting, cwd)
+    return ("", "") if _push_dry_run(args) else _push_delete_rule(refs, deleting, cwd)
+
+
+def _push_dry_run(args: List[str]) -> bool:
+    """`-n`/`--dry-run` nguyên văn theo parse-options (`-o -n`, `-on` là giá trị push-option, không phải cờ), không
+    `--no-d…` (cờ sau thắng: `-n --no-dry-run` đẩy thật) và không token mở rộng/glob (`-n$X` tách được thành `-n
+    --no-dry-run`): git không gửi gì lên remote (AUD-HAR-349)."""
+    flags = _parse_opts(args, "o", PUSH_HELP_VALUE_OPTS)[0]
+    dry = "-n" in flags or "--dry-run" in flags
+    return dry and not any(a.startswith("--no-d") or REPLACE_SPLIT_RE.search(a) for a in args)
 
 
 def _git_reset(args: List[str]) -> Tuple[str, str]:
@@ -6548,21 +6579,19 @@ REV_ALL_REFS = (
 
 def _filter_branch_revs(args: List[str]) -> List[str]:
     """Đối số rev-list của `git filter-branch` như script của git đọc: sau `--`, hay từ đối số vị trí đầu; mọi tuỳ chọn
-    `-…` khác FILTER_BRANCH_FLAGS ăn token kế."""
+    `-…` khác FILTER_BRANCH_FLAGS ăn token kế. `--` kế tiếp mở pathspec (`-- HEAD -- path`) — không phải rev (AUD-HAR-349)."""
     i = 0
-    while i < len(args):
-        a = args[i]
-        if a == "--":
-            return args[i + 1 :]
-        if not a.startswith("-"):
-            return args[i:]
-        i += 1 if a in FILTER_BRANCH_FLAGS else 2
-    return []
+    while i < len(args) and args[i] != "--" and args[i].startswith("-"):
+        i += 1 if args[i] in FILTER_BRANCH_FLAGS else 2
+    revs = args[i + 1 :] if args[i : i + 1] == ["--"] else args[i:]
+    return revs[: revs.index("--")] if "--" in revs else revs
 
 
 def _rewritten_refs(revs: List[str]) -> int:
-    """Số ref dương `filter-branch` viết lại: `a..b` = một (`a` bị loại), `a...b` = hai, `^x` và tuỳ chọn không tính."""
-    return sum(2 if "..." in r else 1 for r in revs if not r.startswith(("-", "^")))
+    """Số ref dương KHÁC NHAU `filter-branch` viết lại: `a..b` = một (`a` bị loại), `a...b` = hai, `^x` và tuỳ chọn
+    không tính; giá trị của `-n` (`-n 2 HEAD`: rev-list ăn token kế) không phải ref (AUD-HAR-349)."""
+    refs = {r for k, r in enumerate(revs) if not r.startswith(("-", "^")) and revs[k - 1 : k] != ["-n"]}
+    return sum(2 if "..." in r else 1 for r in refs)
 
 
 def _git_filter_branch(args: List[str]) -> Tuple[str, str]:
@@ -6574,8 +6603,28 @@ def _git_filter_branch(args: List[str]) -> Tuple[str, str]:
 
 
 def _git_filter_repo(args: List[str]) -> Tuple[str, str]:
-    """filter-repo: mặc định viết lại MỌI ref (và xoá remote `origin`) — deny mọi dạng (D-407)."""
+    """filter-repo: mặc định viết lại MỌI ref (và xoá remote `origin`) — deny mọi dạng (D-407), trừ đúng một tuỳ chọn
+    in thông tin (`--help`/`-h`/`--version`, chuyển hướng bỏ) — argparse in rồi thoát (AUD-HAR-349)."""
+    if _drop_redirect_ops(args, PUSH_FD_DIGITS) in (["--help"], ["-h"], ["--version"]):
+        return "", ""
     return "deny", REF_REWRITE_WHY.format("git filter-repo " + " ".join(args)[:120])
+
+
+# AUD-SEC-561: git-filter-repo là một script Python — chạy qua trình thông dịch (`python3 -m git_filter_repo …`,
+# `python3 /usr/local/bin/git-filter-repo …`) cũng viết lại mọi ref. Mô-đun/script ở BẤT KỲ đối số nào (chặt).
+PY_INTERP_RE = re.compile(r"(?:python|pypy)[\d.]*")
+
+
+def _py_filter_repo(name: str, args: List[str]) -> Optional[List[str]]:
+    """Đối số của filter-repo khi `name args` chạy nó qua Python; không → None."""
+    if not PY_INTERP_RE.fullmatch(posixpath.basename(name)):
+        return None
+    for k, a in enumerate(args):
+        if a == "-m" and args[k + 1 : k + 2] == ["git_filter_repo"]:
+            return args[k + 2 :]
+        if a == "-mgit_filter_repo" or posixpath.basename(a) == "git-filter-repo":
+            return args[k + 1 :]
+    return None
 
 
 # AUD-SEC-621: plumbing đẩy (`send-pack`, `http-push`, remote helper `remote-<x>` — `remote-https` của remote-curl,
@@ -6610,9 +6659,29 @@ def _plumbing_push(sub: str, args: List[str]) -> Tuple[str, str]:
 def _git_dashed(name: str) -> str:
     """`git-<tên>` chạy thẳng (PATH, `/usr/lib/git-core/`) mà guard xét như `git <tên>` → `<tên>`; khác → ''."""
     base = posixpath.basename(name)
-    if base in GIT_DASHED_REWRITERS or base[:4].casefold() == "git-" and _is_plumbing_push(base[4:]):
-        return base[4:]
-    return ""
+    git_sub = base[:4].casefold() == "git-" and (_is_plumbing_push(base[4:]) or _git_credential_action(base[4:]))
+    return base[4:] if base in GIT_DASHED_REWRITERS or git_sub else ""
+
+
+# In thông tin xác thực ra đầu ra lệnh (N2, như `gh auth git-credential` — AUD-SEC-589): `git credential fill` và helper
+# `git credential-<tên> get` (`store`, `cache`, `manager`, `osxkeychain`, `libsecret`…) in `password=<token>`. Thao tác
+# (`fill`/`get`) ở BẤT KỲ đối số nào (chặt: helper nhận cờ trước thao tác — `credential-store --file=f get`); tên so
+# sau casefold như plumbing đẩy.
+GIT_CRED_WHY = (
+    "in thông tin xác thực (`password=<token>`) ra transcript/đầu ra lệnh: `git credential fill`, `git credential-<helper>"
+    " get` — lộ bí mật như `gh auth token` (N2, AUD-SEC-589); git tự gọi helper khi cần, không in tay"
+)
+
+
+def _git_credential_action(sub: str) -> str:
+    """Thao tác in bí mật của lệnh con `sub`: `credential` → `fill`, `credential-<helper>` → `get`; khác → ''."""
+    key = sub.casefold()
+    return "fill" if key == "credential" else "get" if key.startswith("credential-") else ""
+
+
+def _git_credential(sub: str, args: List[str]) -> Tuple[str, str]:
+    action = _git_credential_action(sub)
+    return ("deny", GIT_CRED_WHY) if action and action in args else ("", "")
 
 
 # AUD-SEC-119 (T-3563): Gate mẫu tối ưu đọc script/baseline từ `origin/main` (optimization-loop.md), nhưng ref remote là
@@ -7399,7 +7468,10 @@ def git_rules(n: List[str], cwd: Optional[str] = None, dyn: bool = True) -> Tupl
         verdict = _stricter(_git_push(args, cwd), _git_push(_drop_redirects(args), cwd))
         return _stricter(verdict, _git_push(_drop_redirect_ops(args, PUSH_FD_DIGITS), cwd))
     rule = GIT_RULES.get(n[1])
-    return rule(args) if rule else _plumbing_push(n[1], args)
+    if rule:
+        return rule(args)
+    cred = _git_credential(n[1], args)
+    return cred if cred[0] else _plumbing_push(n[1], args)
 
 
 # Hành động đối ngoại: lệnh → lệnh con (ở BẤT KỲ vị trí positional: `pnpm -r publish`, `yarn npm publish`,
@@ -8248,7 +8320,8 @@ def command_rules(n: List[str], root: str, cwd: Optional[str] = None) -> Tuple[s
     sub = _git_dashed(name)  # `git-filter-repo` chạy thẳng (pip cài vào PATH), `/usr/lib/git-core/git-remote-https`
     if sub:
         return git_rules(["git", sub, *args], cwd)
-    return _external_rule(name, args, root, cwd)
+    filtered = _py_filter_repo(name, args)
+    return _external_rule(name, args, root, cwd) if filtered is None else _git_filter_repo(filtered)
 
 
 def _gh_api_methods(args: List[str]) -> List[str]:
@@ -8611,11 +8684,17 @@ def _signs_release(argv: List[str]) -> bool:
     return False
 
 
+# Lệnh đọc thuần không có đường chạy lệnh khác (khác `STAGE_READERS`: `git` có alias `!`, `sed`/`awk` chạy lệnh, `rg
+# --pre`): chữ `decide-prod` sau `xt.py` ở đó là đối số, không phải lệnh con (AUD-SEC-653).
+DECIDE_PROD_READERS = frozenset({"grep", "cat", "head", "tail", "wc"})
+
+
 def _approves_literal(n: List[str]) -> bool:
     """Luật chữ: `xt.py … stage … approve` hay `… stage … init … --adopt` sau `xt.py` đầu tiên."""
     at = next((k for k, t in enumerate(n) if posixpath.basename(t) == "xt.py"), len(n))
     rest = n[at + 1 :]
-    if "decide-prod" in rest:  # `loop decide-prod`: quyết đề xuất "Khi chạy thật" chỉ người (AUD-SEC-541)
+    pure = bool(n) and posixpath.basename(n[0]) in DECIDE_PROD_READERS  # AUD-SEC-653: `grep -n scripts/xt.py -e …`
+    if "decide-prod" in rest and not pure:  # `loop decide-prod`: quyết đề xuất "Khi chạy thật" chỉ người (AUD-SEC-541)
         return True
     if "stage" not in rest:
         return False
@@ -9499,9 +9578,10 @@ def _gh_api_merge_rule(args: List[str], root: str) -> Tuple[str, str]:
     return _merge_verdict([m[1]], fields["sha"], root) if m else ask
 
 
-# Merge qua `gh api`: REST `repos/<chủ>/<repo>/pulls/N/merge` (cả `{owner}/{repo}`), mutation graphql. Bật auto-merge
-# (`enablePullRequestAutoMerge`) → deny phẳng (ADR-0036 §3); tắt (`disablePullRequestAutoMerge`) là ghi thường.
-ANY_REST_MERGE_RE = re.compile(r"/?repos/([^/\s]+/[^/\s]+)/pulls/(\d+)/merge/?")
+# Merge qua `gh api`: REST `repos/<chủ>/<repo>/pulls/N/merge` (cả `{owner}/{repo}`; theo id `repositories/<id>/…` —
+# nhóm 1 None, không ánh xạ được cho merge-check), mutation graphql. Bật auto-merge (`enablePullRequestAutoMerge`) →
+# deny phẳng (ADR-0036 §3); tắt (`disablePullRequestAutoMerge`) là ghi thường.
+ANY_REST_MERGE_RE = re.compile(r"/?(?:repos/([^/\s]+/[^/\s]+)|repositories/[^/\s]+)/pulls/(\d+)/merge/?")
 GRAPHQL_MERGE_RE = re.compile(r"\bmergePullRequest\b")
 GRAPHQL_AUTO_MERGE_RE = re.compile(r"\benablePullRequestAutoMerge\b")
 
@@ -9545,6 +9625,8 @@ def _gh_api_merge_like(args: List[str], pos: List[str], ask: Tuple[str, str], ro
     m = ANY_REST_MERGE_RE.fullmatch(_api_path(pos[0])) if len(pos) == 1 else None
     if not m:
         return ask
+    if m[1] is None:  # merge theo id repo: merge-check không ánh xạ được chủ/tên — như graphql merge (N1)
+        return "ask", f"{EXTERNAL_ASK} — {UNVERIFIED_ASK}: merge qua `repositories/<id>` (không đọc được chủ/tên repo)"
     repo = "" if m[1] == "{owner}/{repo}" else m[1]
     return _merge_ask(ask[1], [m[2]], root, repo)
 
@@ -9709,7 +9791,7 @@ def _gh_split_words(cmd: str) -> FrozenSet[str]:
         if raw is None:
             return frozenset({GH_SPLIT_ANY})
         calls = (c for c in split_commands(raw) if any("h" in w and posixpath.basename(_dequote(w)) == "gh" for w in c))
-        lead = [w for c in calls for w in c if any(ch in w for ch in GH_LEAD_CHARS) and _gh_lead_flag(w)]
+        lead = [w for c in calls for w in c if any(ch in w for ch in GH_LEAD_CHARS + "~") and _gh_lead_flag(w)]
         return frozenset(p for w in lead for p in _gh_word_pieces(w))
     except ScanTooComplex:
         return frozenset({GH_SPLIT_ANY})
@@ -9723,18 +9805,34 @@ def _gh_word_pieces(word: str) -> List[str]:
 
 
 GH_LEAD_CHARS = "$`" + GH_GLOB_CHARS
-GH_EXPANSION_RE = re.compile(r"\$(?:\{[^}]*\}|\([^)]*\)|\w+|[@*#?$!-])")  # mở rộng có thể rỗng (trong nháy)
+# mở rộng có thể rỗng (trong nháy), lớp trong cùng — `_strip_expansions` bỏ dần từ trong ra (lồng: AUD-SEC-602)
+GH_EXPANSION_RE = re.compile(r"\$(?:\{[^{}]*\}|\([^()]*\)|\w+|[@*#?$!-])")
+TILDE_LEAD_RE = re.compile(r"~[+-](?:/|\Z)")
+
+
+def _strip_expansions(text: str) -> str:
+    """`text` đã bỏ mọi mở rộng `GH_EXPANSION_RE`, kể cả lồng (`$(echo $(true))` → ``); mỗi lượt bỏ lớp trong cùng."""
+    while True:
+        out = GH_EXPANSION_RE.sub("", text)
+        if out == text:
+            return out
+        text = out
 
 
 def _gh_lead_flag(word: str) -> bool:
     """Từ thô mà bash có thể biến thành đối số bắt đầu bằng `-` (AUD-SEC-590): mở rộng không nháy đứng đầu từ (`$X`,
     `${X}`, `""$X`, `$(…)`) — tách từ cho ra cờ; glob không nháy đứng đầu từ hay trong từ bắt đầu bằng `-` (`??`, `-*`)
     — bung theo tên tệp (`--admin`). Mở rộng sau chữ nguyên văn (`n=$N`, `repos/$R`) không tính; `$?`/`$((…))` ra số.
-    Backtick: tập con chuẩn chặn trước (ADR-0063); ở chữ lỏng, mảnh `-x…\\`` là cụm cờ có mở rộng (`_gh_flag_dyn`)."""
+    Backtick: tập con chuẩn chặn trước (ADR-0063); ở chữ lỏng, mảnh `-x…\\`` là cụm cờ có mở rộng (`_gh_flag_dyn`).
+    AUD-SEC-602: mở rộng lồng đứng trước (`"$(echo $(true))"$X`, `"${A:-${B}}"$X`) và `~-`/`~+` không nháy đầu từ
+    (OLDPWD/PWD — gán được thành `-d`)."""
+    if TILDE_LEAD_RE.match(word):
+        return True
     v = _CodeView(word)
     hits = [i for i, c in enumerate(word) if c in GH_LEAD_CHARS and v.kind[i] == "c" and v.top[i]]
-    empty = bool(hits) and not GH_EXPANSION_RE.sub("", _dequote(word[: hits[0]]))  # `"$X"$Y`: X rỗng thì Y đứng đầu
-    lead = empty and (word[hits[0]] != "$" or _word_splits(word))
+    empty = bool(hits) and not _strip_expansions(_dequote(word[: hits[0]]))  # `"$X"$Y`: X rỗng thì Y đứng đầu
+    # `$!` không tách từ nhưng RỖNG khi chưa có job nền: `$!--admin` = `--admin` (AUD-SEC-754)
+    lead = empty and (word[hits[0]] != "$" or _word_splits(word) or word.startswith("$!", hits[0]))
     return lead or any(word[i] in GH_GLOB_CHARS for i in hits) and _dequote(word).startswith("-")
 
 
@@ -9870,7 +9968,7 @@ def _gh_api_write_rule(args: List[str], root: str) -> Tuple[str, str]:
 
 # Repo trong đường dẫn REST: `repos/<chủ>/<tên>` và tên gọi theo id `repositories/<id>` (GitHub chuyển hướng repo đổi
 # tên tới đó, cả phương thức ghi — chưa xác minh từng endpoint → chặt như `repos/…`, AUD-SEC-603). Merge REST theo id
-# (`ANY_REST_MERGE_RE`) chưa nhận: cần `chủ/tên` cho merge-check.
+# (`ANY_REST_MERGE_RE`): không ánh xạ được `chủ/tên` cho merge-check → không xác minh được (UNVERIFIED).
 GH_REPO_PATH = r"(?:repos/[^/\s]+/[^/\s]+|repositories/[^/\s]+)"
 # AUD-SEC-544: ghi thẳng nhánh chính qua REST — contents PUT/DELETE với `branch` chính (hay không nêu = mặc định), ghi
 # ref `heads/main` (PATCH …/git/refs/heads/main, POST …/git/refs `ref=refs/heads/main`) — như tool MCP ghi commit.
@@ -10118,9 +10216,40 @@ def _gh_ref_delete_rule(args: List[str], cwd: str) -> Tuple[str, str]:
     if gone is None or _gh_api_destroy(args[1:]):
         return "", ""
     cur = _current_branch(cwd) if gone else ""
-    if _session_ref(gone, cur):
+    if _session_ref(gone, cur) and _gh_api_origin_path(args[1:], cwd):
         return "", ""
     return "deny", REMOTE_DELETE_WHY.format(gone or "ref của graphql `deleteRef`/`updateRef(s)`", cur or "không rõ")
+
+
+# AUD-SEC-560: nhánh hiện tại chỉ là "của phiên" trên repo `origin` — `repos/<chủ>/<tên>/…` phải trùng repo của URL
+# `origin` ở `cwd` (không phân biệt hoa thường như GitHub). `{owner}/{repo}` (gh chọn repo theo remote — `upstream` trước
+# `origin`) và `repositories/<id>` không ánh xạ chắc → không miễn (chặt).
+GH_API_SLUG_RE = re.compile(r"/?repos/([^/\s]+/[^/\s]+)/")
+ORIGIN_SLUG_RE = re.compile(r"[:/]([^/:\s]+/[^/:\s]+?)(?:\.git)?/?\Z")
+
+
+def _origin_repo(cwd: Optional[str]) -> str:
+    """`chủ/tên` của URL remote `origin` ở `cwd` (`git remote get-url origin`); lỗi/không có/quá hạn → rỗng."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", cwd or ".", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    url = r.stdout.strip() if r.returncode == 0 else ""
+    m = ORIGIN_SLUG_RE.search(url)
+    return m[1] if m else ""
+
+
+def _gh_api_origin_path(args: List[str], cwd: Optional[str]) -> bool:
+    pos = _positionals(args, GH_API_VALUE_FLAGS)
+    m = GH_API_SLUG_RE.match(_api_path(pos[0])) if len(pos) == 1 else None
+    origin = _origin_repo(cwd) if m else ""
+    return bool(origin) and m is not None and m[1].casefold() == origin.casefold()
 
 
 # Ghi lên bí mật, quyền, bảo vệ nhánh, ruleset, webhook, chuyển chủ repo (review #97) — như `gh secret`/đổi ruleset.
