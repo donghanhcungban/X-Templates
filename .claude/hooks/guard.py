@@ -16283,8 +16283,8 @@ RUNNERS = {
 RUNNER_SUFFIXES = 12  # số hậu tố đối số tối đa mỗi lệnh (chặn số lần quét lồng)
 # AUD-SEC-817 (lớp, D-502): lệnh guard KHÔNG mô hình (tên lạ — `direnv exec`, `op run`, `nix develop -c`, bản mới của
 # trình bọc nào đó) hay trình chạy gói (`uv run`, `poetry run`…) mà đối số có từ là tên lệnh có luật chạy được
-# (`EXEC_TRIGGERS`) → phần từ từ đó quét như một lệnh; từ có khoảng trắng mở đầu bằng tên đó (`'git push …'`) quét như
-# chuỗi lệnh. Chặt: chữ dữ liệu trùng tên lệnh (`apt install git`) chỉ thêm một lượt quét vô hại.
+# (`_exec_trigger`) → phần từ từ ĐẦU TIÊN đó quét như một lệnh (chuỗi lệnh trong nháy chỉ ở trình bọc đã biết —
+# `RUNNERS`). Chặt: chữ dữ liệu trùng tên lệnh (`apt install git`) chỉ thêm một lượt quét vô hại.
 EXEC_TRIGGER_NAMES = frozenset({"git", "gh", "rm", "xt.py", "eval", "sudo", "doas", "env", "find", "dd", "shred"})
 PROGRAM_NAME_RE = re.compile(r"[A-Za-z_][\w.+-]*")
 SHELL_JOIN_RUNNERS = frozenset({"watch"})  # chạy `sh -c "<đối số nối bằng khoảng trắng>"` (procps watch, không `-x`)
@@ -16342,22 +16342,19 @@ def _unmodelled_runner(words: List[str]) -> bool:
 
 
 def _exec_trigger(word: str) -> bool:
+    """`word` là tên lệnh có luật mà chương trình ngoài chạy được — trình bọc là builtin của bash (`exec`, `command`,
+    `builtin`) thì không: `direnv exec . git …` có `exec` là lệnh con của direnv."""
     name = posixpath.basename(word)
-    return name in EXEC_TRIGGER_NAMES or name in SHELLS or name in WRAPPERS or name in RUNNERS or name in DESTROY_CMDS
+    wrapper = name in WRAPPERS and name not in BASH_BUILTINS
+    return name in EXEC_TRIGGER_NAMES or name in SHELLS or wrapper or name in RUNNERS or name in DESTROY_CMDS
 
 
 def _trigger_suffixes(rest: List[str]) -> List[str]:
-    """Hậu tố đối số mở đầu bằng tên lệnh có luật, và từ-chuỗi-lệnh mở đầu bằng tên đó (AUD-SEC-817); tối đa
-    `RUNNER_SUFFIXES`."""
-    out: List[str] = []
-    for k, t in enumerate(rest):
-        if _exec_trigger(t):
-            out.append(_join_tokens(rest[k:]))
-        elif re.search(r"\s", t) and _exec_trigger(t.split()[0]):
-            out.append(t)
-        if len(out) >= RUNNER_SUFFIXES:
-            break
-    return out
+    """Phần lệnh từ TỪ ĐẦU TIÊN là tên lệnh có luật (vị trí lệnh sau trình bọc, AUD-SEC-817). Chữ trong đối số của
+    lệnh bên trong (`commit -m "rm -rf ~ is bad"`, `npm test -- -t "git reset --hard"`) là dữ liệu: không quét lại từ
+    có khoảng trắng hay tên có luật đứng sau như lệnh mới (reviewer #134)."""
+    k = next((k for k, t in enumerate(rest) if _exec_trigger(t)), -1)
+    return [_join_tokens(rest[k:])] if k >= 0 else []
 
 
 def _procsub_scripts(tokens: List[str], dirs: List[Optional[str]]) -> Placed:
