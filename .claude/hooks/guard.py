@@ -2400,19 +2400,9 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
     why = why or _opaque_value_why(cmd) or _trap_assign_why(cmd)  # D-502: AUD-SEC-821/822/823/830
     why = why or _runner_dyn_why(cmd) or _xargs_why(cmd)  # D-503
-    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd) or _redirect_subst_why(cmd)
-
-
-def _redirect_subst_why(cmd: str) -> str:
-    """AUD-SEC-612: đích chuyển hướng ghi có thay lệnh trần dính chữ (`> $(echo).autopilot/state.json`) — bộ tách token
-    cắt đích ở `(` nên luật đích ghi không thấy đuôi; như P4 (ADR-0076) nhưng ở mọi lệnh. Nháy kép thì đích còn nguyên
-    và đuôi được xét như đích (`_subst_tail`)."""
-    raw = _raw_tokens(cmd, True)
-    for argv in (None if raw is None else _plain_argvs(raw)) or []:
-        for op, word in zip(argv, argv[1:]):
-            if (op.lstrip("&").startswith(">") or op == "<>") and _gate_bare_substitution(word, False):
-                return RULED_SUBST_WHY.format(clean_text(f"{op} {word}")[:80])
-    return ""
+    # AUD-SEC-612 (đích chuyển hướng ghi có thay lệnh trần dính chữ) nay do `_opaque_value_why` (D-503) bắt: mọi đích ghi
+    # có thay lệnh là giá trị mờ → BUDGET; test AUD-SEC-612 vẫn ghim hành vi.
+    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
 
 
 # AUD-SEC-660/661 (D-415): thân hàm được quét lúc định nghĩa, với bảng biến lúc đó — biến gán sau (trước lời gọi) không
