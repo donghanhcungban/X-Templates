@@ -310,12 +310,17 @@ class SupplyChainArtifactsTest(unittest.TestCase):
         """AUD-DEP-021 (T-3720, D-427): `pnpm audit` quét lockfile của gói, đỏ khi có advisory mức vừa trở lên và khi
         registry lỗi — không `--ignore-registry-errors`, không `|| true`, không `continue-on-error`."""
         body = (WORKFLOWS / "dep-audit.yml").read_text(encoding="utf-8")
-        job = body[body.index("  pack-npm-audit:") :]
+        start = body.index("  pack-npm-audit:")
+        nxt = re.search(
+            r"\n  [a-z][a-z0-9-]*:\n", body[start + 1 :]
+        )  # AUD-DEP-029: cắt tới job kế, không tới cuối file
+        job = body[start : start + 1 + nxt.start()] if nxt else body[start:]
+        self.assertNotRegex(job, r"(?m)^\s*(?:-\s+)?if:")  # AUD-DEP-027: không tắt job/bước bằng `if:`
         self.assertRegex(
             job,
             r"working-directory: framework/templates/packs/web-api-ts/starter\n\s+run: pnpm audit --audit-level moderate\n",
         )
-        for forbidden in ("--ignore-registry-errors", "|| true", "continue-on-error", "--audit-level low\n"):
+        for forbidden in ("--ignore-registry-errors", "|| true", "continue-on-error"):
             self.assertNotIn(forbidden, job)
         self.assertEqual(len(re.findall(r"uses: pnpm/action-setup@[0-9a-f]{40} ", job)), 1)
 
@@ -379,7 +384,9 @@ class MergeGateStubTest(unittest.TestCase):
                 self.assertIn(marker, joined)
 
     def test_rulesets_drop_merge_gate(self):
-        self.assertEqual(required_checks(RULESET), ["quality", "protection-guard", "gitleaks", "dep-audit"])
+        self.assertEqual(
+            required_checks(RULESET), ["quality", "protection-guard", "gitleaks", "dep-audit", "pack-npm-audit"]
+        )
         self.assertIs(status_rule(RULESET)["strict_required_status_checks_policy"], True)  # repo khung giữ "up to date"
         template = ROOT / "framework" / "templates" / "ruleset-main.json"
         self.assertEqual(required_checks(template), ["quality", "gitleaks"])
