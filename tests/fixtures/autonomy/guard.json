@@ -23620,6 +23620,22 @@
   {"id": "aud799-merge-by-repo-id", "origin": "audit", "refs": ["AUD-SEC-799"], "input": {"command": "gh api -X PUT repositories/123/pulls/5/merge -f sha=abc"}, "expect": {"allowed": false, "code": "UNVERIFIED"}},
   {"id": "aud799-ctl-read-by-repo-id", "origin": "control", "refs": ["AUD-SEC-799"], "input": {"command": "gh api repositories/123/pulls/5"}, "expect": {"allowed": true}},
   {"id": "aud800-credential-fill", "origin": "audit", "refs": ["AUD-SEC-800"], "input": {"command": "git credential fill"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
-  {"id": "aud800-ctl-credential-approve", "origin": "control", "refs": ["AUD-SEC-800"], "input": {"command": "git credential approve"}, "expect": {"allowed": true}}
+  {"id": "aud800-ctl-credential-approve", "origin": "control", "refs": ["AUD-SEC-800"], "input": {"command": "git credential approve"}, "expect": {"allowed": true}},
+  {"id": "aud801-func-for-late-assign", "origin": "audit", "refs": ["AUD-SEC-801"], "input": {"command": "d=/tmp/x; f() { rm -rf \"$d\"; }; for d in ~; do f; done"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "aud801-func-param-assign-late", "origin": "audit", "refs": ["AUD-SEC-801"], "input": {"command": "d=/tmp/x; f() { rm -rf \"$d\"; }; unset d; : ${d:=~}; f"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "aud801-func-for-push-late", "origin": "audit", "refs": ["AUD-SEC-801"], "input": {"command": "b=feat; f() { git push origin \"$b\"; }; for b in main; do f; done"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "aud801-ctl-func-other-var", "origin": "control", "refs": ["AUD-SEC-801"], "input": {"command": "d=/tmp/x; f() { rm -rf \"$d\"; }; for x in ~; do f; done"}, "expect": {"allowed": true}},
+  {"id": "aud802-eval-dashdash-rm", "origin": "audit", "refs": ["AUD-SEC-802"], "input": {"command": "eval -- rm -rf ~"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud802-eval-dashdash-force-push", "origin": "audit", "refs": ["AUD-SEC-802"], "input": {"command": "eval -- git push --force origin main"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud802-ctl-eval-dashdash-echo", "origin": "control", "refs": ["AUD-SEC-802"], "input": {"command": "eval -- echo hi"}, "expect": {"allowed": true}},
+  {"id": "aud803-alt-force", "origin": "audit", "refs": ["AUD-SEC-803"], "input": {"command": "git push ${HOME:+--force} origin feat"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud803-replace-force", "origin": "audit", "refs": ["AUD-SEC-803"], "input": {"command": "git push ${HOME/*/--force} origin feat"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud803-alt-hard", "origin": "audit", "refs": ["AUD-SEC-803"], "input": {"command": "git reset ${HOME:+--hard}"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud803-nested-default-home", "origin": "audit", "refs": ["AUD-SEC-803"], "input": {"command": "rm -rf ${X:-$HOME}"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud803-alt-path", "origin": "audit", "refs": ["AUD-SEC-803"], "input": {"command": "rm -rf ${HOME:+/home/x}"}, "expect": {"allowed": false, "code": "WIPE_OUTSIDE"}},
+  {"id": "aud803-case-lower-known", "origin": "audit", "refs": ["AUD-SEC-803"], "input": {"command": "X=--HARD; git reset ${X,,}"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud803-ctl-echo-alt", "origin": "control", "refs": ["AUD-SEC-803"], "input": {"command": "echo ${X:+a}"}, "expect": {"allowed": true}},
+  {"id": "aud803-ctl-default-quoted", "origin": "control", "refs": ["AUD-SEC-803"], "input": {"command": "echo \"${X:-default}\""}, "expect": {"allowed": true}},
+  {"id": "aud803-ctl-log-alt-flag", "origin": "control", "refs": ["AUD-SEC-803"], "input": {"command": "git log ${X:+--oneline}"}, "expect": {"allowed": true}}
  ]
 }
