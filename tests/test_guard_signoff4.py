@@ -237,6 +237,22 @@ class SignOff4HelperTest(unittest.TestCase):
         self.assertEqual(guard._cd_vars(["cd", "${HOME}/x"], "/a", flags), ["cd", "~/x"])
         self.assertEqual(guard._cd_vars([], "/a", flags), [])
 
+    def test_wrapped_forms_denied(self):
+        """Dạng bọc của `tests.test_guard_fuzz` (`X && …`, `…;`, `bash -c`, `$(…)`, `env`/`command`)."""
+        for core in ('cd "$PWD/.." && rm -rf zz', 'cd "$(pwd)/.." && rm -rf zz', 'cd "$HOME" && rm -rf zz'):
+            for wrap in ("true && {}", "true; {}", "bash -c '{}'", 'echo "$({}\n)"'):
+                with self.subTest(cmd=wrap.format(core)):
+                    self.assertEqual(decide(wrap.format(core))["decision"], "deny")
+        feed = "echo .claude/settings.json | xargs mv x.json"
+        for wrap in ("true && {}", "true; {}", "XT_FUZZ=1 {}", "command {}", "nice -n 5 {}", "timeout 60 {}"):
+            with self.subTest(cmd=wrap.format(feed)):
+                self.assertEqual(decide(wrap.format(feed))["decision"], "deny")
+        self.assertEqual(guard._xargs_fed_all("true && echo a | xargs rm; echo b | xargs mv x"), ["rm a", "mv x b"])
+        self.assertTrue(guard._cd_leaves_project('"${HOME}/x"'))
+        self.assertTrue(guard._cd_leaves_project('"$(pwd)/.."'))
+        self.assertFalse(guard._cd_leaves_project('"$PWD/build"'))
+        self.assertFalse(guard._cd_leaves_project("build"))
+
     def test_xargs_literal_feed_rescanned(self):
         """Quyết định phiên chính (T-3937): nguồn chữ trơn của xargs nối vào argv rồi quét như lệnh trơn."""
         for cmd in ("echo .claude/settings.json | xargs mv x.json", "ls .claude/settings.json | xargs sed -i s/a/b/"):

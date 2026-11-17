@@ -3104,6 +3104,20 @@ def _value_ops_modelled(value: str, seeded: Set[str]) -> bool:
     return all(n in seeded and SAFE_VALUE_OP_RE.fullmatch(op) for n, op in _dd_params(value) if op)
 
 
+CD_ENV_DIR_RE = re.compile(r'"?\$(?:\{(HOME|PWD)\}|(HOME|PWD)(?!\w))([^$`"]*)"?|"?\$\(pwd\)([^$`"]*)"?')
+
+
+def _cd_leaves_project(word: str) -> bool:
+    """T-3937: `cd "$HOME…"`, `cd "$PWD/.."`, `cd "$(pwd)/.."` — thư mục ngoài dự án hay cha của nó. Bộ theo dõi thư
+    mục giải dạng đứng đầu lệnh (`_cd_vars`); ở mọi dạng khác (sau `&&`/`;`, trong `bash -c`/`$(…)`) lệnh có luật hẹp
+    sau đó → BUDGET (chặt). `cd "$PWD/build"` không ra ngoài nên không tính."""
+    m = CD_ENV_DIR_RE.fullmatch(word)
+    if m is None:
+        return False
+    rest = m[3] if m[3] is not None else m[4]
+    return m[1] == "HOME" or m[2] == "HOME" or ".." in rest.split("/")
+
+
 CD_TOPLEVEL_RE = re.compile(r'("?)\$\(git rev-parse --show-toplevel\)\1')
 
 
@@ -3113,6 +3127,8 @@ def _cd_moved(word: str, weak: Set[str], lit: Set[str]) -> bool:
     luật hẹp sau đó (đích tương đối) bị chặn; `cd` tự nó không bị chặn."""
     if CD_TOPLEVEL_RE.fullmatch(word):
         return False
+    if _cd_leaves_project(word):
+        return True
     bad_op = any(not _dd_op_ok(n, op, lit) for n, op in _dd_params(word) if op)
     return _opaque_ref(_var_refs(word), weak) or _dd_subst(word) or bad_op or _ruled_env_op(word, lit)
 
@@ -3251,7 +3267,7 @@ def _scan_last_arg(
     gắn tham số vị trí vào đối số chữ (`_bound_bodies`, T-3937) quét như shell lồng."""
     variant = _last_arg_splice(cmd) if "$" in cmd else None
     bodies = [b for b in map(_bind_positional, _positional_calls(cmd)) if b] if "$" in cmd else []
-    variants = [v for v in [variant, _xargs_fed(cmd) if "xargs" in cmd else None] if v]
+    variants = [v for v in [variant, *(_xargs_fed_all(cmd) if "xargs" in cmd else [])] if v]
     deny = _scan_scripts(variants, root, cwd, depth, asks, 0, budget, rw) if variants else ""
     return deny or (_scan_scripts(bodies, root, cwd, depth, asks, 1, budget, rw) if bodies else "")
 
@@ -3259,11 +3275,18 @@ def _scan_last_arg(
 # T-3937: `echo a b | xargs mv x.json` — nguồn chữ trơn (`echo`, `printf '%s\n'`, `ls` không mở rộng/glob) nối vào argv
 # lệnh sau xargs (`-I{}`: thay `{}`) rồi quét như lệnh trơn (`mv x.json a b`); nguồn khác giữ luật xargs hiện tại
 XARGS_FED_RE = re.compile(
-    r"\s*(echo|printf\s+'%s\\n'|ls)\s+([\w./:@%+,=-]+(?:\s+[\w./:@%+,=-]+)*)\s*\|\s*(xargs\s[^|;&<>`$()]*)", re.S
+    r"(?:^|(?<=[;&(\n]))\s*(?:(?:[A-Za-z_]\w*=\S*|command|env|nice|timeout|-\S+|\d\S*)\s+)*(echo|printf\s+'%s\\n'|ls)\s+"
+    r"([\w./:@%+,=-]+(?:[ \t]+[\w./:@%+,=-]+)*)\s*\|\s*(xargs\s[^|;&<>`$()\n]*)(?=$|[;&)\n])",
+    re.S,
 )
 
 
 XARGS_FED_CMDS = DD_WRITERS | {"rm", "shred", "unlink", "rmdir"}
+
+
+def _xargs_fed_all(cmd: str) -> List[str]:
+    """Mọi đoạn `<nguồn chữ> | xargs …` của lệnh (sau `&&`/`;`/`(`, gán/`env`/`command` đứng trước) → lệnh trơn."""
+    return [v for m in XARGS_FED_RE.finditer(cmd) if (v := _xargs_fed(m[0]))]
 
 
 def _xargs_fed(cmd: str) -> Optional[str]:
