@@ -1329,6 +1329,17 @@ def state_dir(base: Optional[Path] = None) -> Path:
     return (base or project_dir()) / ".autopilot"
 
 
+def state_write_dir(base: Optional[Path] = None, *sub: str) -> Path:
+    """`.autopilot[/sub…]` để ghi: thành phần nào là symlink → OSError, không ghi xuyên liên kết (O_NOFOLLOW/tệp tạm chỉ
+    che thành phần cuối — AUD-SEC-651, AUD-HAR-405)."""
+    d = state_dir(base)
+    for p in (d, *(d.joinpath(*sub[: i + 1]) for i in range(len(sub)))):
+        if p.is_symlink():
+            rel = p.relative_to(d.parent).as_posix()
+            raise OSError(f"{rel} là symlink — không khoá/ghi state xuyên liên kết ra ngoài dự án (AUD-SEC-651)")
+    return d.joinpath(*sub)
+
+
 def now_iso() -> str:
     return _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).isoformat()
 
@@ -1404,9 +1415,7 @@ def _state_lock(base: Path) -> Iterator[None]:
     fc = _fcntl()
     if fc is None:
         raise OSError("không có fcntl — không ghi state; dùng môi trường hỗ trợ flock (ADR-0054)")
-    d = state_dir(base)
-    if d.is_symlink():  # O_NOFOLLOW chỉ che thành phần cuối: thư mục là liên kết thì khoá/ghi xuyên ra ngoài dự án
-        raise OSError(f"{d.name} là symlink — không khoá/ghi state xuyên liên kết ra ngoài dự án (AUD-SEC-651)")
+    d = state_write_dir(base)  # O_NOFOLLOW chỉ che thành phần cuối: thư mục là liên kết thì khoá/ghi xuyên ra ngoài
     d.mkdir(parents=True, exist_ok=True)
     fd = os.open(d / STATE_LOCK_FILE, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
@@ -2867,7 +2876,7 @@ def loop_verify(base: Optional[Path] = None, run_all: bool = False) -> int:
         "gate_floor": floor,
         "gate_floor_runs": floor_runs,
     }
-    d = state_dir(base)
+    d = state_write_dir(base)  # không ghi `verified.json` qua liên kết (AUD-HAR-405)
     d.mkdir(parents=True, exist_ok=True)
     write_atomic(d / VERIFIED_FILE, json.dumps(rec, ensure_ascii=False, indent=2) + "\n")
     if ok and run_all:
@@ -3018,7 +3027,7 @@ def loop_record(
         ev["zero_tests_red"] = True  # lý do đỏ dù lệnh exit 0 — Stop hook/người đọc evidence thấy ngay
     if executor:
         ev["executor"] = executor  # agent đã làm task (tầng), cho `executor_choice`/`loop stats`; không phải tên model
-    d = state_dir(base) / "evidence"
+    d = state_write_dir(base, "evidence")  # không ghi bằng chứng qua liên kết (AUD-HAR-405)
     d.mkdir(parents=True, exist_ok=True)
     write_atomic(d / f"{task}.json", json.dumps(ev, ensure_ascii=False, indent=2) + "\n")
     sig = None if code == 0 else failure_signature(task, code, out)
@@ -3120,7 +3129,7 @@ def _append_line(base: Path, name: str, line: str, sync: bool = False) -> None:
     """Nối một dòng vào `.autopilot/<name>`, không đi theo symlink đặt sẵn (O_NOFOLLOW); lỗi I/O ném OSError. `sync`:
     `fsync` trước khi trả về — sổ là nguồn đếm bền qua crash/restart (`perf-trials.jsonl`, ADR-0071 §3)."""
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(state_dir(base) / name, flags, 0o600)
+    fd = os.open(state_write_dir(base) / name, flags, 0o600)  # `.autopilot` là symlink → OSError (AUD-HAR-405)
     with os.fdopen(fd, "a", encoding="utf-8") as fh:
         fh.write(line + "\n")
         if sync:
@@ -3358,6 +3367,10 @@ SESSION_MISMATCH_NOTE = (
     " (Stop hook chỉ giữ phiên đã gắn)"
 )
 STOP_LOG_FILE = "hook-stop.log"  # lượt Stop bị bỏ qua (phiên khác, stdin hỏng) — một dòng mỗi lượt khi vòng đang bật
+STOP_SYMLINK_NOTE = (
+    "⚠ `.autopilot` là symlink — vòng không ghi state/bằng chứng qua liên kết (AUD-HAR-405); thay bằng thư mục thật"
+    " (`loop record`/`loop verify` từ chối tới khi sửa)."
+)
 
 
 def session_id() -> str:
@@ -3400,6 +3413,10 @@ def hook_stop(stdin_text: str, base: Optional[Path] = None) -> Tuple[str, int]:
         why = final_check(base)
         v = {"verdict": "verify", "reason": why} if why else v
     mode = _payload_field(stdin_text, "permission_mode")
+    if v["verdict"] in ("continue", "verify") and st and st.get("active") and state_dir(base).is_symlink():
+        # AUD-HAR-405: không ghi state qua liên kết nhưng vòng còn việc — chặn dừng (fail-closed), không cho dừng rỗng
+        why = f"{STOP_SYMLINK_NOTE} {_stop_reason(st, v, mode, xt_cmd(base))}"
+        return json.dumps({"decision": "block", "reason": why}, ensure_ascii=False), 0
     if v["verdict"] in ("continue", "verify") and st:
         st = _stop_write(base, lambda cur: _stop_apply(cur, mode, v, end=False))
         # lỗi khoá/rev, state biến mất, hoặc `loop stop` chen vào trong lúc tính verdict → cho dừng (fail-open)
@@ -13262,8 +13279,17 @@ def _go_no_go_refusals(text: str) -> List[str]:
 
 
 def _go_no_go_signed(text: str) -> bool:
-    """§5 (Ký) của GO-NO-GO có ít nhất một dòng ký có tên và ngày."""
-    return bool(_go_sign_rows(text))
+    """§5 (Ký) của GO-NO-GO có ít nhất một dòng ký có tên nhìn thấy (`_go_signers`) và ngày."""
+    return bool(_go_signers(text))
+
+
+GO_INVISIBLE_CATS = frozenset({"Cc", "Cf", "Cs"})  # điều khiển, định dạng (U+200B, BOM…), surrogate lẻ
+
+
+def _go_visible_name(name: str) -> bool:
+    """AUD-SEC-629: ô tên có ít nhất một ký tự không phải khoảng trắng/điều khiển/định dạng — ô chỉ NUL (guard thấy
+    khoảng trắng sau `clean_payload`), `\\x01`, U+200B… không phải người ký. Lời từ chối không lọc theo tên (chặt)."""
+    return any(not ch.isspace() and unicodedata.category(ch) not in GO_INVISIBLE_CATS for ch in name)
 
 
 GO_FRONT_RE = re.compile(r"\A---\n.*?\n---\n", re.S)  # frontmatter: không phải tiêu đề
@@ -13798,10 +13824,11 @@ def _release_promotion(base: Path, fails: List[str], human: List[str], subject: 
 
 
 def _go_signers(text: str) -> List[str]:
-    """Ô tên (cột 2) của các dòng ký §5 hiển thị — cùng phạm vi `_go_sign_rows`."""
+    """Ô tên (cột 2) nhìn thấy (`_go_visible_name`) của các dòng ký §5 hiển thị — cùng phạm vi `_go_sign_rows`."""
     part = re.split(r"^## 5\b.*$", _markdown_shown(text), maxsplit=1, flags=re.M)
     section = re.split(r"^## ", part[-1], maxsplit=1, flags=re.M)[0] if len(part) == 2 else ""
-    return [m[0].strip().strip("|").split("|")[1].strip() for m in GO_SIGN_ROW_RE.finditer(section)]
+    names = (m[0].strip().strip("|").split("|")[1].strip() for m in GO_SIGN_ROW_RE.finditer(section))
+    return [name for name in names if _go_visible_name(name)]
 
 
 def release_check(base: Path, blueprint: str, status: str, unchecked_must: str = "warn") -> Dict[str, Any]:
@@ -14705,7 +14732,7 @@ def release_sign(base: Path, file: str, note: str, rc: Dict[str, Any]) -> str:
         raise ReleaseSignError("`--note` rỗng — ghi vì sao GO (bằng chứng máy đã xét)")
     _sign_scope_check(base)
     rel, text = _sign_doc(base, file)
-    if _go_no_go_signed(text) or _go_no_go_refusals(text):
+    if _go_sign_rows(text) or _go_no_go_refusals(text):  # kể cả ô tên vô hình (AUD-SEC-629): không ký cạnh
         raise ReleaseSignError(f"{rel}: §5 đã có dòng ký hoặc lời từ chối — không ký thêm")
     _sign_remote_check(base)
     problem = _subject_problem(rel, text, rc["subject"])

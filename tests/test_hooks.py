@@ -6226,7 +6226,9 @@ class EvidenceHooksStopInstallTest(EvidenceHooksBase):
         sys.path.insert(0, str(ROOT / "scripts"))
         import install
 
-        target = Path(tempfile.mkdtemp())
+        # `resolve()`: `merge_hooks` gọi thẳng — helper (`parent_symlink`) cần gốc đã resolve như `install()` làm; TMPDIR
+        # dưới symlink (macOS `/var → /private/var`) thì bản chưa resolve thành `skipped-symlink` (AUD-SEC-655)
+        target = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, target, True)
         ours = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
         old = json.loads(json.dumps(ours))  # bản khung cũ: chưa có hai sự kiện mới, chưa có onFailure
@@ -8119,6 +8121,52 @@ class GuardRemoteRefWriteTest(unittest.TestCase):
         for cmd in self.ALLOW:
             with self.subTest(cmd=cmd):
                 self.assertNotEqual(self.decide(cmd)["decision"], "deny", cmd)
+
+
+class GuardMiscOrangeTest(unittest.TestCase):
+    """T-3912: AUD-SEC-607 (gán nhiều dòng trước lệnh), 646 (`--end-of-options` bỏ cả cây), 681 (autocorrect khi lệnh đổi
+    PATH/exec-path), 731 (`set --` + `for x do`), 753 (`--no-verif` viết tắt), 624 (ghi công AI theo `-R` sau `cd`)."""
+
+    DENY = (
+        "X='a\nb' git push --force origin main",
+        "M='x\ny' gh pr merge 5 --admin",
+        "git restore --end-of-options -s .",
+        "git checkout --end-of-options -b .",
+        "set -- /; for d do rm -rf $d; done",
+        'set -- .autopilot; for d; do rm -rf "$d"; done',
+        "set -- / && rm -rf $1",
+        "PATH=/tmp/x git -c help.autocorrect=1 psuh --force origin main",
+        "rm ~/bin/git-psuh; git -c help.autocorrect=1 psuh --force origin main",
+        "export PATH=/usr/bin; git -c help.autocorrect=1 psuh --force origin main",
+        "cd /tmp && gh -R o/r pr create -t x -b 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'",
+    )
+    ALLOW = ("git restore --end-of-options f.txt", 'for d in a b; do echo "$d"; done', "set -e; echo ok")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _guard()
+
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "", "XT_GUARD_PHASE": ""}))
+
+    def decide(self, cmd: str) -> dict:
+        return self.g.apply_policy(self.g.bash_decision(cmd, str(ROOT), str(ROOT)))
+
+    def test_orange_forms_denied(self):
+        for cmd in self.DENY:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "deny", cmd)
+
+    def test_plain_forms_run(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.decide(cmd)["decision"], "", cmd)
+
+    def test_no_verify_abbrev_marked(self):  # AUD-SEC-753
+        for cmd in ("git commit --no-verif -m x", "git commit --no-ve -m x", "git commit --no-verify -m x"):
+            with self.subTest(cmd=cmd):
+                self.assertTrue(self.g.bash_decision(cmd, str(ROOT), str(ROOT)).get("no_verify"), cmd)
+        self.assertFalse(self.g.bash_decision("git commit -m x", str(ROOT), str(ROOT)).get("no_verify"))
 
 
 class GuardGhXargsFieldTest(unittest.TestCase):
@@ -11843,7 +11891,8 @@ class GuardQuotedOperatorTest(_GuardDebtCase):
         # chữ có chuyển hướng (như trước) rồi chữ bỏ chuyển hướng; trùng thì một
         self.assertEqual(self.g._eval_scripts(self.g.tokenize("eval > f")), ["> f"])
         self.assertEqual(self.g._eval_scripts(self.g.tokenize("eval nc h < f")), ["nc h < f", "nc h"])
-        self.assertEqual(self.g._echoed_scripts(["printf", "%s", "a", "b"]), ["%s", "a", "b", "a b"])
+        # cuối: chữ printf in thật (định dạng điền đối số, lặp — AUD-SEC-612)
+        self.assertEqual(self.g._echoed_scripts(["printf", "%s", "a", "b"]), ["%s", "a", "b", "a b", "ab"])
         self.assertEqual(self.g._echoed_scripts(["echo", "nc", "h", "<", "f"]), ["nc h < f", "nc h"])
 
     def test_pinned_paths(self):

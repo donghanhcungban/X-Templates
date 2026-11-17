@@ -801,6 +801,13 @@ GO_EDIT_WHY = (
     " bằng Write (nội dung y nguyên, guard so dòng ký §5 như `release-check`); dòng ký §5 do người ghi, agent ký qua"
     " `xt.py release-sign` khi `release_signoff: agent` bật (ADR-0074); " + GO_SIGN_WHY + "."
 )
+# AUD-SEC-629: khoá đánh dấu `content` gốc có NUL (`_go_mark_nul`) — chứa NUL nên không trùng khoá nào của payload đã
+# làm sạch (`clean_payload` thay NUL ở cả khoá), payload không giả được dấu này.
+GO_NUL_MARK = "\0go-nul"
+GO_NUL_WHY = (
+    "Không ghi {} có NUL (AUD-SEC-629): guard đọc NUL như khoảng trắng còn `release-check` đọc nguyên văn — ô Tên"
+    " chỉ NUL thành chữ ký guard không thấy; " + GO_SIGN_WHY + "."
+)
 GoRow = Tuple[str, ...]
 
 
@@ -971,13 +978,30 @@ def _go_nl(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _go_mark_nul(raw: Any, clean: Any) -> None:
+    """AUD-SEC-629: `content` GỐC (trước `clean_payload`) có NUL → đặt `GO_NUL_MARK` ở dict tương ứng của payload đã làm
+    sạch (`tool_input` và `tool_input.files[]` của MCP ghi file) — guard đọc NUL như khoảng trắng còn `release-check`
+    đọc nguyên văn (ô Tên chỉ NUL). Payload lạ → không đánh dấu."""
+    ti = raw.get("tool_input") if isinstance(raw, dict) else None
+    cti = clean.get("tool_input") if isinstance(clean, dict) else None
+    if not isinstance(ti, dict) or not isinstance(cti, dict):
+        return
+    files, cfiles = ti.get("files"), cti.get("files")
+    pairs = [(ti, cti), *(zip(files, cfiles) if isinstance(files, list) and isinstance(cfiles, list) else ())]
+    for r, c in pairs:
+        if isinstance(r, dict) and isinstance(c, dict) and isinstance(r.get("content"), str) and "\0" in r["content"]:
+            c[GO_NUL_MARK] = True
+
+
 def _go_sign_deny(path: str, rel: str, root: str, tool_input: Optional[Dict[str, object]]) -> str:
     """Lý do deny khi lần ghi vào `GO-NO-GO*.md` (tên hay đích symlink): mọi Edit/MultiEdit/NotebookEdit (D-418); Write
-    khi đĩa không đọc chắc hay `_go_write_why`; không thì ''."""
+    có NUL (`GO_NUL_MARK`, AUD-SEC-629), khi đĩa không đọc chắc hay `_go_write_why`; không thì ''."""
     if not tool_input or not (_is_go_no_go(path) or _is_go_no_go(rel)):
         return ""
     if "content" not in tool_input:
         return GO_EDIT_WHY.format(rel)
+    if tool_input.get(GO_NUL_MARK):
+        return GO_NUL_WHY.format(rel)
     full = os.path.join(root, rel)
     disk = _go_read(full, strict=True)
     if disk is None and os.path.lexists(full):
@@ -1014,9 +1038,11 @@ def _go_anchor_views(text: str) -> Tuple[Tuple[str, List[str]], Tuple[str, List[
 
 
 def _go_anchors(text: str) -> Tuple[str, List[str]]:
-    """(tiêu đề `# ` đầu tiên ngoài frontmatter, các dòng `subject:` đã sắp) — thứ gắn chữ ký với ứng viên (D-392)."""
+    """(tiêu đề `# ` đầu tiên ngoài frontmatter, các dòng `subject:` đã sắp) — thứ gắn chữ ký với ứng viên (D-392).
+    Dòng `subject:` chỉ bỏ ` `/`\\t` hai đầu như `SUBJECT_LINE_RE` của xt (AUD-SEC-630): `str.strip()` xoá cả VT/FF/NEL/
+    NBSP/U+2028/FS/U+3000 cuối dòng — thứ làm xt bỏ qua dòng đó — nên hoán vị trang trí đổi ứng viên mà neo không đổi."""
     title = GO_TITLE_RE.search(GO_FRONT_RE.sub("", text, count=1))
-    return (title[0].strip() if title else ""), sorted(m[0].strip() for m in GO_SUBJECT_RE.finditer(text))
+    return (title[0].strip() if title else ""), sorted(m[0].strip(" \t") for m in GO_SUBJECT_RE.finditer(text))
 
 
 # AUD-SEC-641: dòng "Khi chạy thật đã quyết (D-NNN): …" của sổ quyết định là việc của người qua `loop decide-prod` (hàng
@@ -2275,7 +2301,20 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _home_dyn_why(cmd) or _run_named_why(cmd) or _implicit_load_why(cmd) or _patch_file_why(cmd)
     why = why or _prefix_why(cmd) or _nested_quote_why(cmd) or _func_scope_why(cmd)  # P0 lát 4; AUD-SEC-750/660/661
     why = why or _prod_decided_bash_why(cmd)  # AUD-SEC-641
-    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
+    why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
+    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd) or _redirect_subst_why(cmd)
+
+
+def _redirect_subst_why(cmd: str) -> str:
+    """AUD-SEC-612: đích chuyển hướng ghi có thay lệnh trần dính chữ (`> $(echo).autopilot/state.json`) — bộ tách token
+    cắt đích ở `(` nên luật đích ghi không thấy đuôi; như P4 (ADR-0076) nhưng ở mọi lệnh. Nháy kép thì đích còn nguyên
+    và đuôi được xét như đích (`_subst_tail`)."""
+    raw = _raw_tokens(cmd, True)
+    for argv in (None if raw is None else _plain_argvs(raw)) or []:
+        for op, word in zip(argv, argv[1:]):
+            if (op.lstrip("&").startswith(">") or op == "<>") and _gate_bare_substitution(word, False):
+                return RULED_SUBST_WHY.format(clean_text(f"{op} {word}")[:80])
+    return ""
 
 
 # AUD-SEC-660/661 (D-415): thân hàm được quét lúc định nghĩa, với bảng biến lúc đó — biến gán sau (trước lời gọi) không
@@ -2315,6 +2354,43 @@ def _func_scope_why(cmd: str) -> str:
     groups = [g for g in re.finditer(r"\{\s[^{}]*\}", live) if STDIN_RUNNER_RE.search(g.group())]
     near = [live[max(0, g.start() - 3) : g.end() + 4] for g in groups]
     return FUNC_SCOPE_WHY if any(GROUP_STDIN_RE.search(t) for t in near) else ""
+
+
+# AUD-SEC-731: `set -- …` đặt tham số vị trí mà guard không theo dõi; đọc lại qua `for x do` (không `in` = "$@"), `$1`,
+# `$@`… → giá trị như biến không biết (D-415).
+SET_POSITIONAL_RE = re.compile(r"(?<![\w-])set(?:\s+[-+][A-Za-z]*)*\s+--?(?=\s|$)")
+POSITIONAL_READ_RE = re.compile(r"\bfor\s+\w+\s*(?:;\s*)?do\b|\$\{?[1-9@*]")
+SET_POSITIONAL_WHY = (
+    "`set --` đặt tham số vị trí rồi đọc lại (`for x do`, `$1`, `$@`) — guard không theo dõi giá trị đó (AUD-SEC-731);"
+    " viết lại: dùng giá trị nguyên văn hay `for x in <giá trị>`"
+)
+
+
+def _set_positional_why(cmd: str) -> str:
+    """Chỉ khi chuỗi có lệnh không chỉ đọc (`rm`, `git`…) — `set -- 1; for x do echo $x; done` vẫn chạy."""
+    live = _code_views(_split_view(cmd)[0])[0]
+    if not (SET_POSITIONAL_RE.search(live) and POSITIONAL_READ_RE.search(live)):
+        return ""
+    heads = _command_heads(cmd)
+    passive = REUSE_READERS | {"set", "for", "do", "done", "printf", ":", "true", "false"}
+    return (
+        ""
+        if heads is not None and all(posixpath.basename(_dequote(h)) in passive for h in heads)
+        else SET_POSITIONAL_WHY
+    )
+
+
+# AUD-SEC-681: git chạy `git-<tên>` ngoài nếu có, không thì autocorrect đoán lệnh khác — chuỗi bật autocorrect mà đổi
+# PATH/exec-path hay xoá/dời tệp `git-*` thì lệnh ngoài guard thấy có thể biến mất lúc chạy → BUDGET.
+AUTOCORRECT_TEXT_RE = re.compile(r"help\.autocorrect", re.I)
+EXEC_LOOKUP_CHANGE_RE = re.compile(
+    r"(?<![\w$])(?:PATH|GIT_EXEC_PATH)\+?=|--exec-path|\b(?:rm|mv|unlink|chmod)\b[^;&|\n]*git-"
+)
+AUTOCORRECT_WHY = "bật `help.autocorrect` cùng lệnh đổi PATH/exec-path hay xoá/dời tệp `git-*` (AUD-SEC-681)"
+
+
+def _autocorrect_lookup_why(cmd: str) -> str:
+    return AUTOCORRECT_WHY if AUTOCORRECT_TEXT_RE.search(cmd) and EXEC_LOOKUP_CHANGE_RE.search(cmd) else ""
 
 
 NESTED_QUOTE_WHY = (
@@ -5283,7 +5359,7 @@ def pipelines(tokens: List[str]) -> List[List[List[str]]]:
 
 # Gán biến đầu lệnh/đối số `export`: `TÊN=v` và `TÊN+=v` (bash nối vào giá trị cũ — `X+=1 rm -rf /` vẫn chạy rm,
 # AUD-SEC-125). Tên không mang `+`: tách bằng `_assign_split`.
-ENV_ASSIGN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=.*")
+ENV_ASSIGN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=.*", re.S)  # AUD-SEC-607: giá trị trong nháy có xuống dòng
 
 
 def _assign_split(t: str) -> Tuple[str, str]:
@@ -6404,8 +6480,9 @@ def _git_clean(args: List[str]) -> Tuple[str, str]:
 
 def _discards_whole_tree(args: List[str]) -> bool:
     """checkout/restore có đích là cả cây làm việc (`.`, `./`, `:/`, `*`) — đích nằm sau `--` hoặc là đối số vị trí."""
-    if "--" in args:
-        targets = args[args.index("--") + 1 :]
+    end = next((i for i, a in enumerate(args) if a in OPTS_END), -1)  # AUD-SEC-646: cả `--end-of-options`
+    if end >= 0:
+        targets = args[end + 1 :]
     else:
         targets = _positionals(args, ("-s", "--source", "-b", "-B"))
     return any(t in (".", "./", ":/", "*") for t in targets)
@@ -7151,8 +7228,12 @@ def _git_exec_path() -> str:
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
-def _git_external(sub: str) -> bool:
-    """`git-<sub>` chạy được ở exec-path hay PATH — git chạy nó thay vì sửa tên (`git lfs`, `git submodule`)."""
+def _git_external(sub: str, env: Optional[Dict[str, str]] = None, argv: Optional[List[str]] = None) -> bool:
+    """`git-<sub>` chạy được ở exec-path mặc định — git chạy nó thay vì sửa tên (`git submodule`). AUD-SEC-681: không tin
+    PATH người dùng (tệp ở `~/bin` xoá được trước trong cùng chuỗi) và không tin khi lệnh đổi `PATH`/`GIT_EXEC_PATH`/
+    `--exec-path` — git lúc chạy không thấy lệnh ngoài thì sửa tên sang lệnh khác."""
+    if env and ({"PATH", "GIT_EXEC_PATH"} & set(env)) or argv and any(a.startswith("--exec-path") for a in argv):
+        return False
     dirs = [os.environ.get("GIT_EXEC_PATH") or _git_exec_path(), *os.environ.get("PATH", "").split(os.pathsep)]
     paths = [os.path.join(d, "git-" + sub) for d in dirs if d and "/" not in sub]
     return any(os.path.isfile(p) and os.access(p, os.X_OK) for p in paths)
@@ -11538,6 +11619,9 @@ def _where(t: str, root: str, cwd: Optional[str]) -> List[str]:
     old = OLDPWD_REF_RE.match(t)
     if old:
         return _where(t[old.end() :].lstrip("/") or ".", root, None)
+    tail = None if PWD_REF_RE.match(t) else _subst_tail(t)
+    if tail is not None:  # AUD-SEC-612: `"$(echo)".claude/settings.json` — thay lệnh ra rỗng hay một thư mục
+        return [t, *_where(tail, root, cwd), *_where(tail.lstrip("/"), root, None)] if tail.strip("/") else [t]
     if cwd is not None:
         return _fd_where(_resolve_target(t, root, cwd), root, cwd)
     t = PROJECT_REF_RE.sub(lambda _: root, t, count=1)
@@ -11576,6 +11660,18 @@ def _fd_dir_tail(path: str) -> Optional[str]:
         if 2 <= len(stack) <= 4 and FD_DIR_RE.fullmatch("/" + "/".join(stack)):
             return "/".join(p for p in parts[i + 1 :] if p not in ("", ".")) or None
     return None
+
+
+def _subst_tail(t: str) -> Optional[str]:
+    """Phần sau các thay lệnh `$(…)`/`` `…` `` đứng đầu đích `t` (không số học `$((`); không mở đầu bằng thay lệnh hay
+    thay lệnh không đóng → None. Guard không biết chữ thay lệnh in ra: rỗng thì đích là đuôi (AUD-SEC-612)."""
+    i = 0
+    while t.startswith(("$(", "`"), i) and not t.startswith("$((", i):
+        end = t.find("`", i + 1) + 1 if t[i] == "`" else _raw_group_end(t, i + 2, "(")
+        if end <= 0:
+            return None
+        i = end
+    return t[i:] if i else None
 
 
 def _fd_where(t: str, root: str, cwd: Optional[str]) -> List[str]:
@@ -12480,7 +12576,9 @@ def _scan_commit(args: List[str], res: Dict[str, object], asks: List[str]) -> Op
         return "Commit rỗng bị khung chặn (không dùng empty commit để kích CI). Push thay đổi thật hoặc re-run job."
     flag_args = _commit_flag_args(args)
     res["commit"] = True
-    if "--no-verify" in flag_args or "n" in _short_flags(flag_args):
+    # AUD-SEC-753: git nhận tên dài viết tắt (`--no-verif`, `--no-ve`) — tiền tố từ `--no-v` tính là bỏ hook (chặt)
+    abbrev = any(len(k) >= 6 and "--no-verify".startswith(k) for k in (a.partition("=")[0] for a in flag_args))
+    if abbrev or "n" in _short_flags(flag_args):
         res["no_verify"] = True
         asks.append("commit --no-verify bỏ qua cổng chất lượng — cần người xác nhận lý do")
     return None
@@ -12746,7 +12844,13 @@ def _mcp_go_sign_why(tool_name: str, tool_input: Dict[str, object]) -> str:
     files = tool_input.get("files")
     for f in [tool_input, *(files if isinstance(files, list) else [])]:
         path, content = (f.get("path"), f.get("content")) if isinstance(f, dict) else (None, None)
-        if isinstance(path, str) and isinstance(content, str) and _is_go_no_go(path) and _go_signed_safe(content):
+        nul = isinstance(f, dict) and bool(f.get(GO_NUL_MARK))  # AUD-SEC-629: NUL gốc — ô Tên chỉ NUL
+        if (
+            isinstance(path, str)
+            and isinstance(content, str)
+            and _is_go_no_go(path)
+            and (nul or _go_signed_safe(content))
+        ):
             return (
                 f"Lệnh bị khung chặn ({GO_SIGN_WHY}): {tool_name} ghi `{path[:120]}` có dòng ký §5 — guard không so được"
                 " với bản trên remote; sửa GO-NO-GO cục bộ bằng Write (để trống ô Tên/Ngày) rồi commit/push bằng git."
@@ -13559,17 +13663,55 @@ def _echoed_scripts(src: List[str]) -> List[str]:
 def _echo_texts(name: str, words: List[str]) -> List[str]:
     """Chữ `echo`/`printf` (`name`) in ra từ các đối số `words`."""
     if name == "printf":
+        words = words[1:] if words[:1] == ["--"] else words
         if words and "%" in words[0]:  # cả các đối số nối bằng khoảng trắng: `printf '%s ' rm -rf / | sh` (AUD-SEC-605)
-            return [words[0].replace("\\n", "\n"), *words[1:], " ".join(words[1:])]
+            rendered = _printf_render(words[0], words[1:])  # `printf 'rm -rf %s\\n' '~' | sh` (AUD-SEC-612)
+            return [words[0].replace("\\n", "\n"), *words[1:], " ".join(words[1:]), rendered]
         return [" ".join(words).replace("\\n", "\n")]
     while words and words[0] in ("-n", "-e", "-E", "-ne", "-en"):
         words = words[1:]  # cờ của echo; phần còn lại (kể cả `--hard`) là lệnh sẽ chạy
     return [" ".join(words)]
 
 
+PRINTF_SPEC_RE = re.compile(r"%%|%[-+ #0']*(?:\d+|\*)?(?:\.(?:\d+|\*)?)?[A-Za-z]")
+
+
+def _printf_render(fmt: str, args: List[str]) -> str:
+    """Chữ `printf fmt args…` in ra (xấp xỉ): mỗi đặc tả lấy một đối số (thiếu → rỗng), định dạng lặp lại tới khi hết
+    đối số như bash; `\\n`/`\\t` thành ký tự thật."""
+    rest = list(args)
+
+    def fill(m: "re.Match[str]") -> str:
+        return "%" if m.group() == "%%" else (rest.pop(0) if rest else "")
+
+    out = [PRINTF_SPEC_RE.sub(fill, fmt)]
+    while 0 < len(rest) < len(args):  # định dạng không ăn đối số nào thì in một lần
+        out.append(PRINTF_SPEC_RE.sub(fill, fmt))
+    return "".join(out).replace("\\n", "\n").replace("\\t", "\t")
+
+
+def _xargs_words(text: str) -> List[str]:
+    """Chữ vào `xargs sh -c`, cộng từ đầu sau khi bỏ nháy kiểu xargs (`xargs bash -c <<< "'rm -rf ~'"` chạy `rm -rf ~`)."""
+    try:
+        words = shlex.split(text)
+    except ValueError:
+        return [text]
+    return [text, words[0]] if words and words[0] != text else [text]
+
+
 def _here_strings(tokens: List[str]) -> List[str]:
-    """Here-string vào shell (`bash <<< '…'`): chuỗi là lệnh (AUD-SEC-028)."""
-    return [c[i + 1] for c in split_commands(tokens) if _stdin_shell(c) for i, t in enumerate(c[:-1]) if t == "<<<"]
+    """Here-string vào shell (`bash <<< '…'`): chuỗi là lệnh (AUD-SEC-028); cả vào `xargs sh -c` không chuỗi lệnh hay
+    `xargs -I{} sh -c '…{}…'` — xargs đưa chữ đó làm lệnh (AUD-SEC-612)."""
+    out: List[str] = []
+    for c in split_commands(tokens):
+        here = [c[i + 1] for i, t in enumerate(c[:-1]) if t == "<<<"]
+        if here and _stdin_shell(c):
+            out += here
+        elif here and _argless_shell_c(_no_redirects(c)):
+            out += [w for s in here for w in _xargs_words(s)]
+        elif here and (rs := _xargs_replace_script(_no_redirects(c))):
+            out += [rs[1].replace(rs[0], ln) for s in here for ln in s.split("\n") if ln.strip()]
+    return out
 
 
 Span = Tuple[int, int, str]  # (đầu, sau cuối, thân) của một thay lệnh trong chuỗi
@@ -14400,8 +14542,10 @@ def _shell_feeds(tokens: List[str], placed: PlacedCmds) -> Placed:
     i = 0
     for pipe in pipelines(tokens):
         for feed, down, here in zip(_pipe_feeds(pipe), pipe[1:], dirs[i + 1 :]):
-            if feed and (_stdin_shell(down) or _argless_shell_c(down)):
+            if feed and _stdin_shell(down):
                 out += [(s, here) for s in feed]
+            elif feed and _argless_shell_c(down):
+                out += [(w, here) for s in feed for w in _xargs_words(s)]
             elif feed and (rs := _xargs_replace_script(down)):  # `echo 'rm -rf ~' | xargs -I{} sh -c {}` (review #405)
                 out += [(rs[1].replace(rs[0], ln), here) for s in feed for ln in s.split("\n") if ln.strip()]
         i += len(pipe)
@@ -15507,7 +15651,7 @@ def _alias_resolve(
     # được đọc) hay thắng nó: xét cả hai thứ tự, mọi cách đọc khác nhau đều quét (AUD-SEC-634 review)
     orders = [[*table, *(defined or [])], [*(defined or []), *table]]
     found = list(dict.fromkeys((k, tuple(o)) for k, o in (_git_alias_expand(n, t) for t in orders)))
-    if any(not k for k, _ in found) and any(map(_autocorrect_on, orders)) and not _git_external(n[1]):
+    if any(not k for k, _ in found) and any(map(_autocorrect_on, orders)) and not _git_external(n[1], env, g):
         return [("unresolved", [f"help.autocorrect bật: git chạy lệnh con đoán từ `{n[1]}`"])]
     return [(k, list(o)) if k else ("", n) for k, o in found]
 
@@ -17629,7 +17773,8 @@ def _sh_field(v: object) -> str:
 def _rule_decision(mode: str, payload: Any, root: str) -> Dict[str, object]:
     """Kết quả bộ luật cho một payload hook theo chế độ bash|edit|mcp; chế độ khác → không phản đối. Payload được làm
     sạch trước (surrogate lẻ, NUL — AUD-SEC-077) để lý do in ra cũng ghi được."""
-    payload = clean_payload(payload)
+    raw, payload = payload, clean_payload(payload)
+    _go_mark_nul(raw, payload)
     tool_input = payload.get("tool_input") or {}
     if mode == "bash":
         cmd = tool_input.get("command")

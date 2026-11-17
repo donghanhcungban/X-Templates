@@ -12,6 +12,7 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 import unittest.mock
@@ -253,6 +254,82 @@ class StopHookSessionBoundTest(TmpRepoCase):
         xt.write_state(st, self.tmp)
         with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": OTHER}):  # vòng chưa gắn phiên
             self.assertNotIn(warn, run_main("loop", "status")[1])
+
+
+class AutopilotSymlinkStopTest(TmpRepoCase):
+    """AUD-HAR-405 (T-3910): `.autopilot` là symlink (đích trong hay ngoài dự án) khi vòng đang bật — Stop hook vẫn chặn
+    dừng (fail-closed, như bản nền), không nối `hook-stop.log` qua liên kết; `loop record`/`loop verify` không ghi
+    bằng chứng qua liên kết. Thư mục thật vẫn chạy như cũ (ca đối chứng)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.tmp / "docs" / "autopilot").mkdir(parents=True)
+        (self.tmp / "docs" / "autopilot" / "PLAN.md").write_text(PLAN, encoding="utf-8")
+        self.enterContext(
+            unittest.mock.patch.dict(
+                os.environ, {"CLAUDE_PROJECT_DIR": str(self.tmp), "CLAUDE_CODE_SESSION_ID": SESSION}
+            )
+        )
+        self.assertEqual(run_main("loop", "init")[0], 0)
+        self.outside = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+
+    @contextlib.contextmanager
+    def linked(self, dest: Path) -> Iterator[Path]:
+        """Dời `.autopilot` thật sang `dest`, đặt `.autopilot → dest` (trả nơi ghi thật); ra khỏi khối thì trả lại."""
+        (self.tmp / ".autopilot").rename(dest)
+        (self.tmp / ".autopilot").symlink_to(dest)
+        try:
+            yield dest
+        finally:
+            (self.tmp / ".autopilot").unlink()
+            dest.rename(self.tmp / ".autopilot")
+
+    def dests(self) -> tuple[Path, Path]:
+        return self.outside / "ap", self.tmp / "ap-real"
+
+    def test_symlink_stop_hook_blocks_without_writing_through_link(self) -> None:
+        for dest in self.dests():
+            with self.subTest(dest=dest.name), self.linked(dest) as real:
+                rc, out, err = run_main("loop", "hook-stop", stdin=json.dumps({"session_id": SESSION}))
+                self.assertEqual((rc, json.loads(out or "{}").get("decision")), (0, "block"), err)
+                self.assertIn(".autopilot", json.loads(out)["reason"])
+                self.assertFalse((real / xt.STOP_LOG_FILE).exists())
+                self.assertEqual(json.loads((real / "state.json").read_text(encoding="utf-8"))["iterations"], 0)
+
+    def test_symlink_stop_hook_other_session_no_log_through_link(self) -> None:
+        for dest in self.dests():
+            with self.subTest(dest=dest.name), self.linked(dest) as real:
+                rc, out, _ = run_main("loop", "hook-stop", stdin=json.dumps({"session_id": OTHER}))
+                self.assertEqual((rc, out), (0, ""))  # phiên khác: không phải vòng của nó — cho dừng như cũ
+                self.assertFalse((real / xt.STOP_LOG_FILE).exists())
+
+    def test_symlink_record_and_verify_write_nothing_through_link(self) -> None:
+        for dest in self.dests():
+            with self.subTest(dest=dest.name), self.linked(dest) as real:
+                rc, _, err = run_main("loop", "record", "--task", "T-001", "--", "true")
+                self.assertEqual(rc, 2, err)
+                self.assertFalse((real / "evidence" / "T-001.json").exists())
+                self.assertIn("symlink", err)
+                rc, _, err = run_main("loop", "verify")
+                self.assertEqual(rc, 2, err)
+                self.assertFalse((real / xt.VERIFIED_FILE).exists())
+
+    def test_symlink_stop_hook_inactive_loop_lets_stop(self) -> None:
+        run_main("loop", "stop", "--reason", "xong")
+        with self.linked(self.outside / "ap"):
+            self.assertEqual(run_main("loop", "hook-stop", stdin=json.dumps({"session_id": SESSION}))[:2], (0, ""))
+
+    def test_symlink_evidence_subdir_refused(self) -> None:
+        (self.tmp / ".autopilot" / "evidence").symlink_to(self.outside)
+        rc, _, err = run_main("loop", "record", "--task", "T-001", "--", "true")
+        self.assertEqual(rc, 2, err)
+        self.assertEqual(sorted(self.outside.iterdir()), [])
+
+    def test_real_dir_still_records_and_blocks(self) -> None:
+        self.assertEqual(run_main("loop", "record", "--task", "T-001", "--", "true")[0], 0)
+        self.assertTrue((self.tmp / ".autopilot" / "evidence" / "T-001.json").is_file())
+        rc, out, _ = run_main("loop", "hook-stop", stdin=json.dumps({"session_id": SESSION}))
+        self.assertEqual(json.loads(out)["decision"], "block")
 
 
 class LoopInitCarryTest(TmpRepoCase):
