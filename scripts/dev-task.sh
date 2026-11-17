@@ -289,8 +289,10 @@ guard_turn() { # $@=task -> 0 nếu mọi lệnh phân giải được của lư
   for t in "$@"; do c="$(resolve "$t")"; [ -n "$c" ] && cmds+=("$c"); done
   [ "${#cmds[@]}" -gt 0 ] || return 0
   guard_ok_all "${cmds[@]}" && return 0 # gọi thẳng, không ống: GUARDED_CMDS phải đặt ở shell này, không phải subshell
-  # 126 cũng là xt.py từ chối runtime (ADR-0078): hỏi lại bằng lệnh vô hại để log không đổ cho guard (AUD-DOC-296)
-  if CLAUDE_PROJECT_DIR="$ROOT" "$FRAMEWORK_PYTHON" "$(dirname "$0")/xt.py" guard-check -- true >/dev/null 2>&1; then
+  # 126 cũng là xt.py từ chối runtime (ADR-0078): kiểm runtime thẳng (không hỏi guard lần hai — T-1715 một lần hỏi
+  # mỗi lượt) để log không đổ cho guard (AUD-DOC-296)
+  if "$FRAMEWORK_PYTHON" -c 'import sys; sys.exit(sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 15))' \
+    >/dev/null 2>&1; then
     log "$TASK: guard cấm một lệnh của xt.yaml → không chạy lệnh nào (LOOP-STOP-027)"
   else
     log "$TASK: xt.py không chạy được bằng '$FRAMEWORK_PYTHON' (exit 126: cần CPython 3.15.x — ADR-0078; đặt XT_FRAMEWORK_PYTHON) → không chạy lệnh nào"
