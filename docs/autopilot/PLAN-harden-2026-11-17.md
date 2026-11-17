@@ -27,9 +27,9 @@
 - [ ] `T-3911` 🟠 AUD-HAR-371/400: cây chính khi submodule/`--separate-git-dir`; `git worktree list -z` cần git ≥ 2.36 — Gate: `python3 -m unittest tests.test_release_signoff tests.test_release_contract` (files: scripts/xt.py, tests/)
 ### Lát F — guard còn lại
 - [ ] `T-3912` 🟠 AUD-SEC-607/646/681/731/753/624: gán có xuống dòng trước lệnh, `restore --end-of-options`, `git-<tên>` theo PATH của guard, `set --` + `for … do`, `--no-verif` viết tắt, ghi công AI theo repo `-R` — Gate: `python3 -m unittest tests.test_hooks.GuardMiscOrangeTest` (files: .claude/hooks/guard.py, tests/test_hooks.py)
-- [ ] `T-3913` 🟠 AUD-SEC-796/740: chặn oan lệnh đọc nhắc tên biến chạy lệnh; idiom `-j$(nproc)` (D-437) — đo và quyết — Gate: `python3 -m unittest tests.test_hooks.GuardReaderExecOptTest tests.test_autonomy_bench` (files: .claude/hooks/guard.py, tests/)
+- [x] `T-3913` 🟠 AUD-SEC-796/740: chặn oan lệnh đọc nhắc tên biến chạy lệnh; idiom `-j$(nproc)` (D-437) — đo và quyết — Gate: `python3 -m unittest tests.test_hooks.GuardReaderExecOptTest tests.test_autonomy_bench` (files: .claude/hooks/guard.py, tests/)
 ### Lát G — formatter và GO-NO-GO
-- [ ] `T-3914` 🟠 AUD-SEC-649, AUD-HAR-394/395: `format_check` đỏ sau khi lập GO-NO-GO; chụp–khôi phục fail-closed có `trap`; `dev-task.sh format` cùng đường bảo vệ — Gate: `python3 -m unittest tests.test_hooks.DevTaskTest` (files: scripts/dev-task.sh, framework/templates/, tests/)
+- [x] `T-3914` 🟠 AUD-SEC-649, AUD-HAR-394/395: `format_check` đỏ sau khi lập GO-NO-GO; chụp–khôi phục fail-closed có `trap`; `dev-task.sh format` cùng đường bảo vệ — Gate: `python3 -m unittest tests.test_hooks.DevTaskTest` (files: scripts/dev-task.sh, framework/templates/, tests/)
 ### Lát H — SPEC Draft
 - [x] `T-3915` 🟠 AUD-HAR-388/391/392: SPEC-factory F-131/F-121/F-113 — chốt bằng D-NNN (Draft giữ, câu hỏi chặn ghi vào SPEC) — Gate: `python3 scripts/xt.py validate && python3 scripts/check-links.py` (files: docs/specs/)
 ### Lát I — sổ

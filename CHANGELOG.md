@@ -233,6 +233,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   mờ → chặn như `stage`; dòng `Khi chạy thật đã quyết` ghi tay (Edit/Write/Bash) và hàm `decide_prod` nạp trong tiến
   trình → chặn; trong phiên agent, `stage approve` và hàng promotion của `release-check` fetch nhánh chính trước khi đọc
   khoá `stage_approval`/`release_signoff` (fetch lỗi → chỉ người).
+- AUD-SEC-796 (T-3913): luật biến chạy lệnh (AUD-SEC-791) không còn chặn oan khi tên biến chỉ nằm trong đối số của
+  `git`/`gh`/nhóm grep/`bat`/`pytest` (`git grep LESSOPEN`, `git commit -m "… LESSOPEN"`); gán tiền tố vẫn bị xét.
+  AUD-SEC-740 ghi `chấp nhận` theo D-437 (hạn 2027-01-21).
 - AUD-SEC-629/630 (T-3909): ô Tên chỉ gồm ký tự vô hình/điều khiển không còn tính là người ký §5 (xt), và guard chặn
   Write/MCP GO-NO-GO có NUL; neo `subject:` đọc như `release-check` (chỉ bỏ space/tab) nên hậu tố khoảng trắng Unicode
   không chuyển được chữ ký sang ứng viên khác. AUD-HAR-385 chấp nhận có hạn (D-498, làm cùng T-3858).
