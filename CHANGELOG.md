@@ -236,6 +236,17 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3934 (D-503): guard mặc định chặn (BUDGET) theo cấu trúc ở lệnh có luật hẹp (xoá tệp, git trừ lệnh con chỉ đọc/
+  `add`, gh trừ lệnh đọc, phá dữ liệu, `mkfs*`, đích chuyển hướng ghi): thay lệnh/tiến trình, toán tử trên biến không gán
+  chữ (`${HOME%/*}`, `${X%/x}` với `X=$HOME/x`), biến bash tự gán (`$BASH_*`, `$DIRSTACK`, `$0`…), biến từ `read`/
+  `select`/`for` không chữ/thay lệnh; gán ở đối số lệnh khác (`echo HOME=1`) không còn tính là gán; `$_` tính được
+  thì quét bản thay. Trình chạy gói/tên lạ quét từ MỌI tên lệnh có luật (`uv run --with rm git push`), tên lệnh động
+  dưới trình chạy → BUDGET; commit/heredoc dưới trình chạy và here-string vào commit đọc như dạng trơn. xargs vào shell
+  có `$1`, trình bọc thiếu lệnh, lệnh xoá khác `rm`, git ghi → BUDGET; `--rep=Z` viết tắt nhận ra. `dropdb --ho`,
+  `--maintenance-db=URI` đọc máy chủ; `printf '\x..' | rev | sh` không giải đoán. Chặt hơn (trước cho qua):
+  `rm -rf "${TMPDIR%/}/x"`, `rm -f "${f%.txt}.md"`, `for f in *.txt; do rm -f "${f/.txt/.bak}"; done`; nới có tính:
+  `git <status|add|…> "$REPLY"`, `cp f "$_"` khi `$_` tính được.
+
 - AUD-HAR-419/420, AUD-SEC-818 (T-3931, D-502): thân heredoc tới `git commit`/`gh pr` đọc theo token (tên lệnh có nháy,
   nhóm `{…}`, `exec N<<`, `git -c $'…'`, `sh -c 'git commit -F -' <<E`) nên dòng ghi công AI không còn lọt
   `ai_attribution: forbid`; không đọc chắc mà có chữ ghi công → BUDGET. Heredoc vào shell cũng gắn theo token

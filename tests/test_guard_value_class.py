@@ -94,6 +94,12 @@ DENY = {
         'd=/tmp/x; f() { rm -rf "$d"; }; n=d; printf -v "$n" %s @H; f',
         "trap 'd=@H' DEBUG; d=/tmp/x; rm -rf \"$d\"",
     ),
+    # D-503: toán tử trên biến không gán chữ ở lệnh xoá — trước D-503 là ALLOW (chặt hơn, ghi ở CHANGELOG)
+    "D-503": (
+        'rm -rf "${TMPDIR%/}/x"',
+        'rm -f "${f%.txt}.md"',
+        'for f in *.txt; do rm -f "${f/.txt/.bak}"; done',
+    ),
 }
 
 ALLOW = {
@@ -106,6 +112,7 @@ ALLOW = {
         'rm -rf "$TMPDIR/x"',
         'while read -r f; do echo "$f"; done',
         "rm -f '$_'",
+        'mkdir -p build/out && cp README.md "$_"',  # D-503: `$_` tính được — bản thay quét như lệnh
     ),
     "AUD-SEC-822": (
         "printf -v d '%s' x; echo \"$d\"",
@@ -115,8 +122,6 @@ ALLOW = {
     ),
     "AUD-SEC-823": (
         'echo "${HOME%/*}"',
-        'rm -rf "${TMPDIR%/}/x"',
-        'rm -f "${f%.txt}.md"',
         'for f in *.txt; do mv "$f" "${f%.txt}.md"; done',
         'HOME=/tmp/h; rm -rf "${HOME%/h}/x"',
     ),
@@ -131,7 +136,6 @@ ALLOW = {
         "X=--hardX; echo ${X/X}",
         'X=a.txt; rm -f "${X/.txt/.bak}"',
         "X=feat/xX; git push origin ${X/X}",
-        'for f in *.txt; do rm -f "${f/.txt/.bak}"; done',
     ),
     "AUD-SEC-829": (
         "for X in a b; do echo ${X%b}; done",
@@ -168,7 +172,7 @@ class ValueClassTest(unittest.TestCase):
                     self.assertEqual(d["decision"], "", d.get("reason"))
 
     def test_opaque_gate_is_budget(self):
-        for cmd in (DENY["AUD-SEC-821"][0], DENY["AUD-SEC-822"][2], DENY["AUD-SEC-823"][0], DENY["AUD-SEC-820"][0]):
+        for cmd in (DENY["AUD-SEC-821"][3], DENY["AUD-SEC-822"][2], DENY["AUD-SEC-823"][0], DENY["AUD-SEC-820"][0]):
             with self.subTest(cmd=cmd):
                 d = decide(cmd)
                 self.assertEqual(d.get("code"), guard.BUDGET)
@@ -194,7 +198,7 @@ class ValueHelperTest(unittest.TestCase):
         self.assertFalse(guard._ruled_env_op("${HOME%/*}", {"HOME"}))
         self.assertTrue(guard._ruled_env_op('"${PWD:0:1}"', set()))
         self.assertFalse(guard._ruled_env_op('"${PWD:?}" ${HOME?} ${HOME:+x} ${HOME/a/b}', set()))
-        self.assertEqual(guard._opaque_checked(["echo", ">", '"$_"'], ["echo"]), ['"$_"'])
+        self.assertEqual(guard._opaque_checked(["echo", ">", '"$_"'], ["echo"]), [('"$_"', True)])
         self.assertEqual(guard._opaque_checked([], []), [])
 
     def test_ref_names(self):

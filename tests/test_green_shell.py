@@ -173,7 +173,8 @@ class NestedLeadExpansionTest(_Case):  # AUD-SEC-602
         )
 
     def test_allow(self):
-        self.assert_runs(('gh pr close 5 "$(echo $(true))"', 'gh pr view "${A:-${B}}"', "gh pr close 5 ~x"))
+        # D-503: `gh pr close 5 "$(echo $(true))"` nay BUDGET — thay lệnh ở đối số của gh có luật (`-d` xoá nhánh)
+        self.assert_runs(('gh pr view "${A:-${B}}"', "gh pr close 5 ~x"))
 
     def test_strip_expansions(self):
         self.assertEqual(guard._strip_expansions("$(echo $(true))${A:-${B}}"), "")
