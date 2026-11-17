@@ -577,6 +577,49 @@ class ReleaseVerifyWorktreeTest(ReleaseCase):
         self.assertIn("không liệt kê được worktree", row["evidence"])
 
 
+class ReleaseVerifyOldGitTest(ReleaseCase):
+    """AUD-HAR-400: git < 2.36 không có `worktree list -z` (exit 129) — hàng `verify` vẫn đọc sổ ở mọi worktree
+    (đọc lại `--porcelain` tách dòng), không FAIL ở mọi dự án; đường dẫn git phải trích dẫn → fail-closed."""
+
+    def setUp(self):
+        super().setUp()
+        plan = self.repo / "docs/autopilot/PLAN.md"
+        plan.parent.mkdir(parents=True)
+        plan.write_text("- [ ] `T-001` a — Gate: `true`\n", encoding="utf-8")
+        (self.repo / ".git/info/exclude").write_text(".autopilot/\n", encoding="utf-8")
+        self.setup_xt()
+        self.assertEqual(run_main("loop", "init", "--plan", "docs/autopilot/PLAN.md")[0], 0)
+        self.wt = self.tmp / "wt"
+        self.git("worktree", "add", "-q", "--detach", str(self.wt))
+
+    def old_git(self, quoted: bool = False):
+        real = xt._git
+
+        def fake(cwd, *args, **kw):
+            if args[:2] == ("worktree", "list"):
+                if "-z" in args:
+                    return subprocess.CompletedProcess(args, 129, "", "error: unknown switch `z'")
+                if quoted:
+                    return subprocess.CompletedProcess(args, 0, 'worktree "/tmp/a\\nb"\nHEAD x\n', "")
+            return real(cwd, *args, **kw)
+
+        return unittest.mock.patch.object(xt, "_git", side_effect=fake)
+
+    def test_verify_reads_ledger_without_z(self):
+        with self.old_git():
+            files = xt.worktree_state_files(self.wt)
+            row = xt._release_verify(self.wt)
+        self.assertIn((self.repo / ".autopilot/state.json").resolve(), [f.resolve() for f in files or []])
+        self.assertNotIn("không liệt kê được worktree", row["evidence"], row)
+
+    def test_quoted_path_without_z_fails_closed(self):
+        with self.old_git(quoted=True):
+            self.assertIsNone(xt.worktree_state_files(self.wt))
+            row = xt._release_verify(self.wt)
+        self.assertEqual(row["result"], "FAIL", row)
+        self.assertIn("không liệt kê được worktree", row["evidence"])
+
+
 class ReleaseArtifactTest(ReleaseCase):
     """T-3677: `release_artifacts` → hàng `artifacts` (chỉ khi khai) và `subject.digest`."""
 

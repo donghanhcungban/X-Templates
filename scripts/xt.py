@@ -14433,17 +14433,58 @@ def _sign_scope_check(base: Path) -> None:
         raise ReleaseSignError(f"còn việc chờ người (`loop defer`): {', '.join(waiting)} — agent không ký")
 
 
+def _worktree_entries(base: Path, env: Dict[str, str]) -> Optional[List[tuple[Path, bool]]]:
+    """`(đường dẫn, bare)` của từng mục `git worktree list --porcelain`; `-z` lỗi (git < 2.36 exit 129) → đọc lại
+    không `-z` (tách dòng), đường dẫn bị git trích dẫn (`"…"`) → None; không liệt kê được → None."""
+    r = _git(base, "worktree", "list", "--porcelain", "-z", env=env)
+    nul = r.returncode == 0
+    if not nul:
+        r = _git(base, "worktree", "list", "--porcelain", env=env)
+    if r.returncode:
+        return None
+    entries: List[tuple[Path, bool]] = []
+    for item in r.stdout.split("\0" if nul else "\n"):
+        if item.startswith("worktree "):
+            if not nul and item[9:].startswith('"'):
+                return None
+            entries.append((Path(item[9:]), False))
+        elif item == "bare" and entries:
+            entries[-1] = (entries[-1][0], True)
+    return entries
+
+
+def _worktree_roots(base: Path, env: Dict[str, str]) -> Optional[List[Path]]:
+    """Cây làm việc của mọi mục `git worktree list --porcelain` (AUD-HAR-371, AUD-HAR-400). `-z` chỉ có từ git 2.36
+    (cũ hơn exit 129) → đọc lại không `-z`, tách dòng; khi đó đường dẫn có ký tự lạ bị git trích dẫn (`"…"`) → None
+    (fail-closed, không đoán). Mục bare bỏ qua; mục chính không bare mà không có `.git` bên trong là thư mục git
+    (submodule, `--separate-git-dir`: git in thư mục git thay cho cây chính) → cây chính lấy bằng `rev-parse
+    --show-toplevel` tại đó, không ra → None. Không liệt kê được → None (bên gọi fail-closed)."""
+    entries = _worktree_entries(base, env)
+    if entries is None:
+        return None
+    roots: List[Path] = []
+    for i, (path, is_bare) in enumerate(entries):
+        if i == 0 and not is_bare and not os.path.lexists(path / ".git"):
+            top = _git(path, "rev-parse", "--show-toplevel", env=env)
+            if top.returncode or not top.stdout.strip():
+                return None
+            path = Path(top.stdout.strip())
+        if not is_bare:
+            roots.append(path)
+    return roots
+
+
 def worktree_state_files(base: Path) -> Optional[List[Path]]:
     """`.autopilot/state.json` (kể cả symlink gãy) của dự án ở MỌI worktree của repo, cùng thư mục con như `base`, sổ của
     `base` đứng đầu (AUD-HAR-340, AUD-HAR-369): sổ máy không theo git và riêng mỗi worktree (`loop_root`) — đọc theo cwd
     thì chạy từ worktree khác thoát việc của cây chính. Không liệt kê được worktree → None (bên gọi fail-closed)."""
     env = _perf_env()
     prefix = _git(base, "rev-parse", "--show-prefix", env=env)
-    trees = _git(base, "worktree", "list", "--porcelain", "-z", env=env)
-    if prefix.returncode or trees.returncode:
+    trees = _worktree_roots(base, env)
+    if prefix.returncode or trees is None:
         return None
     sub = prefix.stdout.rstrip("\n")
-    roots = [base, *(Path(x[9:]) / sub for x in trees.stdout.split("\0") if x.startswith("worktree "))]
+    roots = [base, *(t / sub for t in trees)]
     files = dict.fromkeys(state_dir(r.resolve()) / "state.json" for r in roots)
     return [f for f in files if os.path.lexists(f)]
 
