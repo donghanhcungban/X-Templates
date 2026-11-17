@@ -2290,7 +2290,8 @@ REREAD_PROMPT_RE = re.compile(r"\$\{[^{}]*@P\}")  # `${x@P}`: mở rộng giá t
 SPLIT_DECLARERS = frozenset("declare typeset local export readonly".split())
 SPLIT_NAME_RE = re.compile(r"[A-Za-z_]\w*(?:\[[^\[\]$`]*\])?\+?")  # đích nguyên văn: tên, chỉ số không mở rộng
 SPLIT_CASE_RE = re.compile(r"\$\{[#!]?\w+(?:\[[^\]]*\])?(?:\^|~|@[Uu])")  # đổi chữ thường từ dữ liệu thành hoa
-SPLIT_NUM_RE = re.compile(r"\$(?:[?#$!]|\{#)")  # `$?`/`$#`/`$$`/`$!`, độ dài `${#…}`: ra số
+# `$?`/`$#`/`$$`, độ dài `${#…}`: ra số. `$!` RỖNG khi chưa có job nền — `$!--admin` = `--admin` (AUD-SEC-754)
+SPLIT_NUM_RE = re.compile(r"\$(?:[?#$]|\{#)")
 
 
 def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
@@ -4388,11 +4389,9 @@ def _argv_shell_check(
     """Chặn (BUDGET) khi `_argv_shell_why` có lý do — trừ khi câu hỏi nguy hiểm của luật cũ đã làm lệnh bị chặn (giữ mã
     của luật cũ: HOOK_BYPASS…). Chữ lỏng (guard tự dựng) không qua tập con. Cờ bỏ hook đã đặt trong `res` đi theo lỗi
     (review #433 R1 — adapter host khác đọc `push_no_verify`). Câu hỏi mã BUDGET (`gh pr close 5 ${a[@]}` — AUD-SEC-598)
-    không tính: nó là ask ở strict, lỗi tập con là deny ở mọi chính sách. Ở `XT_GUARD_POLICY=strict` câu hỏi của luật
-    cũ chỉ là hỏi — không miễn (AUD-SEC-754: `gh pr merge 5 $!--admin` thành hỏi UNVERIFIED thay vì chặn như `--admin`)."""
+    không tính: nó là ask ở strict, lỗi tập con là deny ở mọi chính sách."""
     why = _argv_shell_why(cmd, tokens, root, cwd) if strict else ""
-    asked = os.environ.get("XT_GUARD_POLICY") == "strict"
-    if why and (asked or not _asks_denied([a for a in asks if reason_code("ask", a) != BUDGET])):
+    if why and not _asks_denied([a for a in asks if reason_code("ask", a) != BUDGET]):
         err = ScanTooComplex(f"ngoài tập con guard đọc chắc — {why} (ADR-0063)")
         setattr(err, "flags", {k: True for k in ("no_verify", "push_no_verify") if res.get(k)})
         raise err
@@ -10225,7 +10224,7 @@ def _gh_ref_delete_rule(args: List[str], cwd: str) -> Tuple[str, str]:
 # AUD-SEC-560: nhánh hiện tại chỉ là "của phiên" trên repo `origin` — `repos/<chủ>/<tên>/…` phải trùng repo của URL
 # `origin` ở `cwd` (không phân biệt hoa thường như GitHub). `{owner}/{repo}` (gh chọn repo theo remote — `upstream` trước
 # `origin`) và `repositories/<id>` không ánh xạ chắc → không miễn (chặt).
-GH_API_REPO_RE = re.compile(r"/?repos/([^/\s]+/[^/\s]+)/")
+GH_API_SLUG_RE = re.compile(r"/?repos/([^/\s]+/[^/\s]+)/")
 ORIGIN_SLUG_RE = re.compile(r"[:/]([^/:\s]+/[^/:\s]+?)(?:\.git)?/?\Z")
 
 
@@ -10248,7 +10247,7 @@ def _origin_repo(cwd: Optional[str]) -> str:
 
 def _gh_api_origin_path(args: List[str], cwd: Optional[str]) -> bool:
     pos = _positionals(args, GH_API_VALUE_FLAGS)
-    m = GH_API_REPO_RE.match(_api_path(pos[0])) if len(pos) == 1 else None
+    m = GH_API_SLUG_RE.match(_api_path(pos[0])) if len(pos) == 1 else None
     origin = _origin_repo(cwd) if m else ""
     return bool(origin) and m is not None and m[1].casefold() == origin.casefold()
 

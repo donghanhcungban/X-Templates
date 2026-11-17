@@ -222,19 +222,14 @@ class PushLeadingGlobTest(_Case):  # AUD-SEC-747
 
 class StrictKeepsOldAskTest(_Case):  # AUD-SEC-754
     def test_deny(self):
+        # `$!` rỗng khi chưa có job nền: như `$X--admin` (dạng biến trơn) — BUDGET ở mọi chính sách
         self.assert_code(
-            (
-                "gh pr merge 5 $!--admin",
-                "git push origin feat/other $!-f",
-                "git push origin feat/other $X--force",
-            ),
-            "BUDGET",
-            "strict",
+            ("gh pr merge 5 $!--admin", "gh pr merge 5 $X--admin", "gh pr close 5 $!-d"), "BUDGET", "strict"
         )
-        self.assert_code(("gh pr merge 5 $!--admin",), "UNVERIFIED")  # chính sách mặc định: giữ mã luật cũ
+        self.assert_code(("gh pr merge 5 $!--admin", "gh pr merge 5 $X--admin"), "BUDGET")  # chính sách mặc định
 
     def test_allow(self):
-        self.assert_runs(("git push origin feat", 'git push -u origin "$(git branch --show-current)"'), "strict")
+        self.assert_runs(("gh pr merge 5 --squash", "gh pr view $$", "echo $!"), "strict")
 
 
 class NumericBraceTest(_Case):  # AUD-SEC-755 (ghim: không gỡ — luật cũ đọc token thô, `-f${#x}` = `-f0` là force)
