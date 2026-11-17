@@ -30,13 +30,10 @@ ROOT_FLAGS = (
 )
 MID_FLAGS = ("--hostname github.com", "-R o/r", *REDIRECTS)  # chèn giữa nhóm và lệnh con
 RANK = {"deny": 2, "ask": 1}
-# Ca gốc chặt hơn chỉ vì cách đọc nguyên văn đọc sai CHÍNH chuyển hướng của nó; biến thể chen chuyển hướng trước lệnh
-# con thì cách đọc nguyên văn không còn nhận ra lệnh, còn dạng bỏ chuyển hướng (đúng nghĩa bash) cho quyết định của lệnh
-# trơn tương ứng — không phải lỗ.
-EXCUSED = {
-    "guard-sec045-guard-crash-on-merge": "đích `> \\ud800` đọc như số PR thứ hai → UNVERIFIED; bỏ chuyển hướng thì là "
-    "merge không ghim như `gh pr merge 5 --squash` (OTHER_ASK, như guard-control-har093-unpinned-merge-reviewed)",
-}
+# Ca gốc chặt hơn chỉ vì cách đọc nguyên văn đọc sai CHÍNH chuyển hướng của nó (id → lý do). Rỗng từ T-3917: cách đọc
+# nguyên văn không còn xét khi lệnh có toán tử chuyển hướng (AUD-HAR-366) — `guard-sec045-guard-crash-on-merge` (`> \ud800`)
+# giờ ra OTHER_ASK như merge không ghim trơn.
+EXCUSED: Dict[str, str] = {}
 
 
 def variants(cmd: str, groups: frozenset) -> List[str]:
