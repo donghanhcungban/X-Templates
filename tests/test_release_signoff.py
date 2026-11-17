@@ -698,6 +698,42 @@ def bare(path):
     return path
 
 
+class ReleaseSignGitdirMainTest(RealCheckRepo):
+    """AUD-HAR-371: dự án là submodule / `--separate-git-dir` — `git worktree list` in thư mục git thay cho cây chính;
+    phải suy ra cây chính (`rev-parse --show-toplevel`), không thì từ chối (fail-closed), không bỏ qua im lặng."""
+
+    def setUp(self):
+        super().setUp()
+        self.wt = self.tmp / "wt"
+        self.git("worktree", "add", "-q", "--detach", str(self.wt))
+        self.gitdir = self.repo / ".git"
+
+    def listing(self, resolves: bool):
+        real = xt._git
+
+        def fake(cwd, *args, **kw):
+            if args[:2] == ("worktree", "list"):
+                text = f"worktree {self.gitdir}\0HEAD {'a' * 40}\0branch refs/heads/main\0\0"
+                text += f"worktree {self.wt}\0HEAD {'a' * 40}\0detached\0\0"
+                return subprocess.CompletedProcess(args, 0, text, "")
+            if resolves and Path(cwd) == self.gitdir and args[:2] == ("rev-parse", "--show-toplevel"):
+                return subprocess.CompletedProcess(args, 0, f"{self.repo}\n", "")
+            return real(cwd, *args, **kw)
+
+        return unittest.mock.patch.object(xt, "_git", side_effect=fake)
+
+    def test_deferred_at_main_seen_from_linked_worktree(self):
+        self.state.write_text('{"deferred": {"T-9": {"reason": "tiền thật"}}}', encoding="utf-8")
+        with self.listing(resolves=True), self.assertRaises(xt.ReleaseSignError) as ctx:
+            xt._sign_scope_check(self.wt)
+        self.assertIn("`loop defer`): T-9", str(ctx.exception))
+
+    def test_unresolvable_main_entry_refuses(self):
+        with self.listing(resolves=False), self.assertRaises(xt.ReleaseSignError) as ctx:
+            xt._sign_scope_check(self.wt)
+        self.assertIn("không liệt kê được worktree", str(ctx.exception))
+
+
 class GoHistoryTest(TmpRepoCase):
     """`_go_remote_scan(...).refusals` (D-404, D-406): dòng thêm của mọi `GO-NO-GO*.md` trong `git log --all
     --full-history` của bản mirror mới của `origin` và của repo cục bộ."""

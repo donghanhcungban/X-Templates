@@ -95,7 +95,7 @@
    ]
   },
   {
-   "reason": "Hook shell, cổng commit, cài đặt — đường chạy tiến trình (`dev-task.sh`, `pre-*-guard.sh`, `install.py`, `loop record`); test_hooks.py, test_install.py chạy hook thật; khóa state thiếu fcntl/flock và guard lỗi nạp/fallback (ADR-0054) là đường CLI/Gate có file thật: UpdateStateTest, GuardChokePointTest kiểm state bất biến và canary không chạy",
+   "reason": "Hook shell, cổng commit, cài đặt — đường chạy tiến trình (`dev-task.sh`, `pre-*-guard.sh`, `install.py`, `loop record`); test_hooks.py, test_install.py chạy hook thật; khóa state thiếu fcntl/flock và guard lỗi nạp/fallback (ADR-0054) là đường CLI/Gate có file thật: UpdateStateTest, GuardChokePointTest kiểm state bất biến và canary không chạy AUD-SEC-670/655, AUD-HAR-404/405 (symlink của hook/.git/.autopilot): tests.test_install.HooksRealDirTest, tests.test_xt_loop.AutopilotSymlinkStopTest.",
    "ids": [
     "AUD-HAR-001",
     "AUD-HAR-002",
@@ -125,7 +125,11 @@
     "AUD-HAR-306",
     "AUD-HAR-308",
     "AUD-HAR-311",
-    "AUD-HAR-312"
+    "AUD-HAR-312",
+    "AUD-SEC-670",
+    "AUD-SEC-655",
+    "AUD-HAR-404",
+    "AUD-HAR-405"
    ]
   },
   {
@@ -542,12 +546,14 @@
    ]
   },
   {
-   "reason": "Cổng phát hành của xt.py (`release-check` hàng tree, `release-sign` đọc `loop defer`) — không phải quyết định guard/harness/pr để mô phỏng bằng corpus; đỡ bằng repo git tạm trong tests.test_release_contract (PromotionTest.test_status_config_cannot_hide_dirty_tree) và tests.test_release_signoff (test_deferred_read_from_every_worktree, test_unknown_or_broken_state_refuses, ReleaseSignSubdirTest); hàng `verify` đọc sổ máy mọi worktree (AUD-HAR-369): tests.test_release_contract.ReleaseVerifyWorktreeTest.",
+   "reason": "Cổng phát hành của xt.py (`release-check` hàng tree, `release-sign` đọc `loop defer`) — không phải quyết định guard/harness/pr để mô phỏng bằng corpus; đỡ bằng repo git tạm trong tests.test_release_contract (PromotionTest.test_status_config_cannot_hide_dirty_tree) và tests.test_release_signoff (test_deferred_read_from_every_worktree, test_unknown_or_broken_state_refuses, ReleaseSignSubdirTest); hàng `verify` đọc sổ máy mọi worktree (AUD-HAR-369): tests.test_release_contract.ReleaseVerifyWorktreeTest. AUD-HAR-371/400 (liệt kê worktree khi git in thư mục git / git cũ): tests.test_release_signoff, tests.test_release_contract.",
    "ids": [
     "AUD-HAR-334",
     "AUD-HAR-340",
     "AUD-HAR-369",
-    "AUD-HAR-377"
+    "AUD-HAR-377",
+    "AUD-HAR-371",
+    "AUD-HAR-400"
    ]
   },
   {
