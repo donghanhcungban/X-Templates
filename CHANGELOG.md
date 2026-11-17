@@ -236,6 +236,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-HAR-415/416/417/418, AUD-DOC-296 (T-3927): `.autopilot` là symlink khi vòng đang bật không còn kẹt phiên — lượt
+  Stop do chính hook kích (`stop_hook_active`) cho dừng kèm `systemMessage` bảo người thay liên kết bằng thư mục thật,
+  `loop stop` nói rõ việc đó (không ghi gì qua liên kết); `perf trial` không tạo khoá ở đích liên kết. Repo
+  `--separate-git-dir` thật: hàng `verify` của `release-check` về N/A, `release-sign` không từ chối. `dev-task.sh
+  format`/`format-file` bỏ qua thư mục không đọc được khi chụp GO-NO-GO (lỗi `find` khác vẫn dừng formatter); log cổng
+  tách "runtime không phải CPython 3.15" khỏi "guard cấm lệnh". Dự án đích: chạy lại `install.py`.
+
 - AUD-TEST-109/110/111, AUD-DOC-294/295/297, AUD-DEP-030 (T-3926): `tests/test_green_gh.py` dùng merge-check giả, không
   gọi `gh` thật, và ghim allow/OTHER_ASK của merge trơn/có chuyển hướng; receipt triển khai có ca `+07:00` chỉ luật UTC
   bắt; subTest dọn trạng thái trong `finally`. CONTRIBUTING và runbook steward liệt kê 5 check (thêm `pack-npm-audit`;

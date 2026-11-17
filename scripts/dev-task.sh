@@ -258,7 +258,8 @@ loop_noop() { # $1=task $2=lệnh -> true (kèm log) nếu autopilot đang chạ
 guard_ok() { # $1=lệnh -> 0 nếu được chạy
   local xt; xt="$(dirname "$0")/xt.py"
   [ -f "$xt" ] && command -v "$FRAMEWORK_PYTHON" >/dev/null 2>&1 || return 0
-  # Chỉ exit 126 (guard cấm) là chặn; xt.py sập (python cũ…) → chạy như cũ (fail-open về luồng, ADR-0002).
+  # Chỉ exit 126 là chặn: guard cấm lệnh, HOẶC xt.py từ chối runtime không phải CPython 3.15.x (ADR-0078 — chủ đích,
+  # không phải fail-open). xt.py sập kiểu khác (exit ≠ 126) → chạy như cũ (fail-open về luồng, ADR-0002).
   CLAUDE_PROJECT_DIR="$ROOT" "$FRAMEWORK_PYTHON" "$xt" guard-check -- "$1"
   [ "$?" -ne 126 ]
 }
@@ -283,12 +284,17 @@ guard_ok_all() { # $@=lệnh -> 126 nếu guard cấm lệnh nào, 0 nếu đư�
   esac
   return 0
 }
-guard_turn() { # $@=task -> 0 nếu mọi lệnh phân giải được của lượt được chạy; 126 (kèm log) nếu guard cấm lệnh nào
+guard_turn() { # $@=task -> 0 nếu mọi lệnh phân giải được của lượt được chạy; 126 (kèm log) nếu guard cấm/runtime sai
   local t c; local -a cmds=()
   for t in "$@"; do c="$(resolve "$t")"; [ -n "$c" ] && cmds+=("$c"); done
   [ "${#cmds[@]}" -gt 0 ] || return 0
   guard_ok_all "${cmds[@]}" && return 0 # gọi thẳng, không ống: GUARDED_CMDS phải đặt ở shell này, không phải subshell
-  log "$TASK: guard cấm một lệnh của xt.yaml → không chạy lệnh nào (LOOP-STOP-027)"
+  # 126 cũng là xt.py từ chối runtime (ADR-0078): hỏi lại bằng lệnh vô hại để log không đổ cho guard (AUD-DOC-296)
+  if CLAUDE_PROJECT_DIR="$ROOT" "$FRAMEWORK_PYTHON" "$(dirname "$0")/xt.py" guard-check -- true >/dev/null 2>&1; then
+    log "$TASK: guard cấm một lệnh của xt.yaml → không chạy lệnh nào (LOOP-STOP-027)"
+  else
+    log "$TASK: xt.py không chạy được bằng '$FRAMEWORK_PYTHON' (exit 126: cần CPython 3.15.x — ADR-0078; đặt XT_FRAMEWORK_PYTHON) → không chạy lệnh nào"
+  fi
   return 126
 }
 
@@ -512,10 +518,16 @@ json_ok() { # $1=file → 0 nếu là JSON hợp lệ; không có python3 thì k
 # AUD-SEC-628: formatter khai báo không theo từng file (`prettier --write .`) vẫn chuẩn hoá được dòng §5 → chụp mọi
 # `GO-NO-GO*.md` (tên không phân biệt hoa thường) dưới gốc dự án trước khi chạy formatter, khôi phục file nào đổi/mất.
 go_snapshot() { # $1=thư mục chụp (rỗng, đã tồn tại)
-  local i=0 f
+  local i=0 f rc=0
   # AUD-HAR-399: cả symlink mang tên GO-NO-GO (`GO-NO-GO-v9.md → draft.md`): `cp`/`cmp` đi theo liên kết nên chụp và khôi phục
   # đúng đích; liên kết treo không có gì để chụp → bỏ khỏi danh sách.
-  ( cd "$ROOT" && find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o \( -type f -o -type l \) -iname 'go-no-go*.md' -print0 ) >"$1/all" || return 1
+  ( cd "$ROOT" || exit 2; LC_ALL=C find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o \( -type f -o -type l \) -iname 'go-no-go*.md' -print0 2>"$1/err" ) >"$1/all" || rc=$?
+  # AUD-HAR-417: thư mục không đọc được (dữ liệu docker mode 700 của user khác, chmod 000) — formatter chạy cùng user cũng
+  # không đọc được nên bỏ qua; find lỗi khác (hay lỗi không lời) vẫn dừng formatter. LC_ALL=C: thông báo find tiếng Anh.
+  if [ "$rc" -ne 0 ]; then
+    if [ ! -s "$1/err" ] || grep -qv ': Permission denied$' "$1/err"; then cat -- "$1/err" >&2; return 1; fi
+    log "$TASK: bỏ qua $(wc -l <"$1/err" | tr -d ' ') thư mục không đọc được khi tìm GO-NO-GO"
+  fi
   while IFS= read -r -d '' f; do
     if [ -f "$ROOT/$f" ]; then printf '%s\0' "$f"; fi
   done <"$1/all" >"$1/list"

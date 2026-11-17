@@ -3380,7 +3380,16 @@ SESSION_MISMATCH_NOTE = (
 STOP_LOG_FILE = "hook-stop.log"  # lượt Stop bị bỏ qua (phiên khác, stdin hỏng) — một dòng mỗi lượt khi vòng đang bật
 STOP_SYMLINK_NOTE = (
     "⚠ `.autopilot` là symlink — vòng không ghi state/bằng chứng qua liên kết (AUD-HAR-405); thay bằng thư mục thật"
-    " (`loop record`/`loop verify` từ chối tới khi sửa)."
+    " (`loop record`/`loop verify` từ chối tới khi sửa). Agent không gỡ được liên kết: báo người — lượt Stop kế tiếp được"
+    " cho dừng (AUD-HAR-415)."
+)
+STOP_SYMLINK_FIX = (
+    "NGƯỜI thay liên kết bằng thư mục thật (xoá liên kết `.autopilot`, chép nội dung đích vào thư mục `.autopilot/` của"
+    " dự án; guard cấm agent làm việc này) rồi chạy lại autopilot."
+)
+STOP_SYMLINK_HUMAN = (
+    "[autopilot] `.autopilot` là symlink nên vòng đang bật mà không ghi được state/bằng chứng (AUD-HAR-405) — cho phiên"
+    f" dừng để không kẹt (AUD-HAR-415). {STOP_SYMLINK_FIX}"
 )
 
 
@@ -3425,9 +3434,7 @@ def hook_stop(stdin_text: str, base: Optional[Path] = None) -> Tuple[str, int]:
         v = {"verdict": "verify", "reason": why} if why else v
     mode = _payload_field(stdin_text, "permission_mode")
     if v["verdict"] in ("continue", "verify") and st and st.get("active") and state_dir(base).is_symlink():
-        # AUD-HAR-405: không ghi state qua liên kết nhưng vòng còn việc — chặn dừng (fail-closed), không cho dừng rỗng
-        why = f"{STOP_SYMLINK_NOTE} {_stop_reason(st, v, mode, xt_cmd(base))}"
-        return json.dumps({"decision": "block", "reason": why}, ensure_ascii=False), 0
+        return _stop_symlink(stdin_text, st, v, mode, base)
     if v["verdict"] in ("continue", "verify") and st:
         st = _stop_write(base, lambda cur: _stop_apply(cur, mode, v, end=False))
         # lỗi khoá/rev, state biến mất, hoặc `loop stop` chen vào trong lúc tính verdict → cho dừng (fail-open)
@@ -3443,6 +3450,19 @@ def hook_stop(stdin_text: str, base: Optional[Path] = None) -> Tuple[str, int]:
             hint = stop_hint(base)
             return (json.dumps({"systemMessage": hint}, ensure_ascii=False), 0) if hint else ("", 0)
     return "", 0
+
+
+def _stop_symlink(
+    stdin_text: str, st: Dict[str, Any], v: Dict[str, Any], mode: Optional[str], base: Path
+) -> Tuple[str, int]:
+    """`.autopilot` là symlink mà vòng còn việc: không ghi gì qua liên kết (AUD-HAR-405). Lượt Stop thường → chặn dừng kèm
+    lý do (agent báo người); lượt do chính Stop hook kích (`stop_hook_active`) → cho dừng kèm `systemMessage` cho NGƯỜI:
+    `loop stop` không ghi được và guard cấm gỡ liên kết, chặn tiếp là kẹt phiên vĩnh viễn (AUD-HAR-415). `stdin_text` đã
+    qua `_stop_skip` (JSON object)."""
+    if json.loads(stdin_text or "{}").get("stop_hook_active") is True:
+        return json.dumps({"systemMessage": STOP_SYMLINK_HUMAN}, ensure_ascii=False), 0
+    why = f"{STOP_SYMLINK_NOTE} {_stop_reason(st, v, mode, xt_cmd(base))}"
+    return json.dumps({"decision": "block", "reason": why}, ensure_ascii=False), 0
 
 
 def stop_hint(base: Path) -> str:
@@ -9585,6 +9605,14 @@ def _loop_stop(args: argparse.Namespace, base: Path) -> int:
         "stop_reason": args.reason,
         "final_verdict": {"verdict": "stopped", "reason": args.reason},
     }
+    if state_dir(base).is_symlink() and read_state(base):
+        # AUD-HAR-415: không ghi qua liên kết (AUD-HAR-405) — nói rõ ai gỡ được kẹt thay cho lỗi OSError trần
+        print(
+            "✗ `.autopilot` là symlink — `loop stop` không ghi state qua liên kết, vòng vẫn bật."
+            f" {STOP_SYMLINK_FIX} Agent: báo người; lượt Stop kế tiếp được cho dừng (AUD-HAR-415).",
+            file=sys.stderr,
+        )
+        return 2
     ended: List[bool] = []
     cur = update_loop_state(base, lambda cur: {**cur, **end} if cur.get("active") else ended.append(True))
     if cur is not None and ended:
@@ -14606,12 +14634,26 @@ def _worktree_roots(base: Path, env: Dict[str, str]) -> Optional[List[Path]]:
         if not path.is_dir():  # AUD-HAR-372: tên có CR/byte lạ (đọc dạng text lệch tên) hay worktree bị `mv` tay
             return None
         if i == 0 and not os.path.lexists(path / ".git"):
-            top = _git(path, "rev-parse", "--show-toplevel", env=env)
-            if top.returncode or not top.stdout.strip():
+            top = _gitdir_toplevel(base, path, env)
+            if top is None:
                 return None
-            path = Path(top.stdout.strip())
+            path = top
         roots.append(path)
     return roots
+
+
+def _gitdir_toplevel(base: Path, gitdir: Path, env: Dict[str, str]) -> Optional[Path]:
+    """Cây chính khi `git worktree list` in thư mục git làm mục chính: `rev-parse --show-toplevel` tại thư mục đó
+    (submodule có `core.worktree`); rỗng (`--separate-git-dir`, git 2.53 — AUD-HAR-416) mà chính `base` dùng đúng thư mục
+    git đó (`--absolute-git-dir`) → toplevel của `base`. Không thì None (worktree phụ không đoán cây chính)."""
+    top = _git(gitdir, "rev-parse", "--show-toplevel", env=env)
+    if not top.returncode and top.stdout.strip():
+        return Path(top.stdout.strip())
+    own = _git(base, "rev-parse", "--absolute-git-dir", env=env)
+    if own.returncode or not own.stdout.strip() or Path(own.stdout.strip()).resolve() != gitdir.resolve():
+        return None
+    top = _git(base, "rev-parse", "--show-toplevel", env=env)
+    return Path(top.stdout.strip()) if not top.returncode and top.stdout.strip() else None
 
 
 WORKTREE_LIST_HINT = "`git rev-parse`/`git worktree list` lỗi, hay mục worktree không còn thư mục: `git worktree prune`"
@@ -18670,8 +18712,12 @@ def _trial_hold(base: Path) -> Iterator[None]:
     fc = _fcntl()
     if fc is None:
         raise TrialRefused(2, "không có fcntl — không khoá được lần thử (ADR-0054)")
-    state_dir(base).mkdir(parents=True, exist_ok=True)
-    fd = os.open(state_dir(base) / PERF_TRIAL_LOCK, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        d = state_write_dir(base)  # AUD-HAR-418: `.autopilot` là symlink → không tạo khoá ở đích liên kết (AUD-HAR-405)
+    except OSError as exc:
+        raise TrialRefused(2, str(exc)) from None
+    d.mkdir(parents=True, exist_ok=True)
+    fd = os.open(d / PERF_TRIAL_LOCK, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
         try:
             fc.flock(fd, fc.LOCK_EX | fc.LOCK_NB)
