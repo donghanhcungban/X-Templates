@@ -1145,6 +1145,102 @@ class GoNoGoMcpTest(GoNoGoGuardBase):
             self.assertEqual(self.mcp(name, ti)[0], "", (name, ti))
 
 
+class GoNoGoNulNameTest(GoNoGoGuardBase):
+    """AUD-SEC-629: `clean_payload` đổi NUL thành khoảng trắng trước khi guard đọc, còn tool ghi NUL nguyên văn và
+    `release-check` đọc nó — ô Tên chỉ NUL guard thấy rỗng. GO-NO-GO có NUL trong nội dung ghi (Write, MCP) → deny
+    GO_SIGN (guard không đọc như `release-check`, cùng họ `\\r` trần D-417); file khác có NUL không bị luật này chặn."""
+
+    NUL_ROW = "| Chủ repo | \x00 | GO | 2026-11-07 |\n"
+
+    def test_nul_name_write_denied(self) -> None:
+        self.put(GO_REL, TEMPLATE)
+        for row in (self.NUL_ROW, self.NUL_ROW.replace("\x00", "\x00\x00 "), self.NUL_ROW.replace("\x00", "\x00An")):
+            with self.subTest(row=repr(row)):
+                self.assert_sign_denied(self.edit(GO_REL, {"content": TEMPLATE.replace(TEMPLATE_ROW, row)}))
+
+    def test_nul_anywhere_in_go_no_go_denied(self) -> None:
+        self.put(GO_REL, TEMPLATE)
+        self.assert_sign_denied(self.edit(GO_REL, {"content": TEMPLATE.replace("Bản vá.", "Bản\x00 vá.")}))
+        self.assertEqual(self.write(GO_REL, TEMPLATE.replace("Bản vá.", "Bản vá 2.")), "")
+
+    def test_nul_name_mcp_denied(self) -> None:
+        content = TEMPLATE.replace(TEMPLATE_ROW, self.NUL_ROW)
+        got = self.mcp("mcp__github__create_or_update_file", {"path": GO_REL, "content": content, "branch": "claude/x"})
+        self.assertEqual(got[:2], ("deny", "GO_SIGN"), got)
+        files = [{"path": "README.md", "content": "x"}, {"path": "go-no-go-v1.md", "content": content}]
+        got = self.mcp("mcp__github__push_files", {"files": files, "branch": "claude/x"})
+        self.assertEqual(got[:2], ("deny", "GO_SIGN"), got)
+
+    def test_concurrent_mark_does_not_leak(self) -> None:
+        """Dấu NUL nằm trong payload của từng lần gọi: song song NUL/không NUL cho cùng kết quả như tuần tự; payload
+        gốc không bị đánh dấu."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.put(GO_REL, TEMPLATE)
+        texts = [TEMPLATE.replace(TEMPLATE_ROW, self.NUL_ROW), TEMPLATE.replace("Bản vá.", "Bản vá 2.")] * 12
+        want = [self.write(GO_REL, t) for t in texts]
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            got = list(pool.map(lambda t: self.write(GO_REL, t), texts))
+        self.assertEqual(got, want)
+        self.assertEqual(want[:2], ["deny", ""])
+        tool_input: Dict[str, str] = {"content": "a\x00", "file_path": str(self.root / GO_REL)}
+        payload: Dict[str, object] = {"tool_input": tool_input}
+        guard._rule_decision("edit", payload, str(self.root))
+        self.assertNotIn(guard.GO_NUL_MARK, tool_input)
+
+    def test_nul_in_other_file_not_go_sign(self) -> None:
+        got = self.edit("docs/notes.md", {"content": "a\x00b\n"})
+        self.assertNotEqual(got[1], "GO_SIGN", got)
+        files = [{"path": "README.md", "content": "a\x00b"}]
+        got = self.mcp("mcp__github__push_files", {"files": files, "branch": "claude/x"})
+        self.assertNotEqual(got[1], "GO_SIGN", got)
+
+
+class GoNoGoSubjectSuffixTest(GoNoGoGuardBase):
+    """AUD-SEC-630: hậu tố cuối dòng `subject:` (VT/FF/NEL/NBSP/U+2028/FS/U+3000…) làm `SUBJECT_LINE_RE` của xt bỏ qua
+    dòng đó (`[ \\t]*$`, chỉ `\\n` là xuống dòng) nhưng `str.strip()` cũ của guard xoá đi — hoán vị trang trí giữa hai
+    dòng `subject:` đổi ứng viên `release-check` gắn mà neo guard không đổi. Neo nay chỉ bỏ ` `/`\\t` hai đầu như xt."""
+
+    OLD, NEW = "a" * 64, "d" * 64
+    SUFFIXES = tuple(map(chr, (0x0B, 0x0C, 0x85, 0xA0, 0x2028, 0x2029, 0x1C, 0x1D, 0x1E, 0x1F, 0x3000, 0x2003)))
+
+    def doc(self, old_sfx: str, new_sfx: str, row: str = SIGNED_ROW) -> str:
+        subj = f"subject: content {self.OLD}{old_sfx}\nsubject: content {self.NEW}{new_sfx}\n\n"
+        return HEAD + subj + SIGN_HEAD + row + TAIL
+
+    def test_suffix_swap_rebinds_in_xt(self) -> None:
+        """Tiền đề: hoán vị hậu tố thật sự đổi ứng viên `_subject_problem` chấp nhận."""
+        for sfx in self.SUFFIXES:
+            with self.subTest(sfx=hex(ord(sfx))):
+                before, after = self.doc("", sfx), self.doc(sfx, "")
+                self.assertEqual(xt._subject_problem(GO_REL, before, {"content": self.OLD}), "")
+                self.assertNotEqual(xt._subject_problem(GO_REL, before, {"content": self.NEW}), "")
+                self.assertEqual(xt._subject_problem(GO_REL, after, {"content": self.NEW}), "")
+                self.assertNotEqual(xt._subject_problem(GO_REL, after, {"content": self.OLD}), "")
+
+    def test_suffix_swap_on_signed_denied(self) -> None:
+        for sfx in self.SUFFIXES:
+            with self.subTest(sfx=hex(ord(sfx))):
+                self.put(GO_REL, self.doc("", sfx))
+                got = self.edit(GO_REL, {"content": self.doc(sfx, "")})
+                self.assertEqual(got[:2], ("deny", "GO_SIGN"), got)
+                self.assertIn("D-392", got[2])
+
+    def test_suffix_added_or_dropped_on_signed_denied(self) -> None:
+        for sfx in self.SUFFIXES:
+            with self.subTest(sfx=hex(ord(sfx))):
+                self.put(GO_REL, self.doc("", ""))
+                self.assertEqual(self.edit(GO_REL, {"content": self.doc("", sfx)})[:2], ("deny", "GO_SIGN"))
+                self.put(GO_REL, self.doc(sfx, ""))
+                self.assertEqual(self.edit(GO_REL, {"content": self.doc("", "")})[:2], ("deny", "GO_SIGN"))
+
+    def test_space_tab_and_unsigned_still_allowed(self) -> None:
+        self.put(GO_REL, self.doc("", ""))
+        self.assertEqual(self.write(GO_REL, self.doc(" \t", "  ")), "")
+        self.put(GO_REL, self.doc("", self.SUFFIXES[0], TEMPLATE_ROW))
+        self.assertEqual(self.write(GO_REL, self.doc(self.SUFFIXES[0], "", TEMPLATE_ROW)), "")
+
+
 class GoNoGoReadTest(unittest.TestCase):
     def test_read_limit(self) -> None:
         with tempfile.TemporaryDirectory() as d:

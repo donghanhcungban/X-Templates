@@ -801,6 +801,13 @@ GO_EDIT_WHY = (
     " bằng Write (nội dung y nguyên, guard so dòng ký §5 như `release-check`); dòng ký §5 do người ghi, agent ký qua"
     " `xt.py release-sign` khi `release_signoff: agent` bật (ADR-0074); " + GO_SIGN_WHY + "."
 )
+# AUD-SEC-629: khoá đánh dấu `content` gốc có NUL (`_go_mark_nul`) — chứa NUL nên không trùng khoá nào của payload đã
+# làm sạch (`clean_payload` thay NUL ở cả khoá), payload không giả được dấu này.
+GO_NUL_MARK = "\0go-nul"
+GO_NUL_WHY = (
+    "Không ghi {} có NUL (AUD-SEC-629): guard đọc NUL như khoảng trắng còn `release-check` đọc nguyên văn — ô Tên"
+    " chỉ NUL thành chữ ký guard không thấy; " + GO_SIGN_WHY + "."
+)
 GoRow = Tuple[str, ...]
 
 
@@ -971,13 +978,30 @@ def _go_nl(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _go_mark_nul(raw: Any, clean: Any) -> None:
+    """AUD-SEC-629: `content` GỐC (trước `clean_payload`) có NUL → đặt `GO_NUL_MARK` ở dict tương ứng của payload đã làm
+    sạch (`tool_input` và `tool_input.files[]` của MCP ghi file) — guard đọc NUL như khoảng trắng còn `release-check`
+    đọc nguyên văn (ô Tên chỉ NUL). Payload lạ → không đánh dấu."""
+    ti = raw.get("tool_input") if isinstance(raw, dict) else None
+    cti = clean.get("tool_input") if isinstance(clean, dict) else None
+    if not isinstance(ti, dict) or not isinstance(cti, dict):
+        return
+    files, cfiles = ti.get("files"), cti.get("files")
+    pairs = [(ti, cti), *(zip(files, cfiles) if isinstance(files, list) and isinstance(cfiles, list) else ())]
+    for r, c in pairs:
+        if isinstance(r, dict) and isinstance(c, dict) and isinstance(r.get("content"), str) and "\0" in r["content"]:
+            c[GO_NUL_MARK] = True
+
+
 def _go_sign_deny(path: str, rel: str, root: str, tool_input: Optional[Dict[str, object]]) -> str:
     """Lý do deny khi lần ghi vào `GO-NO-GO*.md` (tên hay đích symlink): mọi Edit/MultiEdit/NotebookEdit (D-418); Write
-    khi đĩa không đọc chắc hay `_go_write_why`; không thì ''."""
+    có NUL (`GO_NUL_MARK`, AUD-SEC-629), khi đĩa không đọc chắc hay `_go_write_why`; không thì ''."""
     if not tool_input or not (_is_go_no_go(path) or _is_go_no_go(rel)):
         return ""
     if "content" not in tool_input:
         return GO_EDIT_WHY.format(rel)
+    if tool_input.get(GO_NUL_MARK):
+        return GO_NUL_WHY.format(rel)
     full = os.path.join(root, rel)
     disk = _go_read(full, strict=True)
     if disk is None and os.path.lexists(full):
@@ -1014,9 +1038,11 @@ def _go_anchor_views(text: str) -> Tuple[Tuple[str, List[str]], Tuple[str, List[
 
 
 def _go_anchors(text: str) -> Tuple[str, List[str]]:
-    """(tiêu đề `# ` đầu tiên ngoài frontmatter, các dòng `subject:` đã sắp) — thứ gắn chữ ký với ứng viên (D-392)."""
+    """(tiêu đề `# ` đầu tiên ngoài frontmatter, các dòng `subject:` đã sắp) — thứ gắn chữ ký với ứng viên (D-392).
+    Dòng `subject:` chỉ bỏ ` `/`\\t` hai đầu như `SUBJECT_LINE_RE` của xt (AUD-SEC-630): `str.strip()` xoá cả VT/FF/NEL/
+    NBSP/U+2028/FS/U+3000 cuối dòng — thứ làm xt bỏ qua dòng đó — nên hoán vị trang trí đổi ứng viên mà neo không đổi."""
     title = GO_TITLE_RE.search(GO_FRONT_RE.sub("", text, count=1))
-    return (title[0].strip() if title else ""), sorted(m[0].strip() for m in GO_SUBJECT_RE.finditer(text))
+    return (title[0].strip() if title else ""), sorted(m[0].strip(" \t") for m in GO_SUBJECT_RE.finditer(text))
 
 
 # AUD-SEC-641: dòng "Khi chạy thật đã quyết (D-NNN): …" của sổ quyết định là việc của người qua `loop decide-prod` (hàng
@@ -12818,7 +12844,13 @@ def _mcp_go_sign_why(tool_name: str, tool_input: Dict[str, object]) -> str:
     files = tool_input.get("files")
     for f in [tool_input, *(files if isinstance(files, list) else [])]:
         path, content = (f.get("path"), f.get("content")) if isinstance(f, dict) else (None, None)
-        if isinstance(path, str) and isinstance(content, str) and _is_go_no_go(path) and _go_signed_safe(content):
+        nul = isinstance(f, dict) and bool(f.get(GO_NUL_MARK))  # AUD-SEC-629: NUL gốc — ô Tên chỉ NUL
+        if (
+            isinstance(path, str)
+            and isinstance(content, str)
+            and _is_go_no_go(path)
+            and (nul or _go_signed_safe(content))
+        ):
             return (
                 f"Lệnh bị khung chặn ({GO_SIGN_WHY}): {tool_name} ghi `{path[:120]}` có dòng ký §5 — guard không so được"
                 " với bản trên remote; sửa GO-NO-GO cục bộ bằng Write (để trống ô Tên/Ngày) rồi commit/push bằng git."
@@ -17741,7 +17773,8 @@ def _sh_field(v: object) -> str:
 def _rule_decision(mode: str, payload: Any, root: str) -> Dict[str, object]:
     """Kết quả bộ luật cho một payload hook theo chế độ bash|edit|mcp; chế độ khác → không phản đối. Payload được làm
     sạch trước (surrogate lẻ, NUL — AUD-SEC-077) để lý do in ra cũng ghi được."""
-    payload = clean_payload(payload)
+    raw, payload = payload, clean_payload(payload)
+    _go_mark_nul(raw, payload)
     tool_input = payload.get("tool_input") or {}
     if mode == "bash":
         cmd = tool_input.get("command")

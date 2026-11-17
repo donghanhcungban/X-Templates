@@ -246,6 +246,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   shell và here-string vào `xargs sh -c` bị chặn như dạng trơn; `install.py` so thư mục hook theo đường đã giải
   (`core.hooksPath` qua tổ tiên symlink → bỏ qua) và thôi chặn oan khi `.git`/`.git/hooks` là symlink trong git dir;
   `.autopilot` là symlink: không ghi state/evidence qua liên kết, `hook-stop` giữ vòng (fail-closed).
+- AUD-SEC-629/630 (T-3909): ô Tên chỉ gồm ký tự vô hình/điều khiển không còn tính là người ký §5 (xt), và guard chặn
+  Write/MCP GO-NO-GO có NUL; neo `subject:` đọc như `release-check` (chỉ bỏ space/tab) nên hậu tố khoảng trắng Unicode
+  không chuyển được chữ ký sang ứng viên khác. AUD-HAR-385 chấp nhận có hạn (D-498, làm cùng T-3858).
 - AUD-HAR-394/395, AUD-SEC-649 (T-3914): `dev-task.sh format`/`format-file` bị ngắt (TERM/INT/HUP) giữa formatter vẫn
   khôi phục `GO-NO-GO*.md` và dọn bản chụp; mẫu `xt.yaml` hướng dẫn thêm `GO-NO-GO*.md` vào file ignore của formatter
   Markdown để cổng `format_check` không đỏ sau khi lập GO-NO-GO.
