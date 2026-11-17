@@ -612,6 +612,19 @@ class ReleaseVerifyOldGitTest(ReleaseCase):
         self.assertIn((self.repo / ".autopilot/state.json").resolve(), [f.resolve() for f in files or []])
         self.assertNotIn("không liệt kê được worktree", row["evidence"], row)
 
+    def test_bare_entry_skipped(self):  # mục bare (repo chính là bare) không phải cây làm việc
+        real = xt._git
+        listing = f"worktree {self.tmp / 'r.git'}\0bare\0\0worktree {self.wt}\0HEAD x\0detached\0\0"
+
+        def fake(cwd, *args, **kw):
+            if args[:2] == ("worktree", "list"):
+                return subprocess.CompletedProcess(args, 0, listing, "")
+            return real(cwd, *args, **kw)
+
+        with unittest.mock.patch.object(xt, "_git", side_effect=fake):
+            roots = xt._worktree_roots(self.wt, {})
+        self.assertEqual(roots, [self.wt])
+
     def test_quoted_path_without_z_fails_closed(self):
         with self.old_git(quoted=True):
             self.assertIsNone(xt.worktree_state_files(self.wt))
