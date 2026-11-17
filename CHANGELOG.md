@@ -236,6 +236,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-820/821/822/823/828/829/830/832/835 (T-3929, D-502): guard đóng lớp "giá trị không tính chắc ở đối số/đích
+  của lệnh có luật" → BUDGET: `$_`/`$REPLY`/`$BASH_REMATCH`, `printf -v`, nameref, `${!x}`, biến gán từ chúng, toán tử
+  trên `$HOME`/`$PWD`/`$OLDPWD`/`$BASH`/`$SHELL`; `set` nhận theo từ lệnh (`'set'`, `-o x`, `-eo x`). Guard tính
+  `${X/mẫu[/từ]}`, cắt chuỗi của biến `for` chữ và `X=${X:2}`; vị trí bát phân/thập lục và `trap` gán biến ngoài
+  `EXIT` → BUDGET. Bản viết lại `${X:+…}` không đệ quy, bỏ heredoc nháy; mẫu có biến đã biết, `\#`, `[a-z]` tính được.
+  Dự án đích: chạy lại `install.py`.
+
 - AUD-HAR-415/416/417/418, AUD-DOC-296 (T-3927): `.autopilot` là symlink khi vòng đang bật không còn kẹt phiên — lượt
   Stop do chính hook kích (`stop_hook_active`) cho dừng kèm `systemMessage` bảo người thay liên kết bằng thư mục thật,
   `loop stop` nói rõ việc đó (không ghi gì qua liên kết); `perf trial` không tạo khoá ở đích liên kết. Repo
