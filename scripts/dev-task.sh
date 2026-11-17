@@ -517,6 +517,19 @@ e2e_run() { # $1=I $2=N (mặc định 1 1)
 json_ok() { # $1=file → 0 nếu là JSON hợp lệ; không có python3 thì không kiểm được (coi như không hợp lệ: không giữ bản sao)
   command -v python3 >/dev/null 2>&1 && python3 -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$1" >/dev/null 2>&1
 }
+# AUD-HAR-422: chỉ bỏ qua thư mục user hiện tại KHÔNG đi xuyên được (thiếu `x`): còn `x` mất `r` (chmod 311) thì formatter
+# đi theo chỉ mục git (`git ls-files | xargs …`, `pre-commit run --all-files`) vẫn mở được GO-NO-GO trong đó → dừng.
+# $1=stderr của find (LC_ALL=C) → 0 nếu mọi dòng là "Permission denied" trên thư mục có thật thiếu `x`; dòng lạ → 1.
+go_skippable() {
+  local line p
+  [ -s "$1" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in *"find: "*": Permission denied") ;; *) return 1 ;; esac
+    p="${line#*find: }"; p="${p%: Permission denied}" # tên chương trình là argv[0]: `find` hay `/usr/bin/find`
+    case "$p" in "'"*"'") p="${p:1:${#p}-2}" ;; esac # GNU bọc nháy đơn, busybox không
+    [ -d "$ROOT/$p" ] && [ ! -x "$ROOT/$p" ] || return 1
+  done <"$1"
+}
 # AUD-SEC-628: formatter khai báo không theo từng file (`prettier --write .`) vẫn chuẩn hoá được dòng §5 → chụp mọi
 # `GO-NO-GO*.md` (tên không phân biệt hoa thường) dưới gốc dự án trước khi chạy formatter, khôi phục file nào đổi/mất.
 go_snapshot() { # $1=thư mục chụp (rỗng, đã tồn tại)
@@ -527,7 +540,7 @@ go_snapshot() { # $1=thư mục chụp (rỗng, đã tồn tại)
   # AUD-HAR-417: thư mục không đọc được (dữ liệu docker mode 700 của user khác, chmod 000) — formatter chạy cùng user cũng
   # không đọc được nên bỏ qua; find lỗi khác (hay lỗi không lời) vẫn dừng formatter. LC_ALL=C: thông báo find tiếng Anh.
   if [ "$rc" -ne 0 ]; then
-    if [ ! -s "$1/err" ] || grep -qv ': Permission denied$' "$1/err"; then cat -- "$1/err" >&2; return 1; fi
+    if ! go_skippable "$1/err"; then cat -- "$1/err" >&2; return 1; fi
     log "$TASK: bỏ qua $(wc -l <"$1/err" | tr -d ' ') thư mục không đọc được khi tìm GO-NO-GO"
   fi
   while IFS= read -r -d '' f; do
