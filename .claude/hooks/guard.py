@@ -8651,7 +8651,7 @@ def command_rules(n: List[str], root: str, cwd: Optional[str] = None) -> Tuple[s
     verdict = _delete_rule(name, args, root, cwd)
     if verdict[0]:
         return verdict
-    for rule in (_capability_rule, _snapshot_update_rule):
+    for rule in (_capability_rule, _snapshot_update_rule, _data_destroy_rule):
         verdict = rule(n)
         if verdict[0]:
             return verdict
@@ -10243,6 +10243,16 @@ GH_TOKEN_WHY = (
     " `gh auth git-credential`, `gh config get oauth_token`) — lộ bí mật (AUD-SEC-580/589); `gh`, `git` và `xt.py` tự"
     " đọc token từ kho xác thực, không cần in hay truyền tay"
 )
+# AUD-SEC-818 (`token_print`): biến mang token, lệnh chỉ chép/lọc đầu ra (ống tới chúng vẫn in), bộ lọc của `env | …`.
+TOKEN_VARS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+TOKEN_REF_RE = re.compile(r"\$\{?(?:%s)(?![A-Za-z0-9_])" % "|".join(TOKEN_VARS))
+TOKEN_NAME_RE = re.compile(r"(?<![A-Za-z0-9_])(?:%s)(?![A-Za-z0-9_])" % "|".join(TOKEN_VARS))
+TOKEN_PASS = frozenset(
+    {*("cat", "tee", "head", "tail", "grep", "egrep", "fgrep", "rg", "sed", "awk", "cut", "rev", "base64", "jq")}
+    | {"xxd", "sort", "uniq", "less", "more", "xargs"}
+)  # chỉ tên đã có luật khác: bảng không thêm tên vào cổng tập con (`GATE_NAMES`)
+TOKEN_FILTERS = frozenset({"grep", "egrep", "fgrep", "rg", "awk", "sed"})
+TOKEN_PRINT_WHY = f"{GH_TOKEN_WHY} — kể cả in biến `GH_TOKEN`/`GITHUB_TOKEN` (`printenv`, `echo`, AUD-SEC-818)"
 
 
 def _gh_prints_token(args: List[str]) -> bool:
@@ -10948,11 +10958,82 @@ def _docker_remote(endpoint: str) -> bool:
 def _db_rule(name: str, args: List[str]) -> str:
     """Client CSDL tới máy chủ không cục bộ: cờ host, URI/conninfo ở đối số vị trí hoặc `-d` (`PGHOST=`/`…_URL=` gán đầu
     lệnh xét ở `_scan_command`). Câu SQL (`-c`, `-f`) là dữ liệu, không quét."""
+    remote = next((h for h in _db_hosts(name, args) if not h.startswith("$") and not _is_local_host(h)), "")
+    return f"{EGRESS_ASK} — {name} tới máy chủ {remote}" if remote else ""
+
+
+def _db_hosts(name: str, args: List[str]) -> List[str]:
+    """Máy chủ client CSDL `name` (khoá của `DB_CLIENTS`) nêu: cờ host, URI/conninfo ở đối số vị trí hoặc `-d`/`-u`."""
     hosts = _flag_values(args, DB_CLIENTS[name])
     for a in _positionals(args, (*DB_CLIENTS[name], *DB_URI_FLAGS, *DB_VALUE_FLAGS)) + _flag_values(args, DB_URI_FLAGS):
         hosts += _url_hosts(a) + CONNINFO_HOST_RE.findall(a)
-    remote = next((h for h in hosts if not h.startswith("$") and not _is_local_host(h)), "")
-    return f"{EGRESS_ASK} — {name} tới máy chủ {remote}" if remote else ""
+    return hosts
+
+
+# AUD-HAR-420 (D-502): lệnh phá dữ liệu tới máy chủ KHÔNG cục bộ → DATA_DESTROY (deny mọi pha/chính sách). Cục bộ =
+# không nêu máy chủ (mặc định của client), loopback (`_is_loopback`), socket unix (`/…`), `.`/`(local)` của sqlcmd; máy
+# chủ có mở rộng (`-h "$H"`) là không biết → không cục bộ. Câu phá (`DROP DATABASE|TABLE|SCHEMA`, `TRUNCATE`, `DELETE
+# FROM` không `WHERE`; mongosh `dropDatabase()`/`.drop()`/`deleteMany({})`) đọc ở cờ câu lệnh, thân heredoc có nháy và
+# here-string; `-f tệp`/stdin không thấy → không chặn (đi đường đối ngoại như cũ). `dropdb`, `mysqladmin drop`,
+# `redis-cli FLUSHALL|FLUSHDB` luôn phá. Ngoài phạm vi (dự án đích dùng `permissions.deny`): host từ biến môi trường
+# (`PGHOST=…`, `DATABASE_URL`), `prisma migrate reset`, `rails db:drop`, `docker compose down -v`.
+DATA_DESTROY_MARK = "phá dữ liệu trên máy chủ không cục bộ"
+DATA_DESTROY_WHY = DATA_DESTROY_MARK + " ({}) — không đảo ngược, người tự chạy tay (AUD-HAR-420)"
+DESTROY_STMT_FLAGS: Dict[str, Tuple[str, ...]] = {
+    "psql": ("-c", "--command"),
+    **dict.fromkeys(("mysql", "mariadb"), ("-e", "--execute")),
+    **dict.fromkeys(("mongosh", "mongo"), ("--eval",)),
+    "sqlcmd": ("-Q", "-q"),
+}
+DESTROY_ALWAYS: Dict[str, Tuple[str, ...]] = {
+    "dropdb": (),
+    "mysqladmin": ("drop",),
+    "redis-cli": ("flushall", "flushdb"),
+}
+DESTROY_HOST_FLAGS: Dict[str, Tuple[str, ...]] = {
+    **dict.fromkeys(("dropdb", "mysqladmin"), ("-h", "--host")),
+    "sqlcmd": ("-S",),
+}
+SQL_DESTROY_RE = re.compile(r"\b(?:DROP\s+(?:DATABASE|TABLE|SCHEMA)|TRUNCATE)\b", re.I)
+SQL_DELETE_RE = re.compile(r"\bDELETE\s+FROM\b", re.I)
+SQL_WHERE_RE = re.compile(r"\bWHERE\b", re.I)
+MONGO_DESTROY_RE = re.compile(r"\bdropDatabase\s*\(|\.drop\s*\(|\b(?:deleteMany|remove)\s*\(\s*\{\s*\}")
+SQLCMD_LOCAL = frozenset({".", "(local)", "(localdb)"})
+
+
+def _destroy_local(host: str) -> bool:
+    """Máy chủ cục bộ chắc chắn (chặt hơn `_is_local_host`: tên không dấu chấm như `prod` có thể là máy khác)."""
+    h = re.split(r"[,\\]", re.sub(r"^(?:tcp|np|lpc):", "", host.strip(), flags=re.I))[0].lower()
+    return not h or h.startswith("/") or h in SQLCMD_LOCAL or _is_loopback(h)
+
+
+def _destroy_texts(name: str, args: List[str]) -> List[str]:
+    """Câu lệnh thấy được: giá trị cờ câu lệnh, thân heredoc có nháy, here-string."""
+    texts = _flag_values(args, DESTROY_STMT_FLAGS.get(name, ()))
+    texts += [a.body for a in args if isinstance(a, HereWord)]
+    return texts + [b for a, b in zip(args, args[1:]) if a == "<<<"]
+
+
+def _sql_destroys(text: str, mongo: bool) -> bool:
+    if SQL_DESTROY_RE.search(text) or mongo and MONGO_DESTROY_RE.search(text):
+        return True
+    return any(SQL_DELETE_RE.search(s) and not SQL_WHERE_RE.search(s) for s in text.split(";"))
+
+
+def _data_destroy_rule(n: List[str]) -> Tuple[str, str]:
+    """AUD-HAR-420: client CSDL phá dữ liệu tới máy chủ không cục bộ → deny DATA_DESTROY; khác → không phản đối."""
+    name, args = posixpath.basename(n[0]), n[1:]
+    if name not in DESTROY_STMT_FLAGS and name not in DESTROY_ALWAYS:
+        return "", ""
+    hosts = _db_hosts(name, args) if name in DB_CLIENTS else _flag_values(args, DESTROY_HOST_FLAGS[name])
+    if all(_destroy_local(h) for h in hosts):
+        return "", ""
+    words = DESTROY_ALWAYS.get(name)
+    if words is not None:
+        hit = not words or any(a.lower() in words for a in args)
+    else:
+        hit = any(_sql_destroys(t, name in ("mongosh", "mongo")) for t in _destroy_texts(name, args))
+    return ("deny", DATA_DESTROY_WHY.format(" ".join(n)[:80])) if hit else ("", "")
 
 
 def _ssh_forward_hosts(args: List[str]) -> List[str]:
@@ -13342,20 +13423,24 @@ COMMIT_LINE_MAX = 4096  # regex quanh heredoc trên dòng mở: mỗi phía tố
 
 
 def _unquoted_seps(line: str) -> List[Tuple[int, int]]:
-    """Vị trí `;`/`&&`/`||`/`&` nằm NGOÀI nháy: `git commit -m "fix: a; b" -m "$(cat <<E` vẫn là một pipeline."""
+    """Vị trí `;`/`&&`/`||`/`&` nằm NGOÀI nháy: `git commit -m "fix: a; b" -m "$(cat <<E` vẫn là một pipeline. `$'…'`
+    (ANSI-C) có `\\'` là chữ: `git -c $'a\\';b' commit` là một lệnh (AUD-HAR-419); `$$'…'` là `$$` rồi nháy đơn."""
     seps: List[Tuple[int, int]] = []
     i, q, n = 0, "", len(line)
     while i < n:
         c = line[i]
         if q == "'":
             q = "" if c == "'" else q
-        elif c == "\\":
+        elif c == "\\" or not q and line.startswith("$$", i):
             i += 2
             continue
         elif q:
-            q = "" if c == '"' else q
+            q = "" if c == q[-1] else q  # `"` đóng bằng `"`, `$'` đóng bằng `'`
         elif c in "'\"":
             q = c
+        elif line.startswith("$'", i):
+            q, i = "$'", i + 2
+            continue
         else:
             sep = LIST_SEP_RE.match(line, i)
             if sep:
@@ -13384,15 +13469,116 @@ def _commit_window(line: str, pos: int, seps: List[Tuple[int, int]]) -> str:
 def _heredoc_bodies(cmd: str, pat: "re.Pattern[str]" = GIT_COMMIT_TEXT_RE) -> List[str]:
     """Thân heredoc thuộc pipeline có `git commit` (`git commit -F - <<E`, `-m "$(cat <<E`, `cat <<E | git commit -F -`)
     — hay lệnh khớp `pat` (`gh pr create --body-file - <<E`); heredoc của lệnh khác trong cùng chuỗi
-    (`python3 - <<E …; git commit`) là dữ liệu của lệnh đó, không quét."""
+    (`python3 - <<E …; git commit`) là dữ liệu của lệnh đó, không quét. Chữ thô HỢP với cách đọc theo token
+    (`_here_owned`, AUD-HAR-419): nháy trong tên lệnh, nhóm `{…}`/`(…)`, `exec N<<`."""
+    joined = join_continuations(cmd)  # nối dòng `\` như shell (`git commit \` ↵ `-F - <<E`)
+    spans, lines = _here_scan(joined), joined.split("\n")
+    owned = _here_owned(cmd, spans, "commit" if pat is GIT_COMMIT_TEXT_RE else "pr") or frozenset()
     out: List[str] = []
     seps: Dict[str, List[Tuple[int, int]]] = {}  # dòng mở → dấu nối: nhiều heredoc một dòng không quét lại dòng
-    for opener, m, body in _heredocs(join_continuations(cmd)):  # nối dòng `\` như shell (`git commit \` ↵ `-F - <<E`)
+    for j, (o, m, a, b, _) in enumerate(spans):
+        opener = lines[o]
         if opener not in seps:
             seps[opener] = _unquoted_seps(opener)
-        if pat.search(_blank_quoted_seps(_commit_window(opener, m.start(), seps[opener]))):
-            out.append("\n".join(body))
+        if j in owned or pat.search(_blank_quoted_seps(_commit_window(opener, m.start(), seps[opener]))):
+            out.append("\n".join(lines[a:b]))
     return out
+
+
+# AUD-HAR-419: heredoc thuộc commit/PR đọc theo TOKEN (argv đã bỏ nháy: `"git" commit`, `git co''mmit`, `git -c $'…'
+# commit`), không theo chữ thô. Heredoc gắn lệnh đơn, nhóm `{ …; }`/`( … )` đứng trước nó, và pipeline chứa chúng; nằm
+# trong nhóm thì tầm mở ra tới pipeline của nhóm (đầu ra của nhóm). `exec N<<E` mở fd cho phần còn lại của shell: mọi
+# lệnh sau đó đều có thể đọc (`-F /dev/fd/N`, `-F -` khi N = 0).
+HERE_LIST_SEPS = frozenset({";", "&&", "||", "&", "\n", ";;", ";&", ";;&"})
+
+
+def _group_delta(t: str) -> int:
+    """Độ sâu nhóm token `t` mở (+) / đóng (−): `(`/`<(`/`$(`/`)` (toán tử), `{`/`}` (từ khoá nhóm)."""
+    if _is_punct(t):
+        return t.count("(") - t.count(")")
+    return {"{": 1, "}": -1}.get(t, 0)
+
+
+def _level_table(tokens: List[str]) -> Tuple[List[int], List[int]]:
+    """(L, P): `L[j]` độ sâu nhóm trước token j, `P[j]` = min(L[0..j]) — tính một lần cho mọi heredoc của lệnh (nhiều
+    heredoc không thành bậc hai: `cat <<A; cat <<A; …`)."""
+    lv, pm = [0], [0]
+    for t in tokens:
+        lv.append(lv[-1] + _group_delta(t))
+        pm.append(min(pm[-1], lv[-1]))
+    return lv, pm
+
+
+def _here_reach(tokens: List[str], k: int, table: Optional[Tuple[List[int], List[int]]] = None) -> Tuple[int, int]:
+    """[đầu, cuối) các token mà thân heredoc ở toán tử `tokens[k]` có thể tới: mức ngoài cùng = ra khỏi mọi nhóm bao
+    nó (`{ a; cat <<E; } | c` — đầu ra của nhóm vào `c`); lùi/tiến tới dấu nối danh sách ở mức đó; `exec` không lệnh →
+    tới hết lệnh Bash."""
+    lv, pm = table or _level_table(tokens)
+    low, lo = pm[k], k
+    for j in range(k - 1, -1, -1):
+        if lv[j] == low and tokens[j] in HERE_LIST_SEPS:
+            break
+        lo = j
+    start = next((j + 1 for j in range(k - 1, -1, -1) if _is_punct(tokens[j]) and not _is_redirect(tokens[j])), 0)
+    if posixpath.basename(tokens[start]) == "exec":
+        return lo, len(tokens)
+    hi = k
+    for j in range(k, len(tokens)):
+        if lv[j] <= low and tokens[j] in HERE_LIST_SEPS:
+            break
+        hi = j + 1
+    return lo, hi
+
+
+def _attribution_kinds(argv: List[str], depth: int = 0) -> FrozenSet[str]:
+    """`commit` (`git commit`), `pr` (`gh pr create|edit|merge`) mà lệnh đơn chạy — cả trong `sh -c '…'` (shell con thừa
+    stdin: `sh -c 'git commit -F -' <<E`, sâu tới `STRICT_EVAL_DEPTH` tầng)."""
+    n = normalize(argv)
+    if n[:2] == ["git", "commit"]:
+        return frozenset({"commit"})
+    if any(_gh_pr_text_args(r) is not None for r in _gh_pr_readings(n)):
+        return frozenset({"pr"})
+    script = _shell_c_script(argv) if depth < STRICT_EVAL_DEPTH else None
+    if not script:
+        return frozenset()
+    return frozenset().union(*(_attribution_kinds(c, depth + 1) for c in split_commands(tokenize(script))))
+
+
+def _here_owned_by(
+    cmd: str, spans: Tuple[HereSpan, ...], pred: Callable[[List[str]], bool]
+) -> Optional[FrozenSet[int]]:
+    """Chỉ số (trong `spans`) của heredoc tới lệnh đơn thoả `pred` theo token (`_here_reach`); `<<` của token không khớp
+    số heredoc ngoài `"$(…)"` (`$((1<<2))`, tách thô) → None (không đọc chắc)."""
+    idx = [j for j, s in enumerate(spans) if not s[4]]
+    if not idx:
+        return frozenset()
+    tokens = tokenize(cmd)
+    ops = [k for k, t in enumerate(tokens[:-1]) if t == "<<"]
+    if len(ops) != len(idx):
+        return None
+    table = _level_table(tokens)
+    reach = [split_commands(tokens[slice(*_here_reach(tokens, k, table))]) for k in ops]
+    return frozenset(j for j, cmds in zip(idx, reach) if any(map(pred, cmds)))
+
+
+def _here_owned(cmd: str, spans: Tuple[HereSpan, ...], kind: str) -> Optional[FrozenSet[int]]:
+    """`_here_owned_by` với lệnh nhận là commit/PR loại `kind`."""
+    return _here_owned_by(cmd, spans, lambda c: kind in _attribution_kinds(c))
+
+
+HERE_UNREAD_WHY = "heredoc có chữ ghi công AI cùng commit/PR mà guard không đọc chắc nó tới lệnh nào (AUD-HAR-419)"
+
+
+def _here_unread_attribution(cmd: str, kind: str) -> None:
+    """Heredoc không ánh xạ được vào token (`_here_owned` → None) mà thân nào đó có chữ ghi công AI → `ScanTooComplex`
+    (BUDGET): không đoán thân đó có tới commit/PR không."""
+    joined = join_continuations(cmd)
+    spans = _here_scan(joined)
+    if _here_owned(cmd, spans, kind) is not None:
+        return
+    lines = joined.split("\n")
+    if any(AI_ATTRIBUTION_RE.search("\n".join(lines[a:b])) for _, _, a, b, _ in spans):
+        raise ScanTooComplex(HERE_UNREAD_WHY)
 
 
 def _blank_quoted_seps(text: str) -> str:
@@ -13507,6 +13693,18 @@ def _attribution_target(
     return (here or root, [x for p in found for x in p], "pr") if found else None
 
 
+def _attribution_targets(
+    argv: List[str], here: Optional[str], root: str
+) -> List[Tuple[str, List[Tuple[str, str]], str]]:
+    """`_attribution_target`; không phải thì commit/PR chạy trong `sh -c '…'` (AUD-HAR-419: shell con thừa stdin —
+    `sh -c 'git commit -F -' <<E`) với thư mục của lệnh, không cặp chữ (chữ `-m` của lệnh trong do lớp lồng quét)."""
+    target = _attribution_target(argv, here, root)
+    if target is not None:
+        return [target]
+    nested = _attribution_kinds(argv) if _shell_c_script(argv) else frozenset()
+    return [(here or root, [], kind) for kind in sorted(nested)]
+
+
 def _gh_pr_readings(n: List[str]) -> List[List[str]]:
     """Phần sau `pr` của mọi cách đọc `gh pr …` (`_gh_readings`, D-409 — `gh -R o/r pr create`, `gh pr --title x
     create`: AUD-SEC-578) của argv đã chuẩn hoá `n`; không phải `gh pr` → []."""
@@ -13518,15 +13716,16 @@ def ai_attribution(cmd: str, commands: List[Tuple[List[str], Optional[str]]], ro
     Xét `git commit` và `gh pr create|edit|merge` qua Bash, chữ thấy được lúc quyết định — không thấy: `echo … | git
     commit -F -`, file `-F` do lệnh trước trong chuỗi tạo, `git merge -m`/`git tag -m` (tool MCP: `mcp_attribution`)
     (LOOP-HARNESS-027)."""
-    for argv, here in commands:
-        target = _attribution_target(argv, here, root)
-        if target is None or not AI_ATTRIBUTION_KEY_RE.search(_read_head(_xt_yaml_for(target[0]))):
+    for target in (t for argv, here in commands for t in _attribution_targets(argv, here, root)):
+        if not AI_ATTRIBUTION_KEY_RE.search(_read_head(_xt_yaml_for(target[0]))):
             continue
         gdir, pairs, kind = target
         # `-F` tương đối tính từ thư mục git chạy (sau `-C`), như git.
         texts = [v if k == "m" else _read_head(posixpath.join(gdir, v)) for k, v in pairs]
         bodies = _heredoc_bodies(cmd, GIT_COMMIT_TEXT_RE if kind == "commit" else GH_PR_TEXT_RE)
         hit = next((m.group(0) for t in [*texts, *bodies] for m in [AI_ATTRIBUTION_RE.search(t)] if m), "")
+        if not hit and "<<" in cmd:
+            _here_unread_attribution(cmd, kind)
         if hit:
             what = "Commit" if kind == "commit" else "PR"
             return (
@@ -14370,21 +14569,28 @@ def _heredoc_scripts(
 ) -> List[str]:
     """Thân heredoc đưa vào shell (`bash <<'E'` … `E`; `pred` chọn lệnh nhận) — là lệnh, không phải dữ liệu. Mỗi dòng mở
     tìm dấu nối một lần, mỗi pipeline tách token một lần (`cat <<A <<A …` × n: cũ tách lại mỗi heredoc — bậc hai, n=2000
-    ~58 s); quá hạn `budget` → chặn (D-271)."""
+    ~58 s); quá hạn `budget` → chặn (D-271). Chữ thô HỢP với cách đọc theo token (`_here_owned_by`, AUD-HAR-419: nhóm
+    `{ bash; } <<E`, tên có nháy, `exec 0<<E; bash`); token không khớp heredoc mà có lệnh nhận → mọi thân (chặt)."""
+    joined = join_continuations(cmd)
+    spans, lines = _here_scan(joined), joined.split("\n")
+    owned = _here_owned_by(cmd, spans, pred) if spans else frozenset()
+    if owned is None:
+        owned = frozenset(range(len(spans))) if any(map(pred, split_commands(tokenize(cmd)))) else frozenset()
     out: List[str] = []
     seps: Dict[str, List[Tuple[int, int]]] = {}
     hits: Dict[Tuple[str, int, int], bool] = {}
-    for opener, m, body in _heredocs(join_continuations(cmd)):
+    for j, (o, m, a, b, _) in enumerate(spans):
         if budget is not None and budget.overdue():
             raise ScanTooComplex("quá hạn khi đọc heredoc vào shell/trình thông dịch")
+        opener = lines[o]
         if opener not in seps:
             seps[opener] = _unquoted_seps(opener)
         start, end = _segment_at(opener, m.start(), seps[opener])
         key = (opener, start, end)
         if key not in hits:
             hits[key] = any(pred(c) for c in split_commands(tokenize(opener[start:end])))
-        if hits[key]:
-            out.append("\n".join(body))
+        if hits[key] or j in owned:
+            out.append("\n".join(lines[a:b]))
     return out
 
 
@@ -18106,6 +18312,11 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     REUSE_READERS,
     ENV_OPTS,
     DESTROY_CMDS,
+    DESTROY_STMT_FLAGS,  # AUD-HAR-420: client CSDL phá dữ liệu
+    DESTROY_ALWAYS,
+    DESTROY_HOST_FLAGS,
+    TOKEN_PASS,  # AUD-SEC-818: ống in token
+    TOKEN_FILTERS,
 )
 GATE_NAMES: FrozenSet[str] = _GATE_BRANCHED - GATE_PASSIVE
 
@@ -18212,6 +18423,43 @@ def secret_exfil(tokens: List[str], root: str) -> Optional[str]:
             if leaked:
                 return f"gửi bí mật ra mạng ({leaked[0]})"
     return None
+
+
+# AUD-SEC-818: in biến môi trường mang token GitHub ra transcript — chặn như `gh auth token` (cùng lý do, cùng mã):
+# `printenv GH_TOKEN`, `echo "$GH_TOKEN"`, `printf %s "${GITHUB_TOKEN}"`, gián tiếp `X=GH_TOKEN; echo "${!X}"`, `env |
+# grep TOKEN`. Đưa sang lệnh tiêu thụ (`echo "$GH_TOKEN" | gh auth login --with-token`, `docker login
+# --password-stdin`) không in → qua; qua ống tới bộ lọc/chép (`| cat`, `| tee`, `| base64`) vẫn in. `env`/`printenv`
+# trơn (in mọi biến, gồm cả token) giữ cho chạy — chặn là chặn oan việc xem môi trường thường ngày. Bảng: cạnh
+# `GH_TOKEN_WHY` (tên lệnh của bảng thuộc `_GATE_BRANCHED`).
+
+
+def _token_echo(n: List[str], named: bool) -> bool:
+    """Lệnh đơn (đã chuẩn hoá) in giá trị biến token: `printenv <biến token>`, `echo`/`printf` có `$TOKEN`/`${TOKEN…}`
+    hay `${!X}` khi lệnh Bash có nêu tên biến token (`named`)."""
+    head = posixpath.basename(n[0]) if n else ""
+    if head == "printenv":
+        return any(a in TOKEN_VARS for a in n[1:])
+    return head in ("echo", "printf") and any(TOKEN_REF_RE.search(a) or named and "${!" in a for a in n[1:])
+
+
+def _env_dump(c: List[str]) -> bool:
+    """`env`/`printenv` không đối số: in mọi biến."""
+    head = posixpath.basename(c[0]) if c else ""
+    return head == "env" and not normalize(c) or head == "printenv" and normalize(c) == ["printenv"]
+
+
+def token_print(tokens: List[str]) -> str:
+    """AUD-SEC-818: lý do chặn khi lệnh in biến token GitHub ra đầu ra lệnh; không thì rỗng."""
+    named = any(TOKEN_NAME_RE.search(t) for t in tokens)
+    for group in pipelines(tokens):
+        for i, c in enumerate(group):
+            nxt = normalize(group[i + 1]) if i + 1 < len(group) else []
+            sink = posixpath.basename(nxt[0]) if nxt else ""
+            if _token_echo(normalize(c), named) and (not sink or sink in TOKEN_PASS):
+                return TOKEN_PRINT_WHY
+            if _env_dump(c) and sink in TOKEN_FILTERS and any("token" in a.lower() for a in nxt[1:]):
+                return TOKEN_PRINT_WHY
+    return ""
 
 
 ASK_PREFIX = "Khung cần xác nhận: "
@@ -18611,7 +18859,7 @@ def _bash_decision(
             reason=f"Cấm chạy script tải từ mạng ({rx}): tải về, kiểm checksum rồi mới chạy. Lệnh: {cmd[:300]}",
         )
         return res
-    leak = secret_exfil(tokens, root)
+    leak = secret_exfil(tokens, root) or token_print(tokens)
     if leak:
         res.update(decision="deny", reason=f"Lệnh bị khung chặn ({leak}): {cmd[:300]}")
         return res
@@ -18647,7 +18895,9 @@ def _bash_decision(
     deny_reason = deny_reason or find_root_scan(cmd, root, cwd) or _commit_after_write(commands)
     deny_reason = deny_reason or (
         ai_attribution(cmd, every, root) or title_rule(cmd, every, root)
-        if res["commit"] or GH_PR_TEXT_RE.search(cmd) or any(_gh_pr_readings(normalize(a)) for a, _ in every)
+        if res["commit"]
+        or GH_PR_TEXT_RE.search(cmd)
+        or any(_gh_pr_readings(normalize(a)) or "<<" in cmd and _attribution_kinds(a) for a, _ in every)
         else ""
     )
     if deny_reason:
@@ -18718,6 +18968,7 @@ REASON_CODES: Tuple[Tuple[str, str], ...] = (
     ("find xoá file ngoài thư mục dự án", "WIPE_OUTSIDE"),
     ("xoá thư mục gắn từ máy", "WIPE_OUTSIDE"),
     ("xoá thay đổi đã cất", "STASH_DROP"),
+    (DATA_DESTROY_MARK, "DATA_DESTROY"),  # client CSDL phá dữ liệu tới máy chủ không cục bộ (AUD-HAR-420)
     (DESTROY_ASK, "DESTROY"),
     (AUTO_MERGE_WHY, "AUTO_MERGE_ENABLE"),  # bật auto-merge: deny phẳng ở mọi chính sách (ADR-0036)
     ("--admin vượt ruleset nhánh", "MERGE_ADMIN"),
