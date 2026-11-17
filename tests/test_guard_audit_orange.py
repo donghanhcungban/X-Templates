@@ -500,10 +500,28 @@ class ConcurrentDecisionTest(unittest.TestCase):
             "git fetch-pack --exec='touch /tmp/p' . HEAD",
             f"git grep -n '{PHRASE}'",
         ] * 4
+        before = dict(os.environ)
         first = [decide(c).get("code") for c in cmds]
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            again = list(pool.map(lambda c: decide(c).get("code"), cmds))
-        self.assertEqual(first, again)
+        # AUD-TEST-119: vá env/`_current_branch` MỘT lần ngoài luồng — `mock.patch.dict` vào/ra song song khôi phục
+        # nhầm ảnh chụp, để lại `XT_GUARD_POLICY=""` cho module test chạy sau (hook con của test_hooks thừa kế env)
+        with (
+            mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(ROOT), "XT_GUARD_POLICY": ""}),
+            mock.patch.object(guard, "_current_branch", return_value="feat"),
+            ThreadPoolExecutor(max_workers=8) as pool,
+        ):
+            again = list(pool.map(lambda c: guard.apply_policy(guard.bash_decision(c, str(ROOT), str(ROOT))), cmds))
+        self.assertEqual(first, [d.get("code") for d in again])
+        self.assertEqual(dict(os.environ), before)
+
+    def test_env_clean_for_hook_tests_in_same_process(self):
+        """Ghim AUD-TEST-119: lớp này rồi test hook (subprocess thừa kế env) trong CÙNG tiến trình unittest vẫn xanh."""
+        mods = ["tests.test_guard_audit_orange.ConcurrentDecisionTest.test_parallel_decisions_stable"]
+        mods.append("tests.test_hooks.CommitGateForeignRepoTest")
+        env = {k: v for k, v in os.environ.items() if k not in ("XT_GUARD_POLICY", "CLAUDE_PROJECT_DIR")}
+        r = subprocess.run(
+            [sys.executable, "-m", "unittest", *mods], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600
+        )
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
 
 
 if __name__ == "__main__":

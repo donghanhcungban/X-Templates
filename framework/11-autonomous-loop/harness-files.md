@@ -98,8 +98,9 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   chọn `init` mờ (`$(…)`, backtick, biến, glob), chuỗi thay chỗ (`xargs -I`/`-i`/`--replace`, mẫu `{…}`, `:::`) hay đến
   từ stdin. Lệnh con mờ không tính khi lệnh chỉ đọc file (`cat`/`grep`/`git`… `scripts/xt.py "$F"`); đường script mờ chỉ
   tính khi có `python` đứng trước hoặc nó là lệnh, và lệnh con là `stage`. `xt.py` coi biến phiên agent có mặt (kể cả
-  rỗng) là agent. `--framework "$FW"` bị chặn với mọi lệnh con — dùng `XT_FRAMEWORK`. Còn lọt (AUD-SEC-161): đường
-  script mờ sau trình chạy không phải python (`uv run "$XT" "$(…)"`), bản sao/tên khác của `xt.py`, alias, script lồng.
+  rỗng) là agent. `--framework "$FW"` bị chặn với mọi lệnh con — dùng `XT_FRAMEWORK`. Đường script mờ sau
+  trình chạy (`uv run "$XT" "$(…)"`) nay bị chặn (BUDGET, D-503). Còn lọt (AUD-SEC-161): bản sao/tên khác của `xt.py`,
+  alias, script lồng.
   Nạp `xt` trong tiến trình (AUD-SEC-498): script trình thông dịch (`-c`, stdin, heredoc, ống) có `import xt` kèm
   `main`/`stage`/`approve`/`adopt`/biến môi trường/truy cập động, hàm nạp (`runpy`, `import_module`, `__import__`,
   `exec`/`eval`/`compile`, `spec_from_file_location`) với đối số không phải chữ nguyên văn hay trỏ `xt`, và
@@ -157,7 +158,7 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   và `url.<b>.insteadOf|pushInsteadOf` (kể cả `--unset`, `--remove-section`/`--rename-section`), `git -c`/`--config-env`/`GIT_CONFIG_*` một lần;
   `remote set-head <r> <nhánh>|-d` cũng chặn (`-a` hỏi máy chủ thì qua). Còn lọt: ghi thẳng file `.git/refs/heads|tags/…`, `.git/<remote>/…`
   (cùng uid sửa trực tiếp file trong `.git` ngoài guard — lớp hai là sandbox, ADR-0067), `remote add|rename|remove` tên khác `origin`;
-  ghi thẳng `.git/refs/replace/…`, grafts (`.git/info/grafts`, `GIT_GRAFT_FILE`) với lệnh git ngoài `xt.py`, `fast-import`; ref là thay lệnh (`$(…)`) hay biến trong script lồng (`xargs sh -c 'git update-ref "$@"'`).
+  ghi thẳng `.git/refs/replace/…`, grafts (`.git/info/grafts`, `GIT_GRAFT_FILE`) với lệnh git ngoài `xt.py`, `fast-import`; ref là biến môi trường trần (`git update-ref "$R" …`). Ref là thay lệnh (`$(…)`) hay qua `xargs sh -c 'git update-ref "$@"'` nay bị chặn (BUDGET, D-503).
   Alias git: mọi lệnh con ngoài danh sách dựng sẵn (bất kể tên: `a.b`, `y_x.z`, `1.x`) được tra trong bảng alias do
   CHÍNH git dựng (`git -C <repo> [-c/--config-env/--git-dir của lệnh] config --list -z` với `GIT_CONFIG_COUNT/KEY_*/
   VALUE_*/PARAMETERS/GLOBAL/SYSTEM/NOSYSTEM`, `HOME`, `XDG_CONFIG_HOME`, `GIT_DIR` của lệnh hợp môi trường của guard —
