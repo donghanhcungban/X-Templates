@@ -29,7 +29,8 @@ def stored(data: bytes) -> str:
 
 class InstallTest(unittest.TestCase):
     def setUp(self):
-        self.target = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        # `resolve()`: install so đường đã resolve (`dst == scan` ở mock) — TMPDIR dưới symlink không làm lệch (AUD-SEC-655)
+        self.target = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
 
     def run_install(self, *extra) -> int:
         return install.main([str(self.target), "--label", "test", *extra])
@@ -2747,6 +2748,90 @@ class HooksPathSymlinkTest(SymlinkEscapeCase):
         self.assertEqual(rc, 0, err)
         self.assertEqual(sorted(p.name for p in outside.iterdir()), sorted(install.GIT_HOOKS))
         self.assertNotIn("bỏ qua symlink", err)
+
+
+@unittest.skipIf(shutil.which("git") is None, "cần git")
+class HooksRealDirTest(SymlinkEscapeCase):
+    """T-3910: thư mục hook xét theo nơi ghi THẬT (`resolve()`) so với dự án và git dir của repo. AUD-SEC-670: đường
+    tuyệt đối qua tổ tiên symlink vào dự án rồi ra ngoài (`via → proj`, `.githooks → ../out`) → không ghi. AUD-HAR-404:
+    `.git`/`.git/hooks` là symlink tới git dir thật hay thư mục trong dự án → cài như bản nền; ra ngoài cả hai → không ghi."""
+
+    def assert_plan(self, target: Path, action: str) -> None:
+        rc, out, err = self.main(target, "--plan")
+        self.assertEqual(rc, 0, err)
+        self.assertEqual({h["action"] for h in json.loads(out)["git_hooks"]["hooks"]}, {action})
+
+    def test_absolute_hooks_path_via_ancestor_symlink_not_written(self):
+        target, outside = self.fresh(".githooks")
+        via = target.parent / "via"
+        via.symlink_to(target.name)
+        self.git(target, "init", "-q")
+        self.git(target, "config", "core.hooksPath", str(via / ".githooks"))
+        self.assert_plan(target, "skipped-symlink")
+        rc, _, err = self.main(target)
+        self.assertEqual(rc, 0, err)
+        self.assertNothingOutside(outside)
+        self.assertIn("⚠ git hook: bỏ qua symlink", err)
+
+    def test_hooks_symlink_unresolvable_not_written(self):
+        """`resolve()` lỗi (vòng symlink ở bản Python ném lỗi, quyền) → không biết nơi ghi → không ghi."""
+        target, _ = self.fresh()
+        hooks = target / ".githooks"
+        orig = Path.resolve
+
+        def fake(self: Path, strict: bool = False) -> Path:
+            if self == hooks:
+                raise RuntimeError("vòng symlink")
+            return orig(self, strict)
+
+        with mock.patch.object(Path, "resolve", fake):
+            self.assertTrue(install.hooks_symlink(target, hooks))
+
+    def test_absolute_hooks_path_via_ancestor_symlink_inside_project_installs(self):
+        target, _ = self.fresh()
+        via = target.parent / "via"
+        via.symlink_to(target.name)
+        self.git(target, "init", "-q")
+        self.git(target, "config", "core.hooksPath", str(via / ".githooks"))
+        self.assert_plan(target, "copied")
+        rc, _, err = self.main(target)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(sorted(p.name for p in (target / ".githooks").iterdir()), sorted(install.GIT_HOOKS))
+
+    def test_dot_git_symlink_to_real_git_dir_installs(self):
+        target, _ = self.fresh()
+        self.git(target, "init", "-q")
+        real = target.parent / "realgit"
+        (target / ".git").rename(real)
+        (target / ".git").symlink_to(os.path.relpath(real, target))
+        self.assert_plan(target, "copied")
+        rc, _, err = self.main(target)
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("bỏ qua symlink", err)
+        self.assertTrue(all((real / "hooks" / n).is_file() for n in install.GIT_HOOKS))
+        doc = json.loads((target / install.MANIFEST_V2).read_text(encoding="utf-8"))
+        self.assertEqual(len(doc["git_hooks"]), len(install.GIT_HOOKS))
+
+    def test_hooks_dir_symlink_inside_project_installs(self):
+        target, _ = self.fresh()
+        self.git(target, "init", "-q")
+        shared = target / "hooks-shared"
+        (target / ".git" / "hooks").rename(shared)
+        (target / ".git" / "hooks").symlink_to(os.path.relpath(shared, target / ".git"))
+        self.assert_plan(target, "copied")
+        rc, _, err = self.main(target)
+        self.assertEqual(rc, 0, err)
+        self.assertTrue(all((shared / n).is_file() for n in install.GIT_HOOKS))
+
+    def test_hooks_dir_symlink_outside_project_and_git_dir_not_written(self):
+        target, outside = self.fresh()
+        self.git(target, "init", "-q")
+        (target / ".git" / "hooks").rename(target.parent / "old-hooks")
+        (target / ".git" / "hooks").symlink_to(os.path.relpath(outside, target / ".git"))
+        self.assert_plan(target, "skipped-symlink")
+        rc, _, err = self.main(target)
+        self.assertEqual(rc, 0, err)
+        self.assertNothingOutside(outside)
 
 
 class StageInitSymlinkTest(SymlinkEscapeCase):
