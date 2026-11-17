@@ -289,6 +289,12 @@ class DefaultDenyHelperTest(unittest.TestCase):
         self.assertEqual(guard._runner_tails(["mytool", "rm", "git", "push"]), [["rm", "git", "push"], ["git", "push"]])
         self.assertEqual(guard._runner_tails(["git", "push"]), [])
 
+    def test_func_names(self):
+        self.assertEqual(guard._func_names("function g { :; }; f() { :; }; ( ) x"), {"g", "f"})
+        self.assertEqual(
+            guard._dd_args("gh", ["pr", "merge", "7", "--match-head-commit", '"$(x)"']), ["pr", "merge", "7"]
+        )
+
     def test_destroy_hosts(self):
         self.assertEqual(
             guard._long_abbrevs(["--ho=h", "--", "--x", "-h"], ("-h", "--host")), ["--host=h", "--", "--x", "-h"]

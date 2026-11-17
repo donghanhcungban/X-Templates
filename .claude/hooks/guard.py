@@ -2658,7 +2658,10 @@ GIT_VALUE_SAFE = frozenset(
 GH_VALUE_SAFE = frozenset({("pr", "view"), ("pr", "list"), ("pr", "checks"), ("pr", "status"), ("pr", "diff")})
 GH_VALUE_SAFE |= frozenset({("issue", "view"), ("issue", "list"), ("run", "view"), ("run", "list"), ("run", "watch")})
 GH_VALUE_SAFE |= frozenset({("repo", "view"), ("auth", "status")})
-DD_TEXT_FLAGS = {"git": frozenset({"-m", "--message"}), "gh": frozenset({"-t", "--title", "-b", "--body", "--notes"})}
+# Giá trị cờ là chữ/ghim mà luật riêng đã xét (thân commit/PR quét ghi công; `--match-head-commit` so với head ở
+# merge-check — AUD-SEC-016), không thành cờ/đích
+DD_TEXT_FLAGS = {"git": frozenset({"-m", "--message"})}
+DD_TEXT_FLAGS["gh"] = frozenset({"-t", "--title", "-b", "--body", "--notes", "--match-head-commit"})
 DD_RULED_ENV = frozenset({"HOME", "PWD", "OLDPWD", "BASH", "SHELL", "CLAUDE_PROJECT_DIR", "TMPDIR", "0"})
 DD_PARAM_RE = re.compile(r"([#!]?)([A-Za-z_]\w*|[0-9]+|[-@*#?$!_])(\[[^\]]*\])?(.*)", re.S)
 # `${X:?…}` giữ giá trị; `${X:-chữ}`/`${X:=chữ}`/`${X:+chữ}`: giá trị là X (biến không biết) hay chữ — bản thay quét cả
@@ -2863,7 +2866,7 @@ TRAP_ASSIGN_WHY = (
 
 
 def _trap_assign_why(cmd: str) -> str:
-    funcs = {m[1] or m[2] for m in FUNC_NAME_RE.finditer(cmd)}  # D-503: `trap 'f;' DEBUG` gọi hàm có gán
+    funcs = _func_names(cmd) if "trap" in cmd else set()  # D-503: `trap 'f;' DEBUG` gọi hàm có gán
     for _, words in _simple_cmds(cmd) or []:
         args = [_dequote(w) for w in _no_redirects(words[1:])]
         if not words or posixpath.basename(_dequote(words[0])) != "trap" or args[:1] in (["-p"], ["-l"]):
@@ -2877,7 +2880,19 @@ def _trap_assign_why(cmd: str) -> str:
     return ""
 
 
-FUNC_NAME_RE = re.compile(r"function\s+([^\s(){};&|]+)|([^\s(){};&|$`'\"]+)\s*\(\s*\)")
+FUNC_KW_RE = re.compile(r"function\s+([^\s(){};&|]+)")
+FUNC_PARENS_RE = re.compile(r"\(\s*\)")
+FUNC_NAME_SEP_RE = re.compile(r"[\s(){};&|$`'\"]")
+FUNC_NAME_MAX = 256  # nhìn lùi tối đa từ `()` — tuyến tính theo độ dài lệnh
+
+
+def _func_names(cmd: str) -> Set[str]:
+    """Tên hàm định nghĩa trong `cmd` (`function f`, `f()`): tìm `()` rồi lấy từ ngay trước trong cửa sổ có trần (regex
+    tên trước `()` quét từ mọi vị trí là bậc hai trên từ dài)."""
+    names = {m[1] for m in FUNC_KW_RE.finditer(cmd)}
+    for m in FUNC_PARENS_RE.finditer(cmd):
+        names.add(FUNC_NAME_SEP_RE.split(cmd[max(0, m.start() - FUNC_NAME_MAX) : m.start()].rstrip())[-1])
+    return names - {""}
 
 
 def _opaque_value_why(cmd: str) -> str:
