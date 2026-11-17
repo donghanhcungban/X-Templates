@@ -596,10 +596,13 @@ class ParentSymlinkTest(unittest.TestCase):
             (".gemini", ("--harness", "gemini")),
             (".codex", ("--harness", "codex")),
         )
-        for rel, extra in cases:
+        for n, (rel, extra) in enumerate(cases):
             with self.subTest(rel=rel):
-                for old in self.outside.iterdir():
-                    shutil.rmtree(old) if old.is_dir() else old.unlink()
+                # mỗi ca một cặp thư mục riêng (AUD-TEST-102): ca đỏ không để lại liên kết/file làm nhiễu ca sau
+                case = self.tmp / f"case{n}"
+                self.outside, self.target = case / "outside", case / "proj"
+                self.outside.mkdir(parents=True)
+                self.target.mkdir()
                 link = self.target / rel
                 link.parent.mkdir(parents=True, exist_ok=True)
                 link.symlink_to(self.outside)
@@ -608,8 +611,6 @@ class ParentSymlinkTest(unittest.TestCase):
                     self.assertEqual(rc, 0, err)
                     self.assertOutsideEmpty()
                 self.assertTrue(link.is_symlink())
-                link.unlink()
-                shutil.rmtree(self.target / ".claude", ignore_errors=True)
 
     def test_existing_outside_settings_untouched_and_plan_matches(self):
         """Review #508 🟠-1: `settings.json` có sẵn ở thư mục ngoài (merge quyền/hook), `--force-harness`, `.gemini` ngoài có
