@@ -229,6 +229,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Nợ review 🟢 (T-3921): `pack-npm-audit` vào required checks của `.github/rulesets/main.json` (AUD-DEP-023; ruleset
+  sống do chủ repo áp); `cooldown` Dependabot 7 ngày (AUD-DEP-025); test ghim job không nhận `if:` và chỉ xét đúng job
+  (AUD-DEP-027/029); bộ kiểm index migration của `web-api-ts` bỏ chú thích, chuẩn hoá tên, cấm builder `createIndex(`,
+  chỉ miễn bảng mới hẳn trong `up()`, ghim từng index của 0005 và kiểm trạng thái/hạn dòng sổ (AUD-DATA-014…018).
 - AUD-HAR-371/400 (T-3911): `release-sign` và hàng `verify` của `release-check` tìm cây chính đúng khi git in thư mục
   git (submodule, `--separate-git-dir`) và với git < 2.36 (không có `worktree list -z`); không suy được → từ chối.
 - AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con

@@ -103,19 +103,74 @@ class PackContractTest(unittest.TestCase):
         self.assertIn('expect(await migrate(raw, "up")).toEqual([]);', slice_test)
 
 
+# Định danh SQL: thường, trích dẫn `"my table"`, hoặc nội suy `${…}` của mẫu TS; có thể kèm tiền tố schema.
+_PART = r"(?:\"[^\"]+\"|\$\{[^}]*\}|\w+)"
+_IDENT = rf"{_PART}(?:\.{_PART})*"
 INDEX_RE = re.compile(
-    r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?P<conc>CONCURRENTLY\s+)?(?:(?:IF\s+NOT\s+EXISTS\s+)?[\w.\"]+\s+)?ON\s+(?:ONLY\s+)?(?P<table>[\w.\"]+)",
+    rf"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?P<conc>CONCURRENTLY\s+)?(?:(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}\s+)?ON\s+(?:ONLY\s+)?(?P<table>{_IDENT})",
     re.IGNORECASE,
 )
-TABLE_RE = re.compile(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<table>[\w.\"]+)", re.IGNORECASE)
-# Migration đã phát hành (DB-MIG-003: không sửa tại chỗ) có `CREATE INDEX` thường trên bảng có sẵn — kèm dòng sổ AUDIT-STATUS.
-LEGACY_PLAIN_INDEX = {"0005_sessions_expiry": "AUD-DATA-011"}
+ANY_INDEX_RE = re.compile(r"CREATE\s+(?:UNIQUE\s+)?INDEX\b", re.IGNORECASE)
+# AUD-DATA-015: chỉ bảng MỚI hẳn mới được miễn — không `IF NOT EXISTS` (bảng có thể đã có) và không `AS SELECT` (đổ dữ liệu).
+TABLE_RE = re.compile(
+    rf"CREATE\s+(?P<temp>(?:(?:GLOBAL|LOCAL)\s+)?TEMP(?:ORARY)?\s+)?(?:UNLOGGED\s+)?TABLE\s+(?!IF\s+NOT\s+EXISTS\b)(?P<table>{_IDENT})(?![\w.\"{{])(?!\s+AS\b)",
+    re.IGNORECASE,
+)
+UP_RE = re.compile(r"export\s+async\s+function\s+up\b")
+DOWN_RE = re.compile(r"export\s+async\s+function\s+down\b")
+CREATE_INDEX_BUILDER_RE = re.compile(r"\bcreateIndex\s*\(")
+# Migration đã phát hành (DB-MIG-003: không sửa tại chỗ) có `CREATE INDEX` thường trên bảng có sẵn: tên file → (dòng sổ
+# AUDIT-STATUS, bảng đích của từng index theo thứ tự). Ghim theo từng index (AUD-DATA-016) chứ không theo tên file.
+LEGACY_PLAIN_INDEX = {"0005_sessions_expiry": ("AUD-DATA-011", ["sessions", "sessions"])}
+
+
+def strip_sql_comments(text: str) -> str:
+    """Bỏ chú thích `/* */`, dòng `//` đứng đầu dòng (TS) và `-- …` (SQL); thay bằng khoảng trắng để `CREATE INDEX /* x */ i`
+    vẫn đọc được (AUD-DATA-014/018). `//` giữa dòng không bỏ — thà báo đỏ thừa hơn để lọt."""
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+    text = re.sub(r"(?m)^[ \t]*//[^\n]*", " ", text)
+    return re.sub(r"--[^\n]*", " ", text)
+
+
+def normalize_ident(ident: str) -> str:
+    """Hạ chữ thường phần không trích dẫn, giữ nguyên phần trích dẫn, bỏ tiền tố `public.` (search_path mặc định)."""
+    parts = [(q or i or w.lower()) for q, i, w in re.findall(r"\"([^\"]+)\"|(\$\{[^}]*\})|(\w+)", ident)]
+    return ".".join(parts[1:] if len(parts) > 1 and parts[0] == "public" else parts)
 
 
 def plain_indexes_on_existing_tables(sql: str) -> list[str]:
-    """Tên bảng có sẵn (không tạo cùng file) bị `CREATE INDEX` không CONCURRENTLY — khoá SHARE chặn ghi (DB-MIG-006)."""
-    created = {m["table"] for m in TABLE_RE.finditer(sql)}
-    return [m["table"] for m in INDEX_RE.finditer(sql) if not m["conc"] and m["table"] not in created]
+    """Bảng có sẵn (không tạo mới hẳn trong `up()` cùng file) bị `CREATE INDEX` không CONCURRENTLY — khoá SHARE chặn ghi
+    (DB-MIG-006). Chặt hơn quét SQL thô: bỏ chú thích, chuẩn hoá tên, cấm builder `createIndex(`, và mọi `CREATE INDEX`
+    không đọc được thành bảng đích bị báo `<không đọc được>` (AUD-DATA-014/015/018)."""
+    clean = strip_sql_comments(sql)
+    start = UP_RE.search(clean)
+    down = DOWN_RE.search(clean, start.end()) if start else None
+    up = clean[start.start() : down.start() if down else len(clean)] if start else clean  # không có `up` → coi cả file
+    created: set[str] = set()
+    temp: set[str] = set()
+    for m in TABLE_RE.finditer(up):
+        (temp if m["temp"] else created).add(normalize_ident(m["table"]))
+    found = []
+    matches = list(INDEX_RE.finditer(clean))
+    for m in matches:
+        name = normalize_ident(m["table"])
+        if not m["conc"] and name not in created and not (name in temp and "." not in m["table"]):
+            found.append(name)
+    found += ["<không đọc được>"] * (len(ANY_INDEX_RE.findall(clean)) - len(matches))
+    return found + ["createIndex()"] * len(CREATE_INDEX_BUILDER_RE.findall(clean))
+
+
+def ledger_row_problems(ledger: str, aud: str, until: str) -> list[str]:
+    """AUD-DATA-017: dòng sổ của ngoại lệ phải còn ở trạng thái `chấp nhận` và hạn khớp `support_until` của gói."""
+    row = next((ln for ln in ledger.splitlines() if ln.startswith(f"| {aud} |")), None)
+    if row is None:
+        return [f"thiếu dòng sổ {aud}"]
+    problems = []
+    if row.split("|")[3:4] != [" chấp nhận "]:
+        problems.append(f"{aud}: trạng thái không phải `chấp nhận`")
+    if f"hạn: {until}" not in row:
+        problems.append(f"{aud}: hạn không khớp support_until {until}")
+    return problems
 
 
 class MigrationIndexTest(unittest.TestCase):
@@ -125,17 +180,86 @@ class MigrationIndexTest(unittest.TestCase):
         self.assertEqual(plain_indexes_on_existing_tables("CREATE INDEX i ON sessions (a);"), ["sessions"])
         self.assertEqual(plain_indexes_on_existing_tables("CREATE INDEX ON sessions (a);"), ["sessions"])
         self.assertEqual(
-            plain_indexes_on_existing_tables("CREATE UNIQUE INDEX ON ONLY public.sessions (a);"), ["public.sessions"]
+            plain_indexes_on_existing_tables("CREATE UNIQUE INDEX ON ONLY public.sessions (a);"), ["sessions"]
         )
         self.assertEqual(plain_indexes_on_existing_tables("CREATE INDEX CONCURRENTLY ON sessions (a);"), [])
-        self.assertEqual(
-            plain_indexes_on_existing_tables("create unique index if not exists i on public.t (a)"), ["public.t"]
-        )
+        self.assertEqual(plain_indexes_on_existing_tables("create unique index if not exists i on public.t (a)"), ["t"])
         self.assertEqual(plain_indexes_on_existing_tables("CREATE INDEX CONCURRENTLY i ON sessions (a);"), [])
         self.assertEqual(plain_indexes_on_existing_tables("CREATE TABLE n (a int); CREATE INDEX i ON n (a);"), [])
         self.assertEqual(
             plain_indexes_on_existing_tables("CREATE TABLE n (a int); CREATE INDEX i ON other (a);"), ["other"]
         )
+
+    def test_scanner_hardened(self):
+        """AUD-DATA-014/015/018: bắt các dạng từng lọt (builder, nội suy, bảng IF NOT EXISTS/AS SELECT, `down()`), bỏ các
+        dương tính giả an toàn (chú thích, chữ hoa-thường, tiền tố `public.`, tên trích dẫn, bảng TEMP)."""
+        up = "export async function up(db) {{ await sql`{}`; }}\nexport async function down(db) {{ {} }}\n"
+        flagged = (
+            ('db.schema.createIndex("i").on("sessions").execute()', ["createIndex()"]),
+            ("CREATE INDEX i ON ${sql.table(t)} (a);", ["${sql.table(t)}"]),
+            ('CREATE INDEX "my idx" ON sessions (a);', ["sessions"]),
+            ("CREATE INDEX /* x */ i ON sessions (a);", ["sessions"]),
+            ("CREATE INDEX\n i\n ON\n sessions (a);", ["sessions"]),
+            ("CREATE INDEX i (a);", ["<không đọc được>"]),
+            ("CREATE TABLE IF NOT EXISTS sessions (a int); CREATE INDEX i ON sessions (a);", ["sessions"]),
+            ("CREATE TABLE n AS SELECT 1; CREATE INDEX i ON n (a);", ["n"]),
+            ("CREATE TABLE nn AS SELECT 1; CREATE INDEX i ON n (a);", ["n"]),
+            ("CREATE TABLE a.n (x int); CREATE INDEX i ON b.n (a);", ["b.n"]),
+            ("CREATE TEMP TABLE n (x int); CREATE INDEX i ON public.n (a);", ["n"]),
+        )
+        for sql, expected in flagged:
+            with self.subTest(sql=sql):
+                self.assertEqual(plain_indexes_on_existing_tables(sql), expected)
+        for sql in (
+            "CREATE TEMP TABLE n (x int); CREATE INDEX i ON n (a);",
+            "CREATE GLOBAL TEMPORARY TABLE n (x int); CREATE INDEX i ON n (a);",
+            "CREATE UNLOGGED TABLE n (x int); CREATE INDEX i ON n (a);",
+            "CREATE TABLE public.n (x int); CREATE INDEX i ON n (a);",
+            "CREATE TABLE Notes (x int); CREATE INDEX i ON notes (a);",
+            'CREATE TABLE "my table" (x int); CREATE INDEX i ON "my table" (a);',
+            "-- CREATE INDEX i ON sessions (a)\nCREATE INDEX CONCURRENTLY j ON sessions (a);",
+            "/* CREATE INDEX i ON sessions (a) */",
+            "// CREATE INDEX i ON sessions (a)\n// db.schema.createIndex('i')",
+        ):
+            with self.subTest(sql=sql):
+                self.assertEqual(plain_indexes_on_existing_tables(sql), [])
+        # `CREATE TABLE` chỉ tính trong up(): ở down() hay chú thích `//` thì bảng vẫn là bảng có sẵn.
+        self.assertEqual(plain_indexes_on_existing_tables(up.format("CREATE INDEX i ON n (a);", "")), ["n"])
+        self.assertEqual(
+            plain_indexes_on_existing_tables(
+                up.format("CREATE INDEX i ON n (a);", "await sql`CREATE TABLE n (a int)`;")
+            ),
+            ["n"],
+        )
+        self.assertEqual(
+            plain_indexes_on_existing_tables(up.format("CREATE TABLE n (a int); CREATE INDEX i ON n (a);", "")), []
+        )
+        self.assertEqual(plain_indexes_on_existing_tables("export async function up() {}"), [])
+
+    def test_legacy_exception_is_pinned_per_index(self):
+        """AUD-DATA-016: thêm một index vào 0005 làm kết quả quét lệch bản ghim."""
+        legacy = (PACK / "starter" / "src" / "migrations" / "0005_sessions_expiry.ts").read_text(encoding="utf-8")
+        self.assertEqual(plain_indexes_on_existing_tables(legacy), ["sessions", "sessions"])
+        extra = legacy.replace(
+            "CREATE INDEX sessions_expires",
+            "CREATE UNIQUE INDEX users_email2 ON users (email);\n    CREATE INDEX sessions_expires",
+        )
+        self.assertEqual(plain_indexes_on_existing_tables(extra), ["sessions", "users", "sessions"])
+
+    def test_ledger_row_checks_status_and_deadline(self):
+        """AUD-DATA-017: dòng sổ đổi trạng thái, quá/lệch hạn hoặc mất thì báo."""
+        row = "| AUD-DATA-011 | 🟠 | chấp nhận | x | y | z | chủ: phiên chính · hạn: 2027-01-21 — #510 |"
+        self.assertEqual(ledger_row_problems(f"| a |\n{row}\n", "AUD-DATA-011", "2027-01-21"), [])
+        self.assertEqual(ledger_row_problems("", "AUD-DATA-011", "2027-01-21"), ["thiếu dòng sổ AUD-DATA-011"])
+        self.assertEqual(
+            ledger_row_problems(row.replace("chấp nhận", "đã sửa"), "AUD-DATA-011", "2027-01-21"),
+            ["AUD-DATA-011: trạng thái không phải `chấp nhận`"],
+        )
+        self.assertEqual(
+            ledger_row_problems(row, "AUD-DATA-011", "2027-02-01"),
+            ["AUD-DATA-011: hạn không khớp support_until 2027-02-01"],
+        )
+        self.assertEqual(len(ledger_row_problems("| AUD-DATA-011 |", "AUD-DATA-011", "2027-01-21")), 2)
 
     def test_transactional_migration_index_policy(self):
         cases = (
@@ -150,6 +274,7 @@ class MigrationIndexTest(unittest.TestCase):
             pack = Path(scratch)
             migrations = pack / "starter" / "src" / "migrations"
             migrations.mkdir(parents=True)
+            shutil.copyfile(PACK / "pack.json", pack / "pack.json")
             for legacy in LEGACY_PLAIN_INDEX:
                 shutil.copyfile(PACK / "starter" / "src" / "migrations" / f"{legacy}.ts", migrations / f"{legacy}.ts")
             for sql, expected_error in cases:
@@ -166,15 +291,23 @@ class MigrationIndexTest(unittest.TestCase):
         concurrent: list[str] = []
         for f in sorted((PACK / "starter" / "src" / "migrations").glob("*.ts")):
             sql = f.read_text(encoding="utf-8")
-            if any(m["conc"] for m in INDEX_RE.finditer(sql)):
+            if any(m["conc"] for m in INDEX_RE.finditer(strip_sql_comments(sql))):
                 concurrent.append(f.stem)
             if found := plain_indexes_on_existing_tables(sql):
                 bad[f.stem] = found
         self.assertEqual(concurrent, [], "CREATE INDEX CONCURRENTLY cần chạy ngoài giao dịch (DB-MIG-006)")
-        self.assertEqual(set(bad), set(LEGACY_PLAIN_INDEX), "chỉ 0005 được dựng index thường trên bảng cũ (DB-MIG-006)")
+        # Ghim từng index của ngoại lệ (AUD-DATA-016): thêm/đổi index trong 0005 làm test đỏ.
+        self.assertEqual(
+            bad,
+            {stem: tables for stem, (_, tables) in LEGACY_PLAIN_INDEX.items()},
+            "chỉ 0005 được dựng đúng hai index thường trên `sessions` (DB-MIG-006)",
+        )
         ledger = (ROOT / "docs" / "ops" / "AUDIT-STATUS.md").read_text(encoding="utf-8")
-        for aud in LEGACY_PLAIN_INDEX.values():
-            self.assertIn(f"| {aud} |", ledger, "mục ngoại lệ phải có dòng sổ")
+        until = json.loads((PACK / "pack.json").read_text(encoding="utf-8"))["support_until"]
+        for aud, _ in LEGACY_PLAIN_INDEX.values():
+            self.assertEqual(
+                ledger_row_problems(ledger, aud, until), [], "mục ngoại lệ phải còn `chấp nhận` và đúng hạn"
+            )
 
 
 class ReadmeIndexTest(unittest.TestCase):
