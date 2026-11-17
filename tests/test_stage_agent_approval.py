@@ -80,6 +80,34 @@ class StageAgentApprovalCliTest(TmpRepoCase):
             with unittest.mock.patch.object(xt, "_xt_keys", side_effect=exc):
                 self.assertFalse(xt.stage_agent_approval(self.repo))  # không đọc được → chỉ người
 
+    def test_agent_reads_fresh_remote_key(self):  # AUD-SEC-625/637
+        """Chủ dự án tắt khoá trên remote mà phiên agent chưa fetch: phiên agent đọc bản mới (fetch) → không còn hiệu lực;
+        không fetch được (remote mất) → chỉ người. Người dùng ngoài phiên agent đọc ref cục bộ như cũ."""
+        self.set_key("agent")
+        owner = self.tmp / "owner"
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(owner)], check=True)
+        (owner / "xt.yaml").write_text("lint: ''\nstage_approval: human\n", encoding="utf-8")
+        for args in (("add", "-A"), ("-c", "user.email=o@x.invalid", "-c", "user.name=o", "commit", "-q", "-m", "tắt")):
+            subprocess.run(["git", "-C", str(owner), *args], check=True)
+        subprocess.run(["git", "-C", str(owner), "push", "-q", "origin", "main"], check=True)
+        self.assertTrue(xt.stage_agent_approval(self.repo))  # ngoài phiên agent: ref cục bộ (chưa fetch)
+        with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "s-1"}):
+            self.assertFalse(xt.stage_agent_approval(self.repo))  # phiên agent: fetch → khoá đã tắt
+            self.git("remote", "set-url", "origin", str(self.tmp / "khong-co.git"))
+            self.assertFalse(xt.stage_agent_approval(self.repo))  # fetch lỗi → chỉ người
+
+    def test_release_promotion_key_fresh_in_agent_session(self):  # AUD-SEC-625
+        keys = {xt.RELEASE_SIGNOFF_KEY: xt.RELEASE_AGENT_NAME}
+        self.enterContext(unittest.mock.patch.object(xt, "_xt_keys", return_value=keys))
+        self.enterContext(unittest.mock.patch.object(xt, "_committed_xt_text", return_value="release_signoff: agent\n"))
+        with unittest.mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "s-1"}):
+            for fetched in (False, True):
+                with unittest.mock.patch.object(xt, "_fetch_main_refs", return_value=fetched):
+                    self.assertEqual(xt.release_agent_signoff(self.repo, fresh=True), fetched)
+                    self.assertTrue(
+                        xt.release_agent_signoff(self.repo)
+                    )  # `release-sign`: kiểm mirror riêng (AUD-SEC-552)
+
     def test_default_is_human_only(self):
         self.stage("init", agent=True)
         sha = self.submit()
