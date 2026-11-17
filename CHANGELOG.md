@@ -229,6 +229,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con
+  mờ → chặn như `stage`; dòng `Khi chạy thật đã quyết` ghi tay (Edit/Write/Bash) và hàm `decide_prod` nạp trong tiến
+  trình → chặn; trong phiên agent, `stage approve` và hàng promotion của `release-check` fetch nhánh chính trước khi đọc
+  khoá `stage_approval`/`release_signoff` (fetch lỗi → chỉ người).
+- AUD-HAR-394/395, AUD-SEC-649 (T-3914): `dev-task.sh format`/`format-file` bị ngắt (TERM/INT/HUP) giữa formatter vẫn
+  khôi phục `GO-NO-GO*.md` và dọn bản chụp; mẫu `xt.yaml` hướng dẫn thêm `GO-NO-GO*.md` vào file ignore của formatter
+  Markdown để cổng `format_check` không đỏ sau khi lập GO-NO-GO.
 - AUD-SEC-607/646/681/731/753/624 (T-3912): gán giá trị nhiều dòng trước lệnh không còn che lệnh sau; `git restore`/
   `checkout --end-of-options .` bị chặn như `-- .`; autocorrect khi chuỗi đổi PATH/exec-path hay xoá `git-*` → BUDGET;
   `set --` rồi đọc tham số vị trí ở chuỗi có lệnh không chỉ đọc → BUDGET; `--no-verif` viết tắt đặt cờ bỏ hook.

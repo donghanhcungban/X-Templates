@@ -1019,6 +1019,41 @@ def _go_anchors(text: str) -> Tuple[str, List[str]]:
     return (title[0].strip() if title else ""), sorted(m[0].strip() for m in GO_SUBJECT_RE.finditer(text))
 
 
+# AUD-SEC-641: dòng "Khi chạy thật đã quyết (D-NNN): …" của sổ quyết định là việc của người qua `loop decide-prod` (hàng
+# `prod_switch` của `release-check` đọc nó) — Edit/Write/Bash thêm dòng đó → chặn như dòng ký §5.
+PROD_DECIDED_RE = re.compile(r"Khi chạy thật đã quyết", re.I)
+PROD_DECIDED_WHY = (
+    "ghi tay dòng `Khi chạy thật đã quyết` vào sổ quyết định (AUD-SEC-641) — quyết đề xuất chạy thật là của người"
+    " qua `xt.py loop decide-prod`; agent không tạo dòng đó"
+)
+
+
+def _prod_decided_deny(rel: str, root: str, tool_input: Optional[Dict[str, object]]) -> str:
+    """Edit/Write vào `DECISIONS*.md` làm tăng số dòng `Khi chạy thật đã quyết`; đĩa không đọc được → chặn khi có chữ đó."""
+    if not tool_input or not fnmatch.fnmatchcase(posixpath.basename(rel), "DECISIONS*.md"):
+        return ""
+    edits = tool_input.get("edits")
+    pairs = [e for e in edits if isinstance(e, dict)] if isinstance(edits, list) else [tool_input]
+    if "content" in tool_input:  # Write: so với tệp trên đĩa
+        new, old = _text(tool_input.get("content")), _go_read(os.path.join(root, rel)) or ""
+    else:  # Edit/MultiEdit/NotebookEdit: so phần thay với phần bị thay
+        new = " ".join(_text(e.get("new_string")) + _text(e.get("new_source")) for e in pairs)
+        old = " ".join(_text(e.get("old_string")) for e in pairs)
+    added = len(PROD_DECIDED_RE.findall(new)) > len(PROD_DECIDED_RE.findall(old))
+    return f"Không ghi {rel}: {PROD_DECIDED_WHY}." if added else ""
+
+
+def _prod_decided_bash_why(cmd: str) -> str:
+    """Lệnh Bash mang chữ `Khi chạy thật đã quyết` (cả thân heredoc) mà có lệnh không chỉ đọc (`grep`, `cat`…) — có thể
+    ghi dòng đó vào sổ quyết định; lệnh tìm/đọc vẫn chạy."""
+    if not PROD_DECIDED_RE.search(cmd):
+        return ""
+    heads = _command_heads(cmd)
+    readers = heads is not None and all(posixpath.basename(_dequote(h)) in REUSE_READERS for h in heads)
+    writes = ">" in _code_views(_split_view(cmd)[0])[0]  # chuyển hướng ghi ngoài nháy (`echo … >> DECISIONS.md`)
+    return "" if readers and not writes else PROD_DECIDED_WHY
+
+
 def edit_decision(path: str, root: str, tool_input: Optional[Dict[str, object]] = None) -> Tuple[str, str]:
     rel = rel_path(path, root)
     kind = path_kind(rel, root)
@@ -1032,7 +1067,7 @@ def edit_decision(path: str, root: str, tool_input: Optional[Dict[str, object]] 
         or _git_hook_target(path, root)
     ):
         return "deny", GIT_HOOK_WHY.format(rel) + "."
-    signed = _go_sign_deny(path, rel, root, tool_input)
+    signed = _go_sign_deny(path, rel, root, tool_input) or _prod_decided_deny(rel, root, tool_input)
     if signed:
         return "deny", signed
     if kind == "capability":
@@ -2239,6 +2274,7 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _array_arg_why(cmd) or _script_run_why(cmd) or _reuse_why(cmd) or _fd_script_why(cmd)
     why = why or _home_dyn_why(cmd) or _run_named_why(cmd) or _implicit_load_why(cmd) or _patch_file_why(cmd)
     why = why or _prefix_why(cmd) or _nested_quote_why(cmd) or _func_scope_why(cmd)  # P0 lát 4; AUD-SEC-750/660/661
+    why = why or _prod_decided_bash_why(cmd)  # AUD-SEC-641
     why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
     return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
 
@@ -8383,7 +8419,7 @@ def _approves_at(n: List[str], k: int, runs: Tuple[bool, bool], feeds: bool) -> 
         act = next((t for t in tail if not t.startswith("-")), "")
         if not act:  # lệnh con từ stdin (`xargs … loop`) như `stage` (review #510 🟠-1)
             return feeds and not {"-h", "--help"} & set(tail)
-        return "decide-prod" in tail or (named and _vague(act))
+        return "decide-prod" in tail or _vague(act)  # AUD-SEC-654: như `stage` — script mờ + lệnh con mờ cũng tính
     if sub != "stage":
         return runs[0] and (_vague(sub) or (feeds and not sub))
     tail = n[j + 1 :]
@@ -8505,9 +8541,22 @@ def _release_sign_denied(argv: List[str], root: str, cwd: Optional[str] = None, 
     `agent_release_signoff`."""
     n = normalize(argv)
     at = next((k for k, t in enumerate(n) if posixpath.basename(t) == "xt.py"), len(n))
-    if "release-sign" not in n[at + 1 :]:
+    if "release-sign" not in n[at + 1 :] and not _signs_release(argv):
         return False
     return not (single and _release_sign_form(argv, root, cwd) and agent_release_signoff(root))
+
+
+def _signs_release(argv: List[str]) -> bool:
+    """AUD-SEC-545: `release-sign` qua mọi dạng gọi xt mà luật `stage approve` nhận (`python3 -m xt`, glob `x?.py`, đường
+    mờ `"$XT"` sau `python`) — cùng bộ nhận dạng script (`_xt_named`, `_vague`, `_xt_sub`)."""
+    n = normalize(_no_redirects(argv))
+    py = False
+    for k, t in enumerate(n):
+        if _xt_named(n, k) or (k == 0 or py) and _vague(t):
+            if _xt_sub(n, k + 1)[1] == "release-sign":
+                return True
+        py = py or bool(PYTHON_RE.fullmatch(posixpath.basename(t)))
+    return False
 
 
 def _approves_literal(n: List[str]) -> bool:
@@ -8542,7 +8591,8 @@ XT_INPROC_BUILTIN_MODS = frozenset({"builtins", "__builtins__"})  # `builtins.ex
 XT_INPROC_NAME_RE = re.compile(r"(?:.*[/\\.])?xt(?:\.pyc?)?", re.S)  # `xt`, `scripts.xt`, `scripts/xt.py`
 # Tên/chữ thư viện đọc của xt không cần — đi cùng `import xt` thì chặn (gọi CLI, sửa biến agent, truy cập động)
 XT_INPROC_RISKY_RE = re.compile(
-    r"main|stage|approv|adopt|sign|release|environ|putenv|unsetenv|CLAUDE|AI_AGENT|[gsd]etattr|^vars$|^dir$|globals|locals"
+    r"main|stage|approv|adopt|sign|release|decide|prod|environ|putenv|unsetenv|CLAUDE|AI_AGENT|agent_session|[gsd]etattr"
+    r"|^vars$|^dir$|globals|locals"
     r"|__dict__|__getattribute__|attrgetter|methodcaller|getmembers|^exec|^eval$|^compile$|__import__|import_module"
     r"|builtins|modules|__loader__|__spec__",
     re.I,
