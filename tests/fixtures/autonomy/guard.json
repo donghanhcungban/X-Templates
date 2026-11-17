@@ -23616,6 +23616,10 @@
   {"id": "aud681-autocorrect-path-change", "origin": "audit", "refs": ["AUD-SEC-681"], "input": {"command": "rm ~/bin/git-psuh; git -c help.autocorrect=1 psuh --force origin main"}, "expect": {"allowed": false, "code": "UNRESOLVED_TARGET"}},
   {"id": "aud731-set-positional-for", "origin": "audit", "refs": ["AUD-SEC-731"], "input": {"command": "set -- /; for d do rm -rf $d; done"}, "expect": {"allowed": false, "code": "BUDGET"}},
   {"id": "aud731-ctl-set-positional-echo", "origin": "control", "refs": ["AUD-SEC-731"], "input": {"command": "set -- 1; for x do echo $x; done"}, "expect": {"allowed": true}},
-  {"id": "aud624-gh-repo-flag-after-cd", "origin": "audit", "refs": ["AUD-SEC-624"], "input": {"command": "cd /tmp && gh -R o/r pr create -t x -b 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'"}, "expect": {"allowed": false, "code": "RULE_DENY"}}
+  {"id": "aud624-gh-repo-flag-after-cd", "origin": "audit", "refs": ["AUD-SEC-624"], "input": {"command": "cd /tmp && gh -R o/r pr create -t x -b 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud799-merge-by-repo-id", "origin": "audit", "refs": ["AUD-SEC-799"], "input": {"command": "gh api -X PUT repositories/123/pulls/5/merge -f sha=abc"}, "expect": {"allowed": false, "code": "UNVERIFIED"}},
+  {"id": "aud799-ctl-read-by-repo-id", "origin": "control", "refs": ["AUD-SEC-799"], "input": {"command": "gh api repositories/123/pulls/5"}, "expect": {"allowed": true}},
+  {"id": "aud800-credential-fill", "origin": "audit", "refs": ["AUD-SEC-800"], "input": {"command": "git credential fill"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud800-ctl-credential-approve", "origin": "control", "refs": ["AUD-SEC-800"], "input": {"command": "git credential approve"}, "expect": {"allowed": true}}
  ]
 }
