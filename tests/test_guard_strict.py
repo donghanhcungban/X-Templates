@@ -3586,6 +3586,66 @@ class GuardReview434Test(unittest.TestCase):
                 self.assertTrue(raw.get("no_verify"), raw)
 
 
+class GuardAud612FormsTest(unittest.TestCase):
+    """AUD-SEC-612 (T-3910): dạng còn lọt đo trên main trước sửa — đích ghi sau thay lệnh đứng đầu (`"$(echo)".claude/…`,
+    `> $(echo).autopilot/…`), `printf` chèn đối số vào định dạng rồi ống sang shell, `xargs sh -c` nhận lệnh từ
+    here-string. Dạng heredoc nuôi `bash` kèm thay tiến trình đã chặn sẵn (giữ làm ca hồi quy)."""
+
+    DENY = (
+        'cp /tmp/x "$(echo)".claude/settings.json',
+        'cp /tmp/x "$(echo).claude/settings.json"',
+        "echo x > $(echo).claude/settings.json",
+        'echo x > "$(echo)".claude/settings.json',
+        "echo '{}' > $(echo).autopilot/state.json",
+        "echo x >> `echo`.autopilot/state.json",
+        'cp /tmp/x "$(echo)".autopilot/state.json',
+        'cp /tmp/x "$(printf .claude)"/settings.json',
+        "printf 'rm -rf %s\\n' '~' | bash",
+        "printf 'rm %s %s\\n' -rf '~' | sh",
+        "printf '%s -rf ~\\n' rm | bash",
+        "printf -- 'rm -rf %s\\n' '~' | bash",
+        "xargs -I{} sh -c {} <<< 'rm -rf ~'",
+        "xargs bash -c <<< 'rm -rf ~'",
+        "xargs -0 bash -c <<< 'rm -rf ~'",
+        "xargs bash -c <<< \"'rm -rf ~'\"",
+        "echo \"'rm -rf ~'\" | xargs bash -c",
+        "bash <(echo x) <<EOF\nrm -rf ~\nEOF",
+        "cat <(echo) <<EOF | bash\nrm -rf ~\nEOF",
+    )
+    ALLOW = (
+        'echo x > "$(echo)"out.txt',
+        'cp /tmp/x "$(echo)"notes.txt',
+        'rm -rf "$(git rev-parse --show-toplevel)/build"',
+        'echo x > "$(mktemp -d)/out.log"',
+        'tar -xf a.tar -C "$(mktemp -d)"',
+        "printf 'echo %s\\n' hi | bash",
+        "xargs -I{} sh -c 'echo {}' <<< hi",
+        "xargs bash -c <<< 'echo hi'",
+    )
+
+    def test_aud612_forms_denied(self):
+        for cmd in self.DENY:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(decide(cmd)["decision"], "deny", decide(cmd))
+
+    def test_aud612_near_forms_allowed(self):
+        for cmd in self.ALLOW:
+            with self.subTest(cmd=cmd):
+                self.assertEqual(decide(cmd)["decision"], "", decide(cmd))
+
+    def test_printf_render(self):
+        self.assertEqual(guard._printf_render("rm %s %s\\n", ["-rf", "~"]), "rm -rf ~\n")
+        self.assertEqual(guard._printf_render("%s;", ["a", "b"]), "a;b;")
+        self.assertEqual(guard._printf_render("100%% %s", []), "100% ")
+
+    def test_subst_tail(self):
+        self.assertEqual(guard._subst_tail("$(echo).claude/x"), ".claude/x")
+        self.assertEqual(guard._subst_tail("$(a $(b))`c`/x"), "/x")
+        self.assertIsNone(guard._subst_tail("$((1+2))x"))
+        self.assertIsNone(guard._subst_tail("$(echo"))
+        self.assertIsNone(guard._subst_tail("plain"))
+
+
 class LedgerMatchesGuardTest(unittest.TestCase):
     """Review #428 🔴 (AUD-DOC-243): sổ không được ghi `chấp nhận`/`đã sửa` cho phát hiện mà guard còn cho qua DẠNG
     NGUYÊN VĂN của nó — `audit check --strict` xanh giả. Ca nguyên văn còn lọt thì hàng sổ phải `mở`; khi T-3663 sửa
