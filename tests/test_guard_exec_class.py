@@ -69,7 +69,6 @@ DENY = {
         "gdb --args git reset --hard",
         "flatpak-spawn --host git reset --hard",
         "some-new-wrapper --opt v rm -rf @H",
-        "foo --x 'git push --force origin main'",
     ),
     "AUD-SEC-824": (
         "timeout --sig KILL 5 rm -rf @H",
@@ -120,6 +119,12 @@ ALLOW = {
         "man git push",
         "uv run --with x python3 -c 'print(1)'",
         "hyperfine 'sleep 1'",
+        # reviewer #134: chữ trong đối số của lệnh bên trong là dữ liệu, không quét như lệnh mới
+        'flock /tmp/l git commit -m "rm -rf @H is bad"',
+        'flock /tmp/l git commit -m "git reset --hard docs"',
+        'ionice -c3 npm test -- -t "git reset --hard"',
+        "foo --x 'git push --force origin main'",
+        "uv run pytest -k 'rm -rf'",
     ),
     "AUD-SEC-824": (
         "timeout --signal=KILL 5 make",
@@ -206,9 +211,9 @@ class ExecHelperTest(unittest.TestCase):
         self.assertTrue(guard._wrapper_opt_takes_next("xargs", "--process"))
 
     def test_trigger_suffixes(self):
-        self.assertEqual(guard._trigger_suffixes(["a", "git", "x"]), ["git x"])
-        self.assertEqual(guard._trigger_suffixes(["a", "rm -rf x", "b c"]), ["rm -rf x"])
-        self.assertEqual(len(guard._trigger_suffixes(["git"] * 40)), guard.RUNNER_SUFFIXES)
+        self.assertEqual(guard._trigger_suffixes(["a", "git", "x", "rm", "y"]), ["git x rm y"])
+        self.assertEqual(guard._trigger_suffixes(["a", "rm -rf x", "b c"]), [])
+        self.assertEqual(guard._trigger_suffixes(["exec", ".", "nohup", "x"]), ["nohup x"])
         for name in ("git", "git-foo", "watch", "python3.12", ":::", "5", "bind"):
             with self.subTest(name=name):
                 self.assertFalse(guard._unmodelled_runner([name, "x"]))
