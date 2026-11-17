@@ -55,6 +55,13 @@ class _Case(unittest.TestCase):
 
 
 class ReleaseSignHelpTest(_Case):  # AUD-HAR-342
+    def setUp(self) -> None:
+        super().setUp()
+        # Repo khung bật `release_signoff: agent` (#625): ghim khoá tắt để test xét luật GO_SIGN, không phụ thuộc xt.yaml thật
+        patcher = mock.patch.object(guard, "agent_release_signoff", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_deny_sign_forms(self):
         self.assert_code(
             (
