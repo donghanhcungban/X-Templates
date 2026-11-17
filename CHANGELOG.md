@@ -104,6 +104,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- `loop status` (AUD-HAR-412, D-500): pha harden không còn đòi audit theo mốc — `milestone_audit: signoff` (audit delta
+  dồn về cổng ký, ADR-0080) thay cho `now`; pha build giữ `g7`; `topo: review`/`audit` ở harden ghi "gom về cổng ký".
+  README mảng 11 bước 10, `/autopilot` bước 5, `/complete` bước 4, `audit.md` §1, mẫu PLAN đổi theo. Skill review/gate
+  và bảng điều phối nói rõ PR rủi ro cao chỉ bị bắt review khi `merge_review: required` (AUD-HAR-413; `autonomy-bench`
+  thêm 4 ca `merge_review`); `/complete` bước 5.3 nêu lối ra `blocked`/`budget`/khác và `stage submit --evidence`
+  (AUD-HAR-414). Dự án đích: chạy lại `install.py` (nhận `xt.py`, skill).
+
 - ADR-0080 (D-494): pha harden chạy hai nhịp lặp tới `release-check` GO — **vét việc** (PLAN-harden từ sổ audit đang
   có; vòng chỉ Gate máy + CI, không audit, không gọi reviewer trừ khi `pr next` trả `review`; chờ CI/merge không ngừng
   lượt; không làm lát ngoài vòng sống) rồi **cổng ký** (audit delta + trả nợ review theo lô trên diff tích luỹ; FAIL →
@@ -228,6 +235,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   ghi ref `force` `RULE_DENY`.
 
 ### Fixed
+
+- AUD-TEST-109/110/111, AUD-DOC-294/295/297, AUD-DEP-030 (T-3926): `tests/test_green_gh.py` dùng merge-check giả, không
+  gọi `gh` thật, và ghim allow/OTHER_ASK của merge trơn/có chuyển hướng; receipt triển khai có ca `+07:00` chỉ luật UTC
+  bắt; subTest dọn trạng thái trong `finally`. CONTRIBUTING và runbook steward liệt kê 5 check (thêm `pack-npm-audit`;
+  ruleset sống còn 4), README sửa số MUST và thêm `doctor --offline`, `install.py --new`; `requirements*.txt` sinh lại
+  với `--exclude-newer <ngày−7>`.
 
 - AUD-SEC-560/561/602/653/667/747/754, AUD-HAR-349, AUD-TEST-096/097/099 (T-3918): guard chặn merge REST theo id
   `repositories/<id>/pulls/N/merge` (UNVERIFIED), `git credential fill`/`git credential-<helper> get` (in token), xoá

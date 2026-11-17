@@ -34,6 +34,13 @@ def decide(cmd: str, cwd: str = str(ROOT)) -> dict:
 
 
 class _Case(unittest.TestCase):
+    def setUp(self) -> None:
+        # AUD-TEST-109: merge-check giả (xanh, như MergeDeleteBranchTest) — không gọi `xt.py merge-check`/`gh` thật của
+        # repo đang checkout; quyết định không phụ thuộc mạng hay trạng thái PR thật.
+        patcher = mock.patch.object(guard, "merge_check", return_value=MERGE_OK)
+        self.merge_check = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def assert_code(self, cmds: tuple, code: str, cwd: str = str(ROOT)) -> None:
         for cmd in cmds:
             with self.subTest(cmd=cmd):
@@ -165,6 +172,7 @@ class LeadingHelpTest(_Case):  # AUD-HAR-360
 
 class CommitMessageMentionsGhTest(_Case):  # AUD-HAR-364
     def setUp(self) -> None:
+        super().setUp()
         self.d = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.d, True)
         Path(self.d, "r.md").write_text(MARK + "\n", encoding="utf-8")
@@ -235,9 +243,14 @@ class RedirectReadingTest(_Case):  # AUD-HAR-366 (dạng `gh 2>&1 pr view`)
 
     def test_allow(self):
         self.assert_runs(("gh 2>&1 pr view", "gh 2>/dev/null pr view", "gh pr view 2>&1"))
+        # AUD-SEC-016 + AUD-TEST-109: merge-check xanh → merge trơn ghim head được allow; có chuyển hướng thì không còn
+        # là dạng trơn — hỏi (OTHER_ASK), không allow theo luật merge, không bị chặn oan.
         plain = decide(f"gh pr merge 7 --squash --match-head-commit {SHA}")
+        self.assertEqual((plain["decision"], plain["code"]), ("allow", "RULE_ALLOW"), plain["reason"])
         redirected = decide(f"gh pr merge 7 --squash --match-head-commit {SHA} >/dev/null")
-        self.assertEqual((redirected["decision"], redirected["code"]), (plain["decision"], plain["code"]))
+        self.assertEqual(redirected["code"], "OTHER_ASK", redirected["reason"])
+        self.assertNotIn(redirected["decision"], ("allow", "deny"), redirected["reason"])
+        self.assertEqual(self.merge_check.call_count, 2)  # cả hai đi qua merge-check giả, không gọi GitHub
 
 
 class TokenPrintTest(_Case):  # AUD-SEC-589
