@@ -12246,7 +12246,13 @@ class GuardGitSubcommandTest(_GuardDebtCase):
         tool.chmod(0o755)
         cmd = "git -c help.autocorrect=immediate xtfake --force origin main"
         self.assert_code((cmd,), "UNRESOLVED_TARGET")
+        # AUD-SEC-805: PATH không tin (lệnh gỡ được PATH/xoá tệp) — chỉ exec-path mặc định agent không đổi được
         with mock.patch.dict(os.environ, {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}):
+            self.assert_code((cmd,), "UNRESOLVED_TARGET")
+        with (
+            mock.patch.object(self.g, "_git_exec_path", return_value=str(bin_dir)),
+            mock.patch.object(self.g, "_agent_can_change", return_value=False),
+        ):
             self.assert_allowed((cmd,))
 
     def test_autocorrect_exec_path_command_allowed(self):  # AUD-SEC-634: lệnh ngoài trong `git --exec-path`
@@ -12256,8 +12262,14 @@ class GuardGitSubcommandTest(_GuardDebtCase):
         cmd = "git -c help.autocorrect=immediate xtexec"
         self.g._git_exec_path.cache_clear()
         self.addCleanup(self.g._git_exec_path.cache_clear)
+        # AUD-SEC-805: `GIT_EXEC_PATH` gỡ được (`env -u`) — phải có cả ở exec-path mặc định; thư mục tạm agent ghi được
         with mock.patch.dict(os.environ, {"GIT_EXEC_PATH": str(exec_dir)}):
-            self.assert_allowed((cmd,))
+            self.assert_code((cmd,), "UNRESOLVED_TARGET")
+            with (
+                mock.patch.object(self.g, "_git_exec_path", return_value=str(exec_dir)),
+                mock.patch.object(self.g, "_agent_can_change", return_value=False),
+            ):
+                self.assert_allowed((cmd,))
         self.g._git_exec_path.cache_clear()
         with mock.patch.object(self.g.subprocess, "run", side_effect=OSError("no git")):
             self.assertEqual(self.g._git_exec_path(), "")
