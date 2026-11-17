@@ -1483,6 +1483,7 @@ class ReasonCodeLockTest(unittest.TestCase):
         "PUSH_ALL": "git push --all origin",
         "WIPE_OUTSIDE": "rm -rf ~/x",
         "STASH_DROP": "git stash drop",
+        "DATA_DESTROY": "dropdb -h db.example.com prod",  # AUD-HAR-420
         "DESTROY": "gh repo delete o/r --yes",
         "AUTO_MERGE_ENABLE": "gh pr merge 5 --auto --squash",
         "MERGE_ADMIN": "gh pr merge 5 --admin --squash",

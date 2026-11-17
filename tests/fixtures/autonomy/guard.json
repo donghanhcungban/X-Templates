@@ -23736,6 +23736,20 @@
   {"id": "aud833-ctl-init", "origin": "control", "refs": ["AUD-SEC-833"], "input": {"command": "git init ."}, "expect": {"allowed": true}},
   {"id": "aud834-py-Im", "origin": "audit", "refs": ["AUD-SEC-834"], "input": {"command": "python3 -Im git_filter_repo --force"}, "expect": {"allowed": false, "code": "REMOTE_DELETE"}},
   {"id": "aud834-py-script", "origin": "audit", "refs": ["AUD-SEC-834"], "input": {"command": "python3 /usr/lib/git_filter_repo.py --force"}, "expect": {"allowed": false, "code": "REMOTE_DELETE"}},
-  {"id": "aud834-ctl-pytest", "origin": "control", "refs": ["AUD-SEC-834"], "input": {"command": "python3 -Im pytest"}, "expect": {"allowed": true}}
+  {"id": "aud834-ctl-pytest", "origin": "control", "refs": ["AUD-SEC-834"], "input": {"command": "python3 -Im pytest"}, "expect": {"allowed": true}},
+  {"id": "aud419-quoted-git", "origin": "audit", "refs": ["AUD-HAR-419"], "input": {"command": "\"git\" commit -F - <<'E'\nfix: x\n\nClaude-Session: x\nE", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud419-group", "origin": "audit", "refs": ["AUD-HAR-419"], "input": {"command": "{ git commit -F -; } <<'E'\nfix: x\n\nClaude-Session: x\nE", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud419-exec-fd", "origin": "audit", "refs": ["AUD-HAR-419"], "input": {"command": "exec 3<<'E'\nfix: x\n\nClaude-Session: x\nE\ngit commit -F /dev/fd/3", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud419-quoted-gh", "origin": "audit", "refs": ["AUD-HAR-419"], "input": {"command": "\"gh\" pr create --title 'fix: x' --body-file - <<'E'\nb\n\nClaude-Session: x\nE", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud419-ctl-group-clean", "origin": "control", "refs": ["AUD-HAR-419"], "input": {"command": "{ git commit -F -; } <<'E'\nfix: x\nE", "files": {"xt.yaml": "ai_attribution: forbid\n"}}, "expect": {"allowed": true}},
+  {"id": "aud420-psql-remote-drop", "origin": "audit", "refs": ["AUD-HAR-420"], "input": {"command": "psql -h db.example.com -c \"DROP DATABASE prod\""}, "expect": {"allowed": false, "code": "DATA_DESTROY"}},
+  {"id": "aud420-dropdb-remote", "origin": "audit", "refs": ["AUD-HAR-420"], "input": {"command": "dropdb -h db.example.com prod"}, "expect": {"allowed": false, "code": "DATA_DESTROY"}},
+  {"id": "aud420-redis-remote-flush", "origin": "audit", "refs": ["AUD-HAR-420"], "input": {"command": "redis-cli -h cache.example.com FLUSHALL"}, "expect": {"allowed": false, "code": "DATA_DESTROY"}},
+  {"id": "aud420-ctl-psql-local", "origin": "control", "refs": ["AUD-HAR-420"], "input": {"command": "psql -h localhost -c \"DROP DATABASE dev\""}, "expect": {"allowed": true}},
+  {"id": "aud420-ctl-redis-local", "origin": "control", "refs": ["AUD-HAR-420"], "input": {"command": "redis-cli FLUSHALL"}, "expect": {"allowed": true}},
+  {"id": "aud818-printenv", "origin": "audit", "refs": ["AUD-SEC-818"], "input": {"command": "printenv GH_TOKEN"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud818-echo", "origin": "audit", "refs": ["AUD-SEC-818"], "input": {"command": "echo \"$GH_TOKEN\""}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud818-ctl-gh-repo", "origin": "control", "refs": ["AUD-SEC-818"], "input": {"command": "echo \"$GH_REPO\""}, "expect": {"allowed": true}},
+  {"id": "aud818-ctl-auth-status", "origin": "control", "refs": ["AUD-SEC-818"], "input": {"command": "gh auth status"}, "expect": {"allowed": true}}
  ]
 }
