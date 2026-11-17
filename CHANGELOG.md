@@ -229,6 +229,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-607/646/681/731/753/624 (T-3912): gán giá trị nhiều dòng trước lệnh không còn che lệnh sau; `git restore`/
+  `checkout --end-of-options .` bị chặn như `-- .`; autocorrect khi chuỗi đổi PATH/exec-path hay xoá `git-*` → BUDGET;
+  `set --` rồi đọc tham số vị trí ở chuỗi có lệnh không chỉ đọc → BUDGET; `--no-verif` viết tắt đặt cờ bỏ hook.
 - `scripts/check-links.py --external`: HEAD 404/410 không còn đủ kết luận link chết — xác nhận lại bằng GET (NIST nvlpubs và
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.

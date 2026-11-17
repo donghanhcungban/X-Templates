@@ -2239,6 +2239,7 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _array_arg_why(cmd) or _script_run_why(cmd) or _reuse_why(cmd) or _fd_script_why(cmd)
     why = why or _home_dyn_why(cmd) or _run_named_why(cmd) or _implicit_load_why(cmd) or _patch_file_why(cmd)
     why = why or _prefix_why(cmd) or _nested_quote_why(cmd) or _func_scope_why(cmd)  # P0 lát 4; AUD-SEC-750/660/661
+    why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
     return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
 
 
@@ -2279,6 +2280,43 @@ def _func_scope_why(cmd: str) -> str:
     groups = [g for g in re.finditer(r"\{\s[^{}]*\}", live) if STDIN_RUNNER_RE.search(g.group())]
     near = [live[max(0, g.start() - 3) : g.end() + 4] for g in groups]
     return FUNC_SCOPE_WHY if any(GROUP_STDIN_RE.search(t) for t in near) else ""
+
+
+# AUD-SEC-731: `set -- …` đặt tham số vị trí mà guard không theo dõi; đọc lại qua `for x do` (không `in` = "$@"), `$1`,
+# `$@`… → giá trị như biến không biết (D-415).
+SET_POSITIONAL_RE = re.compile(r"(?<![\w-])set(?:\s+[-+][A-Za-z]*)*\s+--?(?=\s|$)")
+POSITIONAL_READ_RE = re.compile(r"\bfor\s+\w+\s*(?:;\s*)?do\b|\$\{?[1-9@*]")
+SET_POSITIONAL_WHY = (
+    "`set --` đặt tham số vị trí rồi đọc lại (`for x do`, `$1`, `$@`) — guard không theo dõi giá trị đó (AUD-SEC-731);"
+    " viết lại: dùng giá trị nguyên văn hay `for x in <giá trị>`"
+)
+
+
+def _set_positional_why(cmd: str) -> str:
+    """Chỉ khi chuỗi có lệnh không chỉ đọc (`rm`, `git`…) — `set -- 1; for x do echo $x; done` vẫn chạy."""
+    live = _code_views(_split_view(cmd)[0])[0]
+    if not (SET_POSITIONAL_RE.search(live) and POSITIONAL_READ_RE.search(live)):
+        return ""
+    heads = _command_heads(cmd)
+    passive = REUSE_READERS | {"set", "for", "do", "done", "printf", ":", "true", "false"}
+    return (
+        ""
+        if heads is not None and all(posixpath.basename(_dequote(h)) in passive for h in heads)
+        else SET_POSITIONAL_WHY
+    )
+
+
+# AUD-SEC-681: git chạy `git-<tên>` ngoài nếu có, không thì autocorrect đoán lệnh khác — chuỗi bật autocorrect mà đổi
+# PATH/exec-path hay xoá/dời tệp `git-*` thì lệnh ngoài guard thấy có thể biến mất lúc chạy → BUDGET.
+AUTOCORRECT_TEXT_RE = re.compile(r"help\.autocorrect", re.I)
+EXEC_LOOKUP_CHANGE_RE = re.compile(
+    r"(?<![\w$])(?:PATH|GIT_EXEC_PATH)\+?=|--exec-path|\b(?:rm|mv|unlink|chmod)\b[^;&|\n]*git-"
+)
+AUTOCORRECT_WHY = "bật `help.autocorrect` cùng lệnh đổi PATH/exec-path hay xoá/dời tệp `git-*` (AUD-SEC-681)"
+
+
+def _autocorrect_lookup_why(cmd: str) -> str:
+    return AUTOCORRECT_WHY if AUTOCORRECT_TEXT_RE.search(cmd) and EXEC_LOOKUP_CHANGE_RE.search(cmd) else ""
 
 
 NESTED_QUOTE_WHY = (
@@ -5247,7 +5285,7 @@ def pipelines(tokens: List[str]) -> List[List[List[str]]]:
 
 # Gán biến đầu lệnh/đối số `export`: `TÊN=v` và `TÊN+=v` (bash nối vào giá trị cũ — `X+=1 rm -rf /` vẫn chạy rm,
 # AUD-SEC-125). Tên không mang `+`: tách bằng `_assign_split`.
-ENV_ASSIGN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=.*")
+ENV_ASSIGN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=.*", re.S)  # AUD-SEC-607: giá trị trong nháy có xuống dòng
 
 
 def _assign_split(t: str) -> Tuple[str, str]:
@@ -6368,8 +6406,9 @@ def _git_clean(args: List[str]) -> Tuple[str, str]:
 
 def _discards_whole_tree(args: List[str]) -> bool:
     """checkout/restore có đích là cả cây làm việc (`.`, `./`, `:/`, `*`) — đích nằm sau `--` hoặc là đối số vị trí."""
-    if "--" in args:
-        targets = args[args.index("--") + 1 :]
+    end = next((i for i, a in enumerate(args) if a in OPTS_END), -1)  # AUD-SEC-646: cả `--end-of-options`
+    if end >= 0:
+        targets = args[end + 1 :]
     else:
         targets = _positionals(args, ("-s", "--source", "-b", "-B"))
     return any(t in (".", "./", ":/", "*") for t in targets)
@@ -7115,8 +7154,12 @@ def _git_exec_path() -> str:
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
-def _git_external(sub: str) -> bool:
-    """`git-<sub>` chạy được ở exec-path hay PATH — git chạy nó thay vì sửa tên (`git lfs`, `git submodule`)."""
+def _git_external(sub: str, env: Optional[Dict[str, str]] = None, argv: Optional[List[str]] = None) -> bool:
+    """`git-<sub>` chạy được ở exec-path mặc định — git chạy nó thay vì sửa tên (`git submodule`). AUD-SEC-681: không tin
+    PATH người dùng (tệp ở `~/bin` xoá được trước trong cùng chuỗi) và không tin khi lệnh đổi `PATH`/`GIT_EXEC_PATH`/
+    `--exec-path` — git lúc chạy không thấy lệnh ngoài thì sửa tên sang lệnh khác."""
+    if env and ({"PATH", "GIT_EXEC_PATH"} & set(env)) or argv and any(a.startswith("--exec-path") for a in argv):
+        return False
     dirs = [os.environ.get("GIT_EXEC_PATH") or _git_exec_path(), *os.environ.get("PATH", "").split(os.pathsep)]
     paths = [os.path.join(d, "git-" + sub) for d in dirs if d and "/" not in sub]
     return any(os.path.isfile(p) and os.access(p, os.X_OK) for p in paths)
@@ -12430,7 +12473,9 @@ def _scan_commit(args: List[str], res: Dict[str, object], asks: List[str]) -> Op
         return "Commit rỗng bị khung chặn (không dùng empty commit để kích CI). Push thay đổi thật hoặc re-run job."
     flag_args = _commit_flag_args(args)
     res["commit"] = True
-    if "--no-verify" in flag_args or "n" in _short_flags(flag_args):
+    # AUD-SEC-753: git nhận tên dài viết tắt (`--no-verif`, `--no-ve`) — tiền tố từ `--no-v` tính là bỏ hook (chặt)
+    abbrev = any(len(k) >= 6 and "--no-verify".startswith(k) for k in (a.partition("=")[0] for a in flag_args))
+    if abbrev or "n" in _short_flags(flag_args):
         res["no_verify"] = True
         asks.append("commit --no-verify bỏ qua cổng chất lượng — cần người xác nhận lý do")
     return None
@@ -15450,7 +15495,7 @@ def _alias_resolve(
     # được đọc) hay thắng nó: xét cả hai thứ tự, mọi cách đọc khác nhau đều quét (AUD-SEC-634 review)
     orders = [[*table, *(defined or [])], [*(defined or []), *table]]
     found = list(dict.fromkeys((k, tuple(o)) for k, o in (_git_alias_expand(n, t) for t in orders)))
-    if any(not k for k, _ in found) and any(map(_autocorrect_on, orders)) and not _git_external(n[1]):
+    if any(not k for k, _ in found) and any(map(_autocorrect_on, orders)) and not _git_external(n[1], env, g):
         return [("unresolved", [f"help.autocorrect bật: git chạy lệnh con đoán từ `{n[1]}`"])]
     return [(k, list(o)) if k else ("", n) for k, o in found]
 
