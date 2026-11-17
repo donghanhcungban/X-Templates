@@ -758,3 +758,10 @@
 - Chọn: Đợt 2 toàn bộ 🟠 gom 8 lát theo gốc lỗi, guard trước (rủi ro cao), sổ/SPEC sau; mỗi lát một PR
 - Lý do (tiêu chí chất lượng cuối): ADR-0080: vét hết việc trước cổng ký; trả hết nợ mới ký GO (yêu cầu chủ dự án 2026-11-16). Gom theo gốc lỗi để một test hồi quy phủ cả họ; guard trước vì là hàng rào an toàn; mục SPEC Draft đóng bằng quyết định ghi D-NNN hoặc chấp nhận có hạn.
 - Đường lùi: Bỏ PLAN đợt 2, lập lại từ sổ.
+
+### D-497 · 2026-11-17T00:44:47+00:00 · AUD-HAR-388/391/392 (đặc tả xưởng F-131/F-121/F-113 còn Draft, chưa có mã) đóng thế nào trong đợt harden?
+
+- Phương án: (1) Chấp nhận có hạn: tính năng chưa có mã nên bản phát hành không mang rủi ro; câu hỏi chặn đã ghi ở §10 của SPEC và gắn T-3850/T-3848/T-3862, không bật trước khi D-NNN đầu task trả lời · (2) Viết luôn thiết kế trả lời câu hỏi chặn · (3) Để mở, chặn GO
+- Chọn: Chấp nhận có hạn: tính năng chưa có mã nên bản phát hành không mang rủi ro; câu hỏi chặn đã ghi ở §10 của SPEC và gắn T-3850/T-3848/T-3862, không bật trước khi D-NNN đầu task trả lời
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: không có hành vi nào để lỗi trong bản; trả lời câu hỏi chặn cần thử trên git/GitHub thật (T-3850) nên viết trước là đoán. Giữ đường lùi: Draft + [chặn] ở SPEC ngăn triển khai sớm. Phương án 3 khoá phát hành vì việc của tính năng tương lai.
+- Đường lùi: Đổi ba hàng về mở.
