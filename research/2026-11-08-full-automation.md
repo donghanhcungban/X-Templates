@@ -1,7 +1,7 @@
 ---
 title: Nâng tự động hoá tới mức máy làm được — kiểm kê điểm chờ người, định nghĩa "máy không thể", lộ trình
 kind: research
-updated: 2026-11-08
+updated: 2026-11-17
 ---
 
 # Nâng tự động hoá tới mức máy làm được — nghiên cứu 2026-11-08
@@ -75,7 +75,7 @@ repo/máy (nhóm deny của guard); (c) đưa nội dung của tác giả không
 | Bản không bao giờ được ký | 3.29.0, 3.30.0, 3.30.1, 3.31.0, 3.31.1 | GO-NO-GO §5 trống; `_signed_go_no_go` chỉ xét VERSION hiện hành nên không chặn gì |
 | Chữ ký có chặn phân phối không | Không: registry ghi 4 dự án đích lên 3.32.0 trước lúc ký | `50be630` (01:24Z) < `7bd1140` (02:08Z); `install.py` không đọc `promotion` |
 | `prod_switch` D-126 | 17,7 ngày treo; chủ chọn đúng mặc định máy | D-126 → D-400 |
-| Routine tuần phản hồi | Tồn tại (`trig_01VGRZdEB4p6bwqjBYFkuF8j`), run 2026-11-02 SUCCEEDED nhưng push bị 403 — phiên Routine thiếu nguồn X-Templates | `list_triggers`, transcript run |
+| Routine tuần phản hồi | Tồn tại (một Routine của tài khoản chủ), run 2026-11-02 SUCCEEDED nhưng push bị 403 — phiên Routine thiếu nguồn X-Templates | `list_triggers`, transcript run |
 | Repo phiên ghi được | 22 repo `can_push`, gồm 4 dự án đích | `list_repos` |
 | `release-check` ở `a09f7a7` | NO-GO, `fails = [blueprint, audit]`, `human = []` | chạy trong phiên |
 | Ruleset sống `main` | `strict_required_status_checks_policy: true`, `required_review_thread_resolution: false` (file ghi `true`), `allow_auto_merge: true` | `gh api` GET (giám khảo) |
