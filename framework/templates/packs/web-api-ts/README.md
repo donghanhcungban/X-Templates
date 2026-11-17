@@ -38,6 +38,9 @@ Cảnh báo từ mức vừa hoặc lỗi truy cập registry làm job đỏ. Ch
 Để bật PR cập nhật tự động, kiểm tra phiên bản pnpm của dự án với bảng hỗ trợ của Dependabot. Nếu được hỗ trợ,
 thêm một mục `package-ecosystem: npm`, `directory: /` và lịch vào `updates` trong `.github/dependabot.yml`.
 Quét registry của workflow chạy độc lập với cấu hình Dependabot.
+
+Ngoại lệ hẹp theo từng GHSA nằm ở `starter/pnpm-workspace.yaml` (`auditConfig.ignoreGhsas`) và phải có dòng cùng id trong
+`starter/audit-exceptions.json` (lý do, người duyệt, hạn). Hết hạn thì xét lại hoặc bỏ; không hạ `--audit-level`.
 [Xem phiên bản được hỗ trợ](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories).
 
 ## Ca sai cố ý (`mutants.json`)
