@@ -538,3 +538,10 @@
 - Chọn: Sửa máy: ở delivery_phase harden, loop status không đòi audit theo mốc (milestone_audit bỏ/none), audit delta chỉ ở cổng ký; sửa README bước 10, autopilot bước 5, audit.md §1 cho khớp; giữ hành vi pha build
 - Lý do (tiêu chí chất lượng cuối): Đúng: chủ dự án yêu cầu không review/audit giữa đợt, chỉ ở cổng ký (D-494); máy in lệnh audit theo mốc làm vòng không hội tụ. Bền: một nguồn thật (máy) khớp ADR; test ghim cả hai pha. Phương án 2 đi ngược yêu cầu; 3 để mâu thuẫn tồn tại.
 - Đường lùi: Revert PR sửa máy; milestone_audit trở lại ở harden
+
+### D-501 · 2026-11-17T07:16:59+00:00 · Sau AUD-SEC-804, dòng quyết chạy thật vẫn có thể vào DECISIONS.md qua git merge/pull nhánh dựng bằng plumbing, MCP create_or_update_file, diff từ stdin — guard không bịt hết. Cứng hoá phía máy đọc (prod_switch) hay giữ chặn ở guard?
+
+- Phương án: (1) Giữ chặn ở guard cho mọi đường ghi trực tiếp; ghi phần còn lại là giới hạn đã biết (AUD-SEC-814 chấp nhận có hạn 2027-01-21, xét cùng đợt xét lại hàng rào), không đổi xt.py trong bản này · (2) Cứng hoá xt.py: prod_switch chỉ nhận dòng quyết có dấu do decide-prod ghi (đổi hợp đồng dự án đích, cần cắt bản và di trú sổ cũ)
+- Chọn: Giữ chặn ở guard cho mọi đường ghi trực tiếp; ghi phần còn lại là giới hạn đã biết (AUD-SEC-814 chấp nhận có hạn 2027-01-21, xét cùng đợt xét lại hàng rào), không đổi xt.py trong bản này
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: mọi đường ghi một bước của agent đã bị chặn; đường còn lại cần chuỗi nhiều bước (dựng commit plumbing rồi merge) và vẫn hiện ra trong diff PR mà cổng merge thấy. Giữ đường lùi: phương án 2 đổi định dạng sổ của mọi dự án đích ngay trong bản harden, rủi ro hồi quy cao hơn lợi. Xét lại cùng mốc 2027-01-21 (LOOP-DESIGN-014).
+- Đường lùi: Lập task cứng hoá prod_switch theo phương án 2 ở bản kế
