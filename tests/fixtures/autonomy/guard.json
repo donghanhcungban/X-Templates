@@ -23605,6 +23605,9 @@
 {"id": "aud654-loop-vague-sub-vague-script", "origin": "audit", "refs": ["AUD-SEC-654"], "input": {"command": "python3 \"$XT\" loop \"$(echo decide-prod)\" --ref D-1 --choice x"}, "expect": {"allowed": false, "code": "STAGE_APPROVE"}},
 {"id": "aud654-ctl-loop-status", "origin": "control", "refs": ["AUD-SEC-654"], "input": {"command": "python3 \"$XT\" loop status"}, "expect": {"allowed": true}},
 {"id": "aud641-bash-prod-decided-line", "origin": "audit", "refs": ["AUD-SEC-641"], "input": {"command": "echo '- Khi chạy thật đã quyết (D-126): giữ' >> docs/autopilot/DECISIONS.md"}, "expect": {"allowed": false, "code": "BUDGET"}},
+{"id": "aud796-ctl-git-grep-env-name", "origin": "control", "refs": ["AUD-SEC-796"], "input": {"command": "git grep LESSOPEN"}, "expect": {"allowed": true}},
+{"id": "aud796-ctl-commit-msg-env-name", "origin": "control", "refs": ["AUD-SEC-796"], "input": {"command": "git commit -m \"harden LESSOPEN env preprocessor\""}, "expect": {"allowed": true}},
+{"id": "aud796-prefix-assign-still-denied", "origin": "audit", "refs": ["AUD-SEC-796"], "input": {"command": "LESSOPEN='|rm %s' git log"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud612-dest-after-empty-subst", "origin": "audit", "refs": ["AUD-SEC-612"], "input": {"command": "echo '{}' > $(echo).autopilot/state.json"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud612-xargs-herestring-sh", "origin": "audit", "refs": ["AUD-SEC-612"], "input": {"command": "xargs -I{} sh -c {} <<< 'rm -rf ~'"}, "expect": {"allowed": false}},
 {"id": "aud612-ctl-quoted-subst-dest", "origin": "control", "refs": ["AUD-SEC-612"], "input": {"command": "echo x > \"$(mktemp -d)/out.log\""}, "expect": {"allowed": true}}

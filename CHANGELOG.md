@@ -233,6 +233,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   mờ → chặn như `stage`; dòng `Khi chạy thật đã quyết` ghi tay (Edit/Write/Bash) và hàm `decide_prod` nạp trong tiến
   trình → chặn; trong phiên agent, `stage approve` và hàng promotion của `release-check` fetch nhánh chính trước khi đọc
   khoá `stage_approval`/`release_signoff` (fetch lỗi → chỉ người).
+- AUD-SEC-796 (T-3913): luật biến chạy lệnh (AUD-SEC-791) không còn chặn oan khi tên biến chỉ nằm trong đối số của
+  `git`/`gh`/nhóm grep/`bat`/`pytest` (`git grep LESSOPEN`, `git commit -m "… LESSOPEN"`); gán tiền tố vẫn bị xét.
+  AUD-SEC-740 ghi `chấp nhận` theo D-437 (hạn 2027-01-21).
 - AUD-SEC-612/670/655, AUD-HAR-404/405 (T-3910): đích ghi viết sau thay lệnh (`> $(echo).autopilot/…`), `printf` nuôi
   shell và here-string vào `xargs sh -c` bị chặn như dạng trơn; `install.py` so thư mục hook theo đường đã giải
   (`core.hooksPath` qua tổ tiên symlink → bỏ qua) và thôi chặn oan khi `.git`/`.git/hooks` là symlink trong git dir;

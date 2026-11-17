@@ -14102,11 +14102,18 @@ def _xargs_gh_why(c: List[str]) -> str:
     return ""
 
 
+# AUD-SEC-796: lệnh không đặt biến môi trường từ đối số — tên biến trong đối số là chữ (`git grep LESSOPEN`, `git commit
+# -m "… LESSOPEN"`, `pytest -k LESSOPEN`, `egrep`/`ag`/`bat`); cờ chạy chương trình của chúng có luật riêng (AUD-SEC-727,
+# 785, 636). Gán tiền tố/`env` vẫn xét. Shell/trình thông dịch không ở đây (`python3 -c 'os.environ[…]'`).
+EXEC_ENV_INERT_ARGS = frozenset({"git", "gh", "egrep", "fgrep", "zgrep", "ag", "ack", "bat", "batcat", "pytest"})
+
+
 def _exec_env_why(c: List[str], name: str, args: List[str]) -> str:
     """Gán tiền tố/`env` luôn xét; phần lệnh thật bỏ qua khi là lệnh chỉ đọc (cả sau trình bọc: `env grep X f`)."""
     body = _strip_prefixes(c)
     head = len(c) - len(body) + 1  # đối số của lệnh thật là đuôi nguyên văn của `c` (`env -S'…'` dựng argv mới: không)
-    reader = name == "unset" or bool(body) and _reuse_reader(body) and head > 0 and c[head:] == body[1:]
+    inert = bool(body) and posixpath.basename(body[0]) in EXEC_ENV_INERT_ARGS  # AUD-SEC-796
+    reader = name == "unset" or bool(body) and (_reuse_reader(body) or inert) and head > 0 and c[head:] == body[1:]
     scan = c[:head] if reader else c
     hit = any(_exec_env_token(t, p) for t, p in zip(scan, ["", *scan]))
     return (
