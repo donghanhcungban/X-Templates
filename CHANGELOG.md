@@ -229,6 +229,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-HAR-371/400 (T-3911): `release-sign` và hàng `verify` của `release-check` tìm cây chính đúng khi git in thư mục
+  git (submodule, `--separate-git-dir`) và với git < 2.36 (không có `worktree list -z`); không suy được → từ chối.
 - AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con
   mờ → chặn như `stage`; dòng `Khi chạy thật đã quyết` ghi tay (Edit/Write/Bash) và hàm `decide_prod` nạp trong tiến
   trình → chặn; trong phiên agent, `stage approve` và hàng promotion của `release-check` fetch nhánh chính trước khi đọc
@@ -236,6 +238,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 - AUD-SEC-796 (T-3913): luật biến chạy lệnh (AUD-SEC-791) không còn chặn oan khi tên biến chỉ nằm trong đối số của
   `git`/`gh`/nhóm grep/`bat`/`pytest` (`git grep LESSOPEN`, `git commit -m "… LESSOPEN"`); gán tiền tố vẫn bị xét.
   AUD-SEC-740 ghi `chấp nhận` theo D-437 (hạn 2027-01-21).
+- AUD-SEC-612/670/655, AUD-HAR-404/405 (T-3910): đích ghi viết sau thay lệnh (`> $(echo).autopilot/…`), `printf` nuôi
+  shell và here-string vào `xargs sh -c` bị chặn như dạng trơn; `install.py` so thư mục hook theo đường đã giải
+  (`core.hooksPath` qua tổ tiên symlink → bỏ qua) và thôi chặn oan khi `.git`/`.git/hooks` là symlink trong git dir;
+  `.autopilot` là symlink: không ghi state/evidence qua liên kết, `hook-stop` giữ vòng (fail-closed).
 - AUD-HAR-394/395, AUD-SEC-649 (T-3914): `dev-task.sh format`/`format-file` bị ngắt (TERM/INT/HUP) giữa formatter vẫn
   khôi phục `GO-NO-GO*.md` và dọn bản chụp; mẫu `xt.yaml` hướng dẫn thêm `GO-NO-GO*.md` vào file ignore của formatter
   Markdown để cổng `format_check` không đỏ sau khi lập GO-NO-GO.

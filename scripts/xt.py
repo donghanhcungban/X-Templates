@@ -1329,6 +1329,17 @@ def state_dir(base: Optional[Path] = None) -> Path:
     return (base or project_dir()) / ".autopilot"
 
 
+def state_write_dir(base: Optional[Path] = None, *sub: str) -> Path:
+    """`.autopilot[/sub…]` để ghi: thành phần nào là symlink → OSError, không ghi xuyên liên kết (O_NOFOLLOW/tệp tạm chỉ
+    che thành phần cuối — AUD-SEC-651, AUD-HAR-405)."""
+    d = state_dir(base)
+    for p in (d, *(d.joinpath(*sub[: i + 1]) for i in range(len(sub)))):
+        if p.is_symlink():
+            rel = p.relative_to(d.parent).as_posix()
+            raise OSError(f"{rel} là symlink — không khoá/ghi state xuyên liên kết ra ngoài dự án (AUD-SEC-651)")
+    return d.joinpath(*sub)
+
+
 def now_iso() -> str:
     return _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).isoformat()
 
@@ -1404,9 +1415,7 @@ def _state_lock(base: Path) -> Iterator[None]:
     fc = _fcntl()
     if fc is None:
         raise OSError("không có fcntl — không ghi state; dùng môi trường hỗ trợ flock (ADR-0054)")
-    d = state_dir(base)
-    if d.is_symlink():  # O_NOFOLLOW chỉ che thành phần cuối: thư mục là liên kết thì khoá/ghi xuyên ra ngoài dự án
-        raise OSError(f"{d.name} là symlink — không khoá/ghi state xuyên liên kết ra ngoài dự án (AUD-SEC-651)")
+    d = state_write_dir(base)  # O_NOFOLLOW chỉ che thành phần cuối: thư mục là liên kết thì khoá/ghi xuyên ra ngoài
     d.mkdir(parents=True, exist_ok=True)
     fd = os.open(d / STATE_LOCK_FILE, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
@@ -2867,7 +2876,7 @@ def loop_verify(base: Optional[Path] = None, run_all: bool = False) -> int:
         "gate_floor": floor,
         "gate_floor_runs": floor_runs,
     }
-    d = state_dir(base)
+    d = state_write_dir(base)  # không ghi `verified.json` qua liên kết (AUD-HAR-405)
     d.mkdir(parents=True, exist_ok=True)
     write_atomic(d / VERIFIED_FILE, json.dumps(rec, ensure_ascii=False, indent=2) + "\n")
     if ok and run_all:
@@ -3018,7 +3027,7 @@ def loop_record(
         ev["zero_tests_red"] = True  # lý do đỏ dù lệnh exit 0 — Stop hook/người đọc evidence thấy ngay
     if executor:
         ev["executor"] = executor  # agent đã làm task (tầng), cho `executor_choice`/`loop stats`; không phải tên model
-    d = state_dir(base) / "evidence"
+    d = state_write_dir(base, "evidence")  # không ghi bằng chứng qua liên kết (AUD-HAR-405)
     d.mkdir(parents=True, exist_ok=True)
     write_atomic(d / f"{task}.json", json.dumps(ev, ensure_ascii=False, indent=2) + "\n")
     sig = None if code == 0 else failure_signature(task, code, out)
@@ -3120,7 +3129,7 @@ def _append_line(base: Path, name: str, line: str, sync: bool = False) -> None:
     """Nối một dòng vào `.autopilot/<name>`, không đi theo symlink đặt sẵn (O_NOFOLLOW); lỗi I/O ném OSError. `sync`:
     `fsync` trước khi trả về — sổ là nguồn đếm bền qua crash/restart (`perf-trials.jsonl`, ADR-0071 §3)."""
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(state_dir(base) / name, flags, 0o600)
+    fd = os.open(state_write_dir(base) / name, flags, 0o600)  # `.autopilot` là symlink → OSError (AUD-HAR-405)
     with os.fdopen(fd, "a", encoding="utf-8") as fh:
         fh.write(line + "\n")
         if sync:
@@ -3358,6 +3367,10 @@ SESSION_MISMATCH_NOTE = (
     " (Stop hook chỉ giữ phiên đã gắn)"
 )
 STOP_LOG_FILE = "hook-stop.log"  # lượt Stop bị bỏ qua (phiên khác, stdin hỏng) — một dòng mỗi lượt khi vòng đang bật
+STOP_SYMLINK_NOTE = (
+    "⚠ `.autopilot` là symlink — vòng không ghi state/bằng chứng qua liên kết (AUD-HAR-405); thay bằng thư mục thật"
+    " (`loop record`/`loop verify` từ chối tới khi sửa)."
+)
 
 
 def session_id() -> str:
@@ -3400,6 +3413,10 @@ def hook_stop(stdin_text: str, base: Optional[Path] = None) -> Tuple[str, int]:
         why = final_check(base)
         v = {"verdict": "verify", "reason": why} if why else v
     mode = _payload_field(stdin_text, "permission_mode")
+    if v["verdict"] in ("continue", "verify") and st and st.get("active") and state_dir(base).is_symlink():
+        # AUD-HAR-405: không ghi state qua liên kết nhưng vòng còn việc — chặn dừng (fail-closed), không cho dừng rỗng
+        why = f"{STOP_SYMLINK_NOTE} {_stop_reason(st, v, mode, xt_cmd(base))}"
+        return json.dumps({"decision": "block", "reason": why}, ensure_ascii=False), 0
     if v["verdict"] in ("continue", "verify") and st:
         st = _stop_write(base, lambda cur: _stop_apply(cur, mode, v, end=False))
         # lỗi khoá/rev, state biến mất, hoặc `loop stop` chen vào trong lúc tính verdict → cho dừng (fail-open)
@@ -14445,17 +14462,58 @@ def _sign_scope_check(base: Path) -> None:
         raise ReleaseSignError(f"còn việc chờ người (`loop defer`): {', '.join(waiting)} — agent không ký")
 
 
+def _worktree_entries(base: Path, env: Dict[str, str]) -> Optional[List[tuple[Path, bool]]]:
+    """`(đường dẫn, bare)` của từng mục `git worktree list --porcelain`; `-z` lỗi (git < 2.36 exit 129) → đọc lại
+    không `-z` (tách dòng), đường dẫn bị git trích dẫn (`"…"`) → None; không liệt kê được → None."""
+    r = _git(base, "worktree", "list", "--porcelain", "-z", env=env)
+    nul = r.returncode == 0
+    if not nul:
+        r = _git(base, "worktree", "list", "--porcelain", env=env)
+    if r.returncode:
+        return None
+    entries: List[tuple[Path, bool]] = []
+    for item in r.stdout.split("\0" if nul else "\n"):
+        if item.startswith("worktree "):
+            if not nul and item[9:].startswith('"'):
+                return None
+            entries.append((Path(item[9:]), False))
+        elif item == "bare" and entries:
+            entries[-1] = (entries[-1][0], True)
+    return entries
+
+
+def _worktree_roots(base: Path, env: Dict[str, str]) -> Optional[List[Path]]:
+    """Cây làm việc của mọi mục `git worktree list --porcelain` (AUD-HAR-371, AUD-HAR-400). `-z` chỉ có từ git 2.36
+    (cũ hơn exit 129) → đọc lại không `-z`, tách dòng; khi đó đường dẫn có ký tự lạ bị git trích dẫn (`"…"`) → None
+    (fail-closed, không đoán). Mục bare bỏ qua; mục chính không bare mà không có `.git` bên trong là thư mục git
+    (submodule, `--separate-git-dir`: git in thư mục git thay cho cây chính) → cây chính lấy bằng `rev-parse
+    --show-toplevel` tại đó, không ra → None. Không liệt kê được → None (bên gọi fail-closed)."""
+    entries = _worktree_entries(base, env)
+    if entries is None:
+        return None
+    roots: List[Path] = []
+    for i, (path, is_bare) in enumerate(entries):
+        if i == 0 and not is_bare and not os.path.lexists(path / ".git"):
+            top = _git(path, "rev-parse", "--show-toplevel", env=env)
+            if top.returncode or not top.stdout.strip():
+                return None
+            path = Path(top.stdout.strip())
+        if not is_bare:
+            roots.append(path)
+    return roots
+
+
 def worktree_state_files(base: Path) -> Optional[List[Path]]:
     """`.autopilot/state.json` (kể cả symlink gãy) của dự án ở MỌI worktree của repo, cùng thư mục con như `base`, sổ của
     `base` đứng đầu (AUD-HAR-340, AUD-HAR-369): sổ máy không theo git và riêng mỗi worktree (`loop_root`) — đọc theo cwd
     thì chạy từ worktree khác thoát việc của cây chính. Không liệt kê được worktree → None (bên gọi fail-closed)."""
     env = _perf_env()
     prefix = _git(base, "rev-parse", "--show-prefix", env=env)
-    trees = _git(base, "worktree", "list", "--porcelain", "-z", env=env)
-    if prefix.returncode or trees.returncode:
+    trees = _worktree_roots(base, env)
+    if prefix.returncode or trees is None:
         return None
     sub = prefix.stdout.rstrip("\n")
-    roots = [base, *(Path(x[9:]) / sub for x in trees.stdout.split("\0") if x.startswith("worktree "))]
+    roots = [base, *(t / sub for t in trees)]
     files = dict.fromkeys(state_dir(r.resolve()) / "state.json" for r in roots)
     return [f for f in files if os.path.lexists(f)]
 

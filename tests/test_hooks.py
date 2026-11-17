@@ -6226,7 +6226,9 @@ class EvidenceHooksStopInstallTest(EvidenceHooksBase):
         sys.path.insert(0, str(ROOT / "scripts"))
         import install
 
-        target = Path(tempfile.mkdtemp())
+        # `resolve()`: `merge_hooks` gọi thẳng — helper (`parent_symlink`) cần gốc đã resolve như `install()` làm; TMPDIR
+        # dưới symlink (macOS `/var → /private/var`) thì bản chưa resolve thành `skipped-symlink` (AUD-SEC-655)
+        target = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, target, True)
         ours = json.loads((ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
         old = json.loads(json.dumps(ours))  # bản khung cũ: chưa có hai sự kiện mới, chưa có onFailure
@@ -11889,7 +11891,8 @@ class GuardQuotedOperatorTest(_GuardDebtCase):
         # chữ có chuyển hướng (như trước) rồi chữ bỏ chuyển hướng; trùng thì một
         self.assertEqual(self.g._eval_scripts(self.g.tokenize("eval > f")), ["> f"])
         self.assertEqual(self.g._eval_scripts(self.g.tokenize("eval nc h < f")), ["nc h < f", "nc h"])
-        self.assertEqual(self.g._echoed_scripts(["printf", "%s", "a", "b"]), ["%s", "a", "b", "a b"])
+        # cuối: chữ printf in thật (định dạng điền đối số, lặp — AUD-SEC-612)
+        self.assertEqual(self.g._echoed_scripts(["printf", "%s", "a", "b"]), ["%s", "a", "b", "a b", "ab"])
         self.assertEqual(self.g._echoed_scripts(["echo", "nc", "h", "<", "f"]), ["nc h < f", "nc h"])
 
     def test_pinned_paths(self):
