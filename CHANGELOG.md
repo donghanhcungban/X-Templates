@@ -111,6 +111,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   thêm 4 ca `merge_review`); `/complete` bước 5.3 nêu lối ra `blocked`/`budget`/khác và `stage submit --evidence`
   (AUD-HAR-414). Dự án đích: chạy lại `install.py` (nhận `xt.py`, skill).
 
+- Repo khung bật `release_signoff: agent` (ADR-0074, D-401/D-402; chủ repo 2026-11-17): agent ký §5 GO-NO-GO bằng
+  `xt.py release-sign` khi `release-check` không FAIL và chỉ còn chữ ký. Khoá thuộc HARD_GATED_KEYS — PR này do người merge.
 - ADR-0080 (D-494): pha harden chạy hai nhịp lặp tới `release-check` GO — **vét việc** (PLAN-harden từ sổ audit đang
   có; vòng chỉ Gate máy + CI, không audit, không gọi reviewer trừ khi `pr next` trả `review`; chờ CI/merge không ngừng
   lượt; không làm lát ngoài vòng sống) rồi **cổng ký** (audit delta + trả nợ review theo lô trên diff tích luỹ; FAIL →
