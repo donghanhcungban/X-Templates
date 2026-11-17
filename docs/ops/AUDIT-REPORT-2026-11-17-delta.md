@@ -56,3 +56,14 @@ Hai lô theo D-503: fuzz bất biến có hướng và hồi quy. Blueprint `--r
 | Hồi quy D-503 + #642/#644 + nguồn AUD-TEST-119 | CÓ PHÁT HIỆN; AUD-TEST-119 do `ConcurrentDecisionTest` vá `os.environ` trong luồng | 🔴 (gộp AUD-SEC-861) · 🟠 AUD-SEC-866 · 🟢 AUD-SEC-868 |
 
 Sự cố: lần chạy oracle đầu dùng đường sandbox tương đối nên 480 ca gọi `/usr/bin/rm` thật; HOME khi đó cũng tương đối (không tồn tại), chỉ thư mục sandbox bị xoá — đã kiểm `/home/liend`, `.ssh`, `git fsck` repo nguyên vẹn. Tiêu chí đợt 7: chạy lại bộ fuzz → 0 ca lọt; tập con tất định thành test hồi quy (`tests/test_guard_d503_invariant.py`).
+
+## Cổng ký lần 5 (ứng viên `702e006d`, sau đợt 7)
+
+Hai lô: fuzz bất biến D-503 mở rộng (kèm dạng bọc) và hồi quy. Lần này oracle bash thật chạy với đường tuyệt đối, PATH chỉ có lệnh giả và canary kiểm trước mỗi tiến trình; không có sự cố. Hồi quy: blueprint `--run` exit 0, tốc độ 1,0–1,1× nền, `tests.test_hooks` sau các `test_guard_*` trong một tiến trình 1263 test OK (AUD-TEST-119 đã đóng).
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| Fuzz mở rộng: 201 179 tổ hợp (core 19 369 + bọc env/command/nice/timeout 65 596 + bọc `true &&`, `X=1;`, `bash -c`, `sh -c`, `$(…)`, `cd /tmp &&` 116 214); 166 760 nguy hiểm trong bash thật | 829/829 ca lọt của cổng ký 4 đã chặn; 2 535 lọt (đều có từ trước, 0 hồi quy so nền) theo ba gốc | 🔴 AUD-SEC-870 (`sh -c "…"` nháy kép), AUD-SEC-871 (thư mục làm việc không xác định) · 🟠 AUD-SEC-872 (xargs miễn theo nguồn) |
+| Hồi quy #648/#647 | CÓ PHÁT HIỆN | 🔴 AUD-SEC-869 (hồi quy #648: `for` duyệt glob + `${f%…}`) · 🟠 AUD-SEC-873 (sed/`$(date)` chặn oan) · 🟢 AUD-SEC-874, AUD-DEP-031 |
+
+Đợt 8 (T-3940, #650): fuzz mở rộng 2 535 → 0, bộ cổng ký 4 vẫn 0/829; mọi dạng chặn mới vào `tests/fixtures/autonomy/d503_invariant.jsonl`. Một lỗi CI trên đường: nhánh trả về của `_heredoc_shell_why` không còn bị test phủ vì bước quét sớm chặn trước — ghim bằng test gọi thẳng hàm (không đổi mã).
