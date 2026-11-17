@@ -238,6 +238,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3935 (AUD-TEST-109/112, AUD-HAR-417/422): sáu lớp test guard/hook/adapter không còn gọi `gh api …/pulls/N` thật
+  (`tests/nonet.py`: merge-check giả + shim `gh`/`curl` lỗi, kể cả bản guard adapter nạp mới); ghim bằng
+  `tests/test_signoff3_isolation.py`. `dev-task.sh` bỏ qua thư mục thiếu `x` ngay trong find (tên Unicode/nháy không còn
+  dừng formatter oan) và thư mục con của thư mục có `r` mất `x`; dọn trạng thái trong subTest bằng `try/finally`;
+  `harness-files.md` ghi giới hạn symlink ra ngoài gốc của chụp GO-NO-GO.
+
 - AUD-HAR-419/420, AUD-SEC-818 (T-3931, D-502): thân heredoc tới `git commit`/`gh pr` đọc theo token (tên lệnh có nháy,
   nhóm `{…}`, `exec N<<`, `git -c $'…'`, `sh -c 'git commit -F -' <<E`) nên dòng ghi công AI không còn lọt
   `ai_attribution: forbid`; không đọc chắc mà có chữ ghi công → BUDGET. Heredoc vào shell cũng gắn theo token

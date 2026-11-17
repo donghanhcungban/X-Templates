@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 from git_fixture import fixture_git, init_git_fixture, isolated_git_environment
+from nonet import isolate_network
 
 os.environ.setdefault("XT_GUARD_PHASE", "harden")
 sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
@@ -1477,6 +1478,11 @@ class ExecCallStrictTest(unittest.TestCase):
 class ReasonCodeLockTest(unittest.TestCase):
     """AUD-SEC-329 (T-3640): mỗi mã của `REASON_CODES` có ít nhất một lệnh thật bị chặn ĐÚNG mã đó — đổi câu chữ lý do mà
     làm mất mã (deny thành cho qua) thì test đỏ. Mã chỉ sinh qua `merge-check` dùng hằng chung ở nơi sinh và trong bảng."""
+
+    def setUp(self):
+        isolate_network(
+            self, None, guard
+        )  # AUD-TEST-109/112: module `guard` import đầu file, không phải bản adapter nạp
 
     EXAMPLES = {
         "PUSH_MAIN": "git push origin main",

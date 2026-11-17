@@ -2443,8 +2443,10 @@ class DecisionLogsTest(unittest.TestCase):
                 file = main if name != "ngoài mọi mục" else month
                 base = head if file is main else month.read_text(encoding="utf-8")
                 file.write_text(extra + base if name == "ngoài mọi mục" else base + extra, encoding="utf-8")
-                self.assertEqual(xt._release_prod_switch(self.base)["result"], "N/A")
-                file.write_text(base, encoding="utf-8")
+                try:
+                    self.assertEqual(xt._release_prod_switch(self.base)["result"], "N/A")
+                finally:
+                    file.write_text(base, encoding="utf-8")
         # (c): mục D-002 ghi trước dòng quyết cho D-005 khi D-005 chưa tồn tại; D-005 (đề xuất) đến sau
         month.write_text(f"### D-002 · t · q\n{line}\n" + month.read_text(encoding="utf-8"), encoding="utf-8")
         self.assertEqual(xt._release_prod_switch(self.base)["result"], "N/A")
