@@ -23667,6 +23667,7 @@
   {"id": "aud812-ctl-subdirectory", "origin": "control", "refs": ["AUD-SEC-812"], "input": {"command": "git filter-branch --subdirectory-filter sub HEAD"}, "expect": {"allowed": true}},
   {"id": "aud813-smtp-program", "origin": "audit", "refs": ["AUD-SEC-813"], "input": {"command": "git send-email --smtp-server=/usr/sbin/sendmail x.patch"}, "expect": {"allowed": false, "code": "BUDGET"}},
   {"id": "aud813-clone-template", "origin": "audit", "refs": ["AUD-SEC-813"], "input": {"command": "git clone --templ=/tmp/t https://h/r"}, "expect": {"allowed": false, "code": "BUDGET"}},
-  {"id": "aud813-ctl-smtp-host", "origin": "control", "refs": ["AUD-SEC-813"], "input": {"command": "git send-email --smtp-server=smtp.example.com x.patch"}, "expect": {"allowed": true}}
+  {"id": "aud813-ctl-smtp-host", "origin": "control", "refs": ["AUD-SEC-813"], "input": {"command": "git send-email --smtp-server=smtp.example.com x.patch"}, "expect": {"allowed": true}},
+  {"id": "aud811-ctl-read-trim", "origin": "control", "refs": ["AUD-SEC-811"], "input": {"command": "git log --format='%H%x09%an%x09%s' v3.20.0..origin/main | while IFS=$'\\t' read -r h a s; do case \"$a\" in *'[bot]') continue ;; esac; s=\"${s% (#[0-9]*)}\"; python3 scripts/xt.py pr title-check -- \"$s\" >/dev/null || { echo \"✗ $h: $s\" >&2; exit 1; }; done"}, "expect": {"allowed": true}}
  ]
 }

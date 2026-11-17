@@ -23,6 +23,12 @@ import guard
 PHRASE = "Khi chạy thật đã quy" + "ết"  # dựng cụm: lệnh của phiên này không mang nguyên cụm
 LEDGER = "docs/autopilot/DECISIONS.md"
 BASE = "# Nhật ký\n\n### D-099\n\n- Khi chạy thật (đề xuất, chủ dự án quyết ở G7): bật\n\n### D-100\n\n"
+# Mục BASE-REPO-005 của `blueprint-status` (job `checks`): `s` gán từ `read` rồi tự cắt — không được BUDGET (CI #632)
+CI_TITLE_LOOP = (
+    "git log --format='%H%x09%an%x09%s' v3.20.0..origin/main | while IFS=$'\\t' read -r h a s; do case \"$a\" in"
+    ' *\'[bot]\') continue ;; esac; s="${s% (#[0-9]*)}"; python3 scripts/xt.py pr title-check -- "$s" >/dev/null'
+    ' || { echo "✗ $h: $s" >&2; exit 1; }; done'
+)
 AUTOCORRECT_ON = {"GIT_CONFIG_PARAMETERS": "'help.autocorrect'='1'"}
 
 
@@ -442,8 +448,27 @@ class ParamSliceTest(AuditOrangeCase):
                 "echo ${UNSET_X:2}",
                 "X=feat-x; git push origin ${X%-x}",
                 'echo "${X:-default}"',
+                # giá trị không biết (ADR-0067): gán từ `read`/`for`/thay lệnh — cắt chuỗi giữ nguyên, không BUDGET
+                CI_TITLE_LOOP,
+                'read -r s; s="${s% (#[0-9]*)}"; echo "$s"',
+                's=$(cat f); echo "${s#*x}"',
+                'for s in a b; do echo "${s#[ab]}"; done',
+                "printf -v s %s x; echo ${s#$p}",
+                "mapfile -t s < f; echo ${s%$p}",
             )
         )
+
+    def test_dyn_assigned_unit(self):
+        self.assertEqual(guard._dyn_assigned(["for", "s", "in", "a"]), ["s"])
+        self.assertEqual(guard._dyn_assigned(["IFS=,", "read", "-r", "h", "a"]), ["h", "a"])
+        self.assertEqual(guard._dyn_assigned(["printf", "-vs", "%s", "x"]), ["s", "x"])
+        self.assertEqual(guard._dyn_assigned(["a=$(x)", "b=1"]), ["a"])
+        self.assertEqual(guard._dyn_assigned(["echo", "x"]), [])
+        env = {"s": "abc"}
+        guard._taint(env, ["s"])
+        self.assertEqual(guard._sub_case("${s:1}", env), "${s:1}")
+        guard._taint(env, [])
+        self.assertEqual(guard._sub_case("${t:1}", {**env, "t": "abc"}), "bc")
 
     def test_matches_bash(self):
         forms = ("${X:2}", "${X: -2}", "${X: -20}", "${X:1:-1}", "${X:20}", "${X:0:0}", "${X#*a}", "${X##*a}")

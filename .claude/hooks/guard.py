@@ -15450,7 +15450,7 @@ def _sub_case(text: str, env: Dict[str, str]) -> str:
         return m.group(0) if val is None else _case_conv(val, m.group(2) or m.group(3))
 
     def cut(m: "re.Match[str]") -> str:
-        val = env.get(m[1])
+        val = None if m[1] in env.get(DYN_VARS, "").split("\0") else env.get(m[1])
         out = None if val is None else _slice_value(val, m)
         if val is not None and out is None:
             raise ScanTooComplex(VAR_SLICE_WHY.format(m[0][:80]))
@@ -15463,6 +15463,10 @@ def _sub_case(text: str, env: Dict[str, str]) -> str:
 # (`X=xx--hard; git reset ${X:2}` là `--hard`). Vị trí/độ dài là số chữ; mẫu glob chữ (`*`, `?` — `fnmatch`). Dạng guard
 # không tính chắc (vị trí là biểu thức/biến, mẫu có `$`/nháy/`\`/lớp `[…]`/extglob, độ dài âm vượt vị trí) của biến ĐÃ
 # biết → BUDGET; biến không biết giữ nguyên như `$X`.
+# Khoá trong bảng biến (không phải tên biến — có NUL): tên biến có một lần gán KHÔNG phải chữ đã biết (`read`/`mapfile`/
+# `getopts`/`printf -v`, `for`, giá trị có `$`/backtick — tự tham chiếu, thay lệnh). Cắt chuỗi chỉ tính/BUDGET khi mọi
+# lần gán là chữ (ADR-0067: giá trị không biết không chặn vì cắt chuỗi) — biến này giữ nguyên như trước AUD-SEC-811.
+DYN_VARS = "\0dyn"
 VAR_SLICE_RE = re.compile(r"\$\{(\w+)(?::(?![-=?+])([^{}]*)|(##?|%%?)([^{}]*))\}")
 SLICE_NUM_RE = re.compile(r"\s*(-?\d+)\s*(?::\s*(-?\d+)\s*)?")
 SLICE_PAT_BAD_RE = re.compile(r"[$`'\"\\\[\]()]")
@@ -15538,6 +15542,7 @@ def _record_assigns(c: List[str], env: Dict[str, str], pick: int = 0, home0: Opt
             )
     c = plain
     c = [t for t in c if t not in SHELL_KEYWORDS] if c[0] in SHELL_KEYWORDS else c  # `then x=…`, `do x=…`, `{ x=…`
+    _taint(env, _dyn_assigned(c))  # AUD-SEC-811: `read`/`for`/`$…` — cắt chuỗi giữ nguyên
     words = _for_values(c)
     if words:
         env[c[1]] = _sub_vars(words[min(pick, len(words) - 1)], env)[:VAR_VALUE_MAX]
@@ -15556,6 +15561,26 @@ def _record_assigns(c: List[str], env: Dict[str, str], pick: int = 0, home0: Opt
                 val = old + val
             if len(val) <= VAR_VALUE_MAX:
                 env[k] = val
+
+
+DYN_ASSIGNERS = frozenset({"read", "mapfile", "readarray", "getopts", "printf"})  # ghi biến theo TÊN đối số
+DYN_NAME_RE = re.compile(r"(?:-v)?([A-Za-z_]\w*)\+?(?:=.*)?", re.S)
+
+
+def _dyn_assigned(c: List[str]) -> List[str]:
+    """Tên biến mà lệnh `c` (đã bỏ từ khoá đầu) gán giá trị KHÔNG phải chữ đã biết: biến của `for`; mọi tên sau
+    `read`/`mapfile`/`getopts`/`printf` (chặt: cả đối số thường); gán `x=…` có `$`/backtick trong giá trị."""
+    if c[:1] == ["for"] and len(c) > 1:
+        return [c[1]]
+    at = next((i for i, t in enumerate(c) if posixpath.basename(t) in DYN_ASSIGNERS), -1)
+    if at >= 0:
+        return [m[1] for t in c[at + 1 :] if (m := DYN_NAME_RE.fullmatch(t))]
+    return [t.partition("=")[0].rstrip("+") for t in c if ASSIGN_ANY_RE.fullmatch(t) and re.search(r"[$`]", t)]
+
+
+def _taint(env: Dict[str, str], names: List[str]) -> None:
+    if names:
+        env[DYN_VARS] = "\0".join(dict.fromkeys([*env.get(DYN_VARS, "").split("\0"), *names]))
 
 
 def _for_values(c: List[str]) -> List[str]:
