@@ -229,6 +229,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-HAR-342/356/357/360/364/365/366, AUD-SEC-562/565/589/601/603 (T-3917): guard cho qua dạng trợ giúp gh in thật
+  (`release-sign --help`, `-h=false`, `gh pr -R o/r merge 12 --help`, `gh --help -X DELETE api …`, `gh repo --help
+  edit …`), `gh 2>&1 pr view`, message `git commit` nhắc `gh pr … review`; chặn `gh pr merge --delete-branch`
+  (REMOTE_DELETE), `gh auth git-credential`/`gh config get oauth_token` (in token), DELETE `git/ref/` số ít,
+  `labels/kind%2Fbug`, đường `repositories/<id>`, `force` qua query/`-f`/`-F force=False`, heredoc thân PR sau tiêu
+  đề có `;`/`|` trong nháy. Test: `tests/test_green_gh.py`.
 - Nợ review 🟢 (T-3921): `pack-npm-audit` vào required checks của `.github/rulesets/main.json` (AUD-DEP-023; ruleset
   sống do chủ repo áp); `cooldown` Dependabot 7 ngày (AUD-DEP-025); test ghim job không nhận `if:` và chỉ xét đúng job
   (AUD-DEP-027/029); bộ kiểm index migration của `web-api-ts` bỏ chú thích, chuẩn hoá tên, cấm builder `createIndex(`,
