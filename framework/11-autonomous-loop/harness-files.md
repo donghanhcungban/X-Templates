@@ -66,6 +66,12 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   như gửi ra mạng; script có chuỗi bí mật nguyên văn (`open('.env')`) bị chặn theo D-105 (không chỉ đọc) — còn hở khi bí
   mật lấy từ biến môi trường (`os.environ`, `process.env`) hay đường dẫn ghép (AUD-DOC-073). Không để bí mật thật trong
   máy/biến môi trường của phiên agent không người trực.
+- **Phá dữ liệu: guard chỉ chặn tới máy chủ không cục bộ** (AUD-HAR-420, `DATA_DESTROY`): `psql`/`mysql`/`mariadb`/
+  `sqlcmd`/`mongosh` có câu phá thấy được (cờ câu lệnh, heredoc có nháy, here-string), `dropdb`, `mysqladmin drop`,
+  `redis-cli FLUSHALL|FLUSHDB` với máy chủ nêu ở cờ/URI/conninfo khác loopback/socket (máy chủ là biến: coi là không cục
+  bộ). Cho chạy: không nêu máy chủ hay cục bộ, máy chủ từ biến môi trường (`PGHOST`, `DATABASE_URL`), câu trong tệp/stdin,
+  `prisma migrate reset`, `rails db:drop`, `docker compose down -v` — dự án đích chặn thêm bằng `permissions.deny`. In
+  biến token GitHub (`printenv GH_TOKEN`, `echo "$GH_TOKEN"`, `env | grep TOKEN`) chặn như `gh auth token` (AUD-SEC-818).
 - **`subagent-stop.sh` chỉ khớp mẫu chữ "exit/rc + số"** (AUD-HAR-098): regex `exit`, `exit code`, `exit status`, `rc`,
   `mã thoát` theo sau là số. Lọt: báo cáo nhắc `exit 0` mà không chạy lệnh nào (hay trích log có `rc=1`) vẫn được cho
   dừng. Bắt sai: báo cáo ghi kết quả theo dạng khác (`→ 0`, "trả 0", "xanh") bị chặn một lần dù đã chạy. Hook chỉ là
