@@ -513,7 +513,12 @@ json_ok() { # $1=file → 0 nếu là JSON hợp lệ; không có python3 thì k
 # `GO-NO-GO*.md` (tên không phân biệt hoa thường) dưới gốc dự án trước khi chạy formatter, khôi phục file nào đổi/mất.
 go_snapshot() { # $1=thư mục chụp (rỗng, đã tồn tại)
   local i=0 f
-  ( cd "$ROOT" && find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o -type f -iname 'go-no-go*.md' -print0 ) >"$1/list" || return 1
+  # AUD-HAR-399: cả symlink mang tên GO-NO-GO (`GO-NO-GO-v9.md → draft.md`): `cp`/`cmp` đi theo liên kết nên chụp và khôi phục
+  # đúng đích; liên kết treo không có gì để chụp → bỏ khỏi danh sách.
+  ( cd "$ROOT" && find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o \( -type f -o -type l \) -iname 'go-no-go*.md' -print0 ) >"$1/all" || return 1
+  while IFS= read -r -d '' f; do
+    if [ -f "$ROOT/$f" ]; then printf '%s\0' "$f"; fi
+  done <"$1/all" >"$1/list"
   while IFS= read -r -d '' f; do
     i=$((i + 1)); cp -p -- "$ROOT/$f" "$1/$i" || return 1
   done <"$1/list"

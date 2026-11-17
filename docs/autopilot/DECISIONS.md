@@ -520,8 +520,13 @@
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: không có hành vi nào để lỗi trong bản; trả lời câu hỏi chặn cần thử trên git/GitHub thật (T-3850) nên viết trước là đoán. Giữ đường lùi: Draft + [chặn] ở SPEC ngăn triển khai sớm. Phương án 3 khoá phát hành vì việc của tính năng tương lai.
 - Đường lùi: Đổi ba hàng về mở.
 
-### D-499 · 2026-11-17T03:49:14+00:00 · 94 dòng 🟢 nợ review còn mở (audit check --strict đỏ): trả thế nào trong đợt 3 harden?
+### D-498 · 2026-11-17T02:34:43+00:00 · AUD-HAR-385 (_release_promotion không có đường miễn cho hàng N/A BLOCKER) xử lý thế nào trong đợt harden?
 
+- Phương án: (1) Chấp nhận có hạn: hành vi hiện tại fail-closed (pending_human, người vẫn phát hành được), lối miễn cần chọn nơi ghi lý do được guard bảo vệ — làm cùng T-3858 (SPEC-factory-scale F-144) · (2) Thêm lối miễn ngay: lý do ghi trong bảng ký §5 · (3) Thêm lối miễn ngay: mục riêng đưa vào neo D-392
+- Chọn: Chấp nhận có hạn: hành vi hiện tại fail-closed (pending_human, người vẫn phát hành được), lối miễn cần chọn nơi ghi lý do được guard bảo vệ — làm cùng T-3858 (SPEC-factory-scale F-144)
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: hành vi hiện tại chặt (không phát hành sai), chỉ bất tiện cho dự án M/L thiếu khoá; thêm lối miễn mà guard chưa bảo vệ chỗ ghi lý do sẽ mở đường agent tự miễn. Chọn chỗ ghi (a hay b) là quyết định thiết kế gắn T-3858.
+- Đường lùi: Đổi hàng về mở, thêm lối miễn theo (a) hoặc (b).
+### D-499 · 2026-11-17T03:49:14+00:00 · 94 dòng 🟢 nợ review còn mở (audit check --strict đỏ): trả thế nào trong đợt 3 harden?
 - Phương án: (1) Sửa mặc định kèm test hồi quy; chấp nhận có hạn 2027-01-21 khi là nghi ngờ chưa tái hiện, ranh giới sandbox, hiệu năng guard (đo ở T-3709), đổi thiết kế, hay lịch sử không viết lại được · (2) Sửa hết mọi mục, kể cả đổi thiết kế · (3) Chấp nhận hết có hạn, không sửa
 - Chọn: Sửa mặc định kèm test hồi quy; chấp nhận có hạn 2027-01-21 khi là nghi ngờ chưa tái hiện, ranh giới sandbox, hiệu năng guard (đo ở T-3709), đổi thiết kế, hay lịch sử không viết lại được
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: lỗi thật có tái hiện được sửa với test, chiều chặt hơn khi xung đột (D-415). Giữ đường lùi: mục chấp nhận có chủ và hạn, xét lại cùng mốc hàng rào 2027-01-21. Phương án 2 kéo thiết kế mới vào harden (rủi ro cao hơn lợi); phương án 3 bỏ lỗi đã biết. Test mới ở file riêng mỗi lát để chạy song song không đụng nhau.
