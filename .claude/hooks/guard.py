@@ -2398,7 +2398,7 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _prefix_why(cmd) or _nested_quote_why(cmd) or _func_scope_why(cmd)  # P0 lát 4; AUD-SEC-750/660/661
     why = why or _prod_decided_bash_why(cmd)  # AUD-SEC-641
     why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
-    why = why or _opaque_value_why(cmd) or _trap_assign_why(cmd)  # D-502: AUD-SEC-821/822/823/830
+    why = why or _opaque_value_why(cmd, root, cwd) or _trap_assign_why(cmd)  # D-502: AUD-SEC-821/822/823/830
     why = why or _runner_dyn_why(cmd) or _xargs_why(cmd) or _positional_why(cmd)  # D-503, T-3937
     # AUD-SEC-612 (đích chuyển hướng ghi có thay lệnh trần dính chữ) nay do `_opaque_value_why` (D-503) bắt: mọi đích ghi
     # có thay lệnh là giá trị mờ → BUDGET; test AUD-SEC-612 vẫn ghim hành vi.
@@ -2825,7 +2825,19 @@ def _subst_computed(word: str, i: int) -> bool:
     trùng tệp có sẵn)."""
     end = _raw_group_end(word, i + 2, "(") if word.startswith("$(", i) else -1
     n = normalize(tokenize(word[i + 2 : end - 1])) if end > 0 else []
-    return n == ["pwd"] or tuple(n) in CURRENT_BRANCH_QUERIES or n[:1] == ["mktemp"] and "$(" not in word[i + 2 : end]
+    mktemp = n[:1] == ["mktemp"] and "$(" not in word[i + 2 : end]
+    return n == ["pwd"] or tuple(n) in CURRENT_BRANCH_QUERIES or mktemp or _date_fmt_ok(n)
+
+
+# T-3940: `$(date +FMT)` — FMT chỉ gồm chuyển đổi ra số (`%F` `%Y` `%s` `%T`…, không `%D`/`%x`/`%n` ra `/`, xuống
+# dòng hay tên địa phương), chữ số, `-_:T` và `.` không liền nhau, có ít nhất một chuyển đổi: kết quả chỉ gồm
+# `DATE_CHARS` — không `/`, `..`, khoảng trắng, glob, không thành tên đường bảo vệ.
+DATE_FMT_RE = re.compile(r"\+(?=.*%[^%])(?:%[FYymdHMSsTjuwVGgCINz%]|[0-9T:_-]|\.(?!\.))+", re.S)
+DATE_CHARS = "0123456789-:+._T%"
+
+
+def _date_fmt_ok(n: List[str]) -> bool:
+    return n[:1] == ["date"] and len(n) in (2, 3) and n[1:-1] in ([], ["-u"]) and bool(DATE_FMT_RE.fullmatch(n[-1]))
 
 
 def _dd_word_bad(word: str, names: Set[str], lit: Set[str], mode: int) -> bool:
@@ -3027,8 +3039,11 @@ def _func_names(cmd: str) -> Set[str]:
     return names - {""}
 
 
-def _opaque_value_why(cmd: str) -> str:
-    cmds = _simple_cmds(cmd) if DD_SUBST_RE.search(cmd) or "$" in cmd else None
+CD_WORD_RE = re.compile(r"(?<![\w.-])(?:cd|pushd|env)(?![\w.-])")
+
+
+def _opaque_value_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
+    cmds = _simple_cmds(cmd) if DD_SUBST_RE.search(cmd) or "$" in cmd or CD_WORD_RE.search(cmd) else None
     if not cmds:
         return ""
     names, weak = _opaque_names(cmds), _opaque_names(cmds, True)
@@ -3037,19 +3052,262 @@ def _opaque_value_why(cmd: str) -> str:
         weak.discard("_")
     unmodelled = _unmodelled_assigns(cmds, cmd)
     weak |= unmodelled
-    lit = (_lit_names(cmds, cmd) | {GLOB_MARK + n for n in _glob_loop_names(cmds)}) - unmodelled
-    moved = False
+    lit = (_lit_names(cmds, cmd) | {GLOB_MARK + n for n in _glob_loop_names(cmds, cmd)}) - unmodelled
+    cd, sed = _CdScope(cmd, cmds, weak | unmodelled, lit, root), _SedCtx(cmd, cmds, cwd or root, root)
+    moved = MOVED_NONE
     # hậu tố từ tên lệnh có luật sau trình chạy gói/tên lạ (`uv run rm "$(…)"`) xét như lệnh đơn (T-3937)
     steps = [s for seg, words in cmds for s in [(seg, words), *((t, t) for t in _runner_tails(words))]]
     for seg, words in steps:
-        checked = _opaque_checked(seg, words)
-        if moved and any(mode == DD_FULL for _, mode in checked):  # đích tương đối theo thư mục mờ
+        checked = sed.checked(words, _opaque_checked(seg, words))
+        here = max(moved, MOVED_DIR if _env_dir_moved(seg, words) else MOVED_NONE)
+        if _moved_blocks(here, seg, words, checked):  # đích tương đối theo thư mục mờ
             return OPAQUE_VALUE_WHY.format(clean_text(" ".join(words))[:80])
         for w, mode in checked:
             if mode != DD_NAMES and _dd_word_bad(w, weak if mode == DD_FULL else names, lit, mode):
                 return OPAQUE_VALUE_WHY.format(clean_text(w)[:80])
-        moved = moved or any(mode == DD_NAMES and _cd_moved(w, weak, lit) for w, mode in checked)
+        moved = max(moved, cd.moves(words))
     return ""
+
+
+# Mức dời thư mục: thư mục mờ (`cd "$(…)"` — mọi đích ghi tương đối sau đó, cả chuyển hướng) · thư mục không biết
+# (`cd ~-`, `CDPATH`, `env -C "$X"` — đối số lệnh có luật hẹp; đích chuyển hướng do bộ thử mọi thư mục canh xét, D-106)
+MOVED_NONE, MOVED_DIR, MOVED_OPAQUE = 0, 1, 2
+
+
+def _moved_blocks(level: int, seg: List[str], words: List[str], checked: List[Tuple[str, int]]) -> bool:
+    """`checked` (đích chuyển hướng ghi đứng trước — `_opaque_checked`) có từ ở mức `DD_FULL` mà thư mục mờ làm đổi.
+    Thư mục không biết: chỉ đối số lệnh đích-đường (git/gh xét mọi thư mục ứng viên theo luật riêng — D-347)."""
+    redirs = sum(1 for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a and b != PROCSUB_WORD)
+    name = posixpath.basename(_dequote(words[0])) if words else ""
+    pool = checked if level == MOVED_OPAQUE else checked[redirs:] if name not in ("git", "gh") else []
+    return level != MOVED_NONE and any(mode == DD_FULL for _, mode in pool)
+
+
+# T-3940 (cổng ký lần 5): kịch bản sed không phải đích ghi. Kịch bản có mở rộng chỉ qua khi là chuỗi lệnh `s` (địa chỉ
+# số/`$`/`/regex/`), mở rộng chỉ nằm ở VẾ THAY, cờ chỉ `gpIiMm` và số (không `e`/`w`), và mỗi mở rộng có giá trị guard
+# tính được trong `SED_VALUE_RE` không chứa dấu phân cách: `$(date +FMT)`, `$(cat TỆP)` (tệp trong dự án đọc lúc quyết
+# định, chỉ khi mọi lệnh khác là `cat`/`date`), biến chỉ gán (đứng riêng, trước sed, không điều kiện) từ chữ hay hai
+# dạng đó. Khác (`e`, `s///e`, `w`, `r`, `W`, mở rộng ở mẫu/địa chỉ) → BUDGET. Tệp của sed vẫn là đích ghi.
+SED_VALUE_RE = re.compile(r"[\w.:+%-]*")
+# địa chỉ: số (cả mở rộng chỉ ra số — `\x01`: `$((n-25))`, biến gán số), `$`, `/regex/` không mở rộng; lệnh: `s` hay
+# lệnh in/xoá/thoát không đối số
+SED_ADDR = r"(?:[\d\x01]+|\$|/(?:[^/\\\x00\x01\n]|\\[^\x00\x01\n])*/)"
+SED_S_HEAD_RE = re.compile(rf"[ \t]*(?:{SED_ADDR}(?:,{SED_ADDR})?[ \t]*!?[ \t]*)?(?:s([^\\\n\x00\x01\w\s])|([pdq=]))")
+SED_NUM_CHARS = frozenset("0123456789-")
+SED_ARITH_RE = re.compile(r"\$\(\([\w\s+*/%-]*\)\)")
+SED_S_FLAGS_RE = re.compile(r"^[gpIiMm0-9]*[ \t]*")
+SED_PIECE_RE = re.compile(r"\$(?:\(|\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))")
+SED_CAT_RE = re.compile(r"cat[ \t]+([\w.-]+(?:/[\w.-]+)*)")
+SED_CAT_MAX = 256
+SED_READERS = frozenset({"sed", "cat", "date"})
+
+
+class _SedCtx:
+    def __init__(self, cmd: str, cmds: List[Tuple[List[str], List[str]]], cwd: str, root: str):
+        self.cmd, self.cmds, self.cwd, self.root = cmd, cmds, cwd, root
+        heads = [posixpath.basename(_dequote(w[0])) for _, w in cmds if w]
+        self.solo = all(h in SED_READERS for h in heads) and heads.count("sed") == 1
+
+    def checked(self, words: List[str], checked: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
+        """`checked` của lệnh `words` bỏ kịch bản sed; kịch bản có mở rộng không tính chắc → `PROCSUB_WORD` (BUDGET)."""
+        n = len(words) - 1
+        if not words or posixpath.basename(_dequote(words[0])) != "sed" or len(checked) < n:
+            return checked
+        head, tail = checked[: len(checked) - n], checked[len(checked) - n :]
+        if [w for w, _ in tail] != words[1:]:
+            return checked
+        k = next((i for i, (_, w) in enumerate(self.cmds) if w is words), len(self.cmds))
+        scripts = _sed_script_slots(words[1:])
+        out = [
+            (PROCSUB_WORD, DD_FULL) if i in scripts and not self.script_ok(w, k) else (w, m)
+            for i, (w, m) in enumerate(tail)
+        ]
+        return head + [c for i, c in enumerate(out) if i not in scripts or c[0] == PROCSUB_WORD]
+
+    def script_ok(self, raw: str, k: int) -> bool:
+        """Kịch bản `raw` (còn nháy) của lệnh sed thứ `k` an toàn (xem trên)."""
+        view = _CodeView(raw)
+        if view.why:
+            return not re.search(r"[$`]", raw)
+        live = [i for i, c in enumerate(raw) if c in "$`" and view.kind[i] != "q"]
+        if not live:
+            return True
+        skeleton, chars, done = raw, "", set()
+        for m in reversed([m for m in SED_PIECE_RE.finditer(raw) if view.kind[m.start()] != "q"]):
+            end = _raw_group_end(raw, m.end(), "(") if m[0] == "$(" else m.end()
+            value = self.value(raw[m.start() : end], k)
+            if value is None:
+                return False
+            chars += value
+            done |= set(range(m.start(), end))
+            mark = "\x01" if set(value) <= SED_NUM_CHARS else "\x00"
+            skeleton = skeleton[: m.start()] + mark + skeleton[end:]
+        return set(live) <= done and _sed_skeleton_ok(_dequote(skeleton), chars)
+
+    def value(self, piece: str, k: int) -> Optional[str]:
+        """Giá trị (hay tập ký tự có thể) của mở rộng `piece`; None = không tính chắc."""
+        m = SED_PIECE_RE.fullmatch(piece) if piece[:2] != "$(" else None
+        if SED_ARITH_RE.fullmatch(piece):
+            return "".join(sorted(SED_NUM_CHARS))
+        if m is None:
+            n = normalize(tokenize(piece[2:-1]))
+            cat = SED_CAT_RE.fullmatch(piece[2:-1].strip())
+            return DATE_CHARS if _date_fmt_ok(n) else self._cat(cat[1]) if cat else None
+        return self._var(m[1] or m[2], k)
+
+    def _cat(self, rel: str) -> Optional[str]:
+        path = os.path.join(self.cwd, rel)
+        if not self.solo or ".." in rel.split("/") or not self.root or not _inside_root(path, self.root, None):
+            return None
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read(SED_CAT_MAX + 1)
+        except OSError:
+            return None
+        text = data.decode("utf-8", "replace").rstrip("\n")
+        return text if len(data) <= SED_CAT_MAX and SED_VALUE_RE.fullmatch(text) else None
+
+    def _var(self, name: str, k: int) -> Optional[str]:
+        """Biến chỉ gán ở lệnh gán đứng riêng, không điều kiện, trước lệnh sed thứ `k`."""
+        cond = _cond_segs(self.cmd, self.cmds)
+        out: List[Optional[str]] = []
+        for i, (seg, words) in enumerate(self.cmds):
+            if name not in _seg_assigned(seg):
+                continue
+            vals = [t[m.end() :] for t in seg if (m := ASSIGN_WORD_RE.match(t)) and m[1] == name and "[" not in m[0]]
+            if words or i in cond or i >= k or not vals:
+                return None
+            out += [self._assigned(v, k) for v in vals]
+        return None if not out or None in out else "".join(str(v) for v in out)
+
+    def _assigned(self, value: str, k: int) -> Optional[str]:
+        inner = value[1:-1] if len(value) > 1 and value[0] == value[-1] == '"' else value
+        if not re.search(r"[$`]", value):
+            text = _dequote(value)
+            return text if SED_VALUE_RE.fullmatch(text) else None
+        whole = inner[:2] == "$(" and _raw_group_end(inner, 2, "(") == len(inner)
+        return self.value(inner, k) if whole else None
+
+
+def _sed_script_slots(args: List[str]) -> Set[int]:
+    """Chỉ số (trong `args`) của từ là kịch bản sed: giá trị `-e`/`--expression` tách riêng; không có `-e`/`-f` thì đối số
+    không cờ đầu tiên. Dạng dính (`-es/…/`, `--expression=…`) không tính — vẫn xét như đích."""
+    plain = [_dequote(a) for a in args]
+    slots: Set[int] = set()
+    operands: List[int] = []
+    given, i = False, 0
+    while i < len(plain):
+        p, step = plain[i], 1
+        if _is_redirect(args[i]):
+            step = 2
+        elif p == "--":
+            operands += range(i + 1, len(plain))
+            break
+        elif p[:1] != "-" or p == "-":
+            operands.append(i)
+        else:
+            value = _sed_option_value(p)
+            given = given or value in ("e", "f", "E")
+            slots |= {i + 1} if value == "e" else set()
+            step = 2 if value in ("e", "f", "l") else 1
+        i += step
+    return slots if given else set(operands[:1])
+
+
+SED_LONG_VALUE = {"--expression": "e", "--file": "f", "--line-length": "l"}
+
+
+def _sed_option_value(p: str) -> str:
+    """Cờ `p`: "e" (từ kế là kịch bản), "f" (từ kế là tệp kịch bản), "l" (từ kế là số), "E" (kịch bản/tệp dính vào
+    cờ), "" (cờ bool, `-i` hậu tố)."""
+    if p.startswith("--"):
+        key, eq, _ = p.partition("=")
+        code = next((v for k, v in SED_LONG_VALUE.items() if len(key) > 3 and k.startswith(key)), "")  # getopt viết tắt
+        return ("E" if code in ("e", "f") else "") if eq else code
+    for j, c in enumerate(p[1:], 1):
+        if c == "i":
+            return ""
+        if c in "efl":
+            return c if not p[j + 1 :] else "" if c == "l" else "E"
+    return ""
+
+
+def _sed_skeleton_ok(text: str, chars: str) -> bool:
+    """Kịch bản đã bỏ nháy (`\\x00` = chỗ mở rộng) chỉ gồm lệnh `s` với mở rộng ở vế thay, dấu phân cách ngoài `chars`."""
+    while True:
+        m = SED_S_HEAD_RE.match(text)
+        if m is None or m[1] and m[1] in chars:
+            return False
+        pat, j = _sed_field(text, m.end(), m[1]) if m[1] else ("", m.end())
+        rep, i = _sed_field(text, j, m[1]) if m[1] else ("", j)
+        if pat is None or rep is None or re.search(r"[\x00\x01]", pat) or re.search(r"\\[\x00\x01]", rep):
+            return False
+        rest = SED_S_FLAGS_RE.sub("", text[i:], count=1)
+        if not rest.strip(" \t\n;"):
+            return True
+        if rest[0] not in ";\n":
+            return False
+        text = rest[1:]
+
+
+def _sed_field(text: str, i: int, delim: str) -> Tuple[Optional[str], int]:
+    """(trường tới dấu phân cách không thoát, vị trí sau nó); None = không đóng."""
+    j = i
+    while j < len(text) and text[j] not in (delim, "\n"):
+        j += 2 if text[j] == "\\" else 1
+    return (text[i:j], j + 1) if j < len(text) and text[j] == delim else (None, j)
+
+
+# T-3940 (fuzz cổng ký lần 5): thư mục sau `cd`/`pushd` guard không biết — `CDPATH` (gán ở lệnh hay môi trường),
+# `shopt -s cdable_vars`, `~+`/`~-`, `cd`/`cd -` trần, `pushd` không thư mục/`-n`/`+N`, đích bộ theo dõi thư mục không
+# giải (`_cd_target` None) — lệnh có luật hẹp sau đó (đích tương đối) → BUDGET. `cd "$HOME/…"` (HOME không gán lại)
+# vào trong dự án: bộ theo dõi thư mục giải được, không tính là dời mờ.
+CD_ANY_DIR = "/"
+
+
+class _CdScope:
+    def __init__(self, cmd: str, cmds: List[Tuple[List[str], List[str]]], weak: Set[str], lit: Set[str], root: str):
+        self.weak, self.lit, self.root = weak, lit, root
+        self.cdpath = bool(re.search(r"CDPATH|cdable_vars", cmd) or os.environ.get("CDPATH"))
+        assigned = {n for seg, _ in cmds for n in _seg_assigned(seg)}
+        self.home_kept = not {"HOME", OPAQUE_ANY} & (assigned | weak)
+
+    def moves(self, words: List[str]) -> int:
+        """Mức dời thư mục (`MOVED_*`) của lệnh `words`."""
+        name = posixpath.basename(_dequote(words[0])) if words else ""
+        if name not in ("cd", "pushd"):
+            return MOVED_NONE
+        args = _no_redirects(words[1:])
+        plain = [_dequote(a) for a in args]
+        if name == "pushd" and ("-n" in plain or all(p[:1] == "-" for p in plain)):
+            return MOVED_DIR
+        dyn = [a for a in args if re.search(r"[$`]", a)]
+        if dyn:
+            opaque = any(_cd_moved(w, self.weak, self.lit) and not self._home_inside(w) for w in dyn)
+            return MOVED_OPAQUE if opaque else MOVED_NONE
+        # `~+/x` (= `$PWD/x`) không có `..`: thư mục con của thư mục hiện tại
+        plain = ["." + p[2:] if p[:2] == "~+" and ".." not in p.split("/") else p for p in plain]
+        if len(_cd_operands(plain)[0]) > 1:  # `cd a b`: bash báo lỗi, không đổi thư mục
+            return MOVED_NONE
+        return MOVED_DIR if _cd_target([name, *plain], CD_ANY_DIR, self.cdpath) is None else MOVED_NONE
+
+    def _home_inside(self, word: str) -> bool:
+        m = CD_ENV_DIR_RE.fullmatch(word)
+        if not (m and self.home_kept and self.root and "HOME" in (m[1], m[2])):
+            return False
+        return _inside_root("~/" + m[3], self.root, None)
+
+
+def _env_dir_moved(seg: List[str], words: List[str]) -> bool:
+    """`env -C DIR`/`--chdir=DIR` trước lệnh mà DIR có mở rộng — bộ theo dõi thư mục không giải (T-3940)."""
+    prefix = seg[: len(seg) - len(words)]
+    for k, t in enumerate(prefix):
+        p = _dequote(t)
+        value = (prefix[k + 1 : k + 2] or [""])[0] if p in ("-C", "--chdir") else t if p[:2] == "-C" else ""
+        value = t.partition("=")[2] if p.startswith("--chdir=") else value
+        if re.search(r"[$`]", value):
+            return True
+    return False
 
 
 ASSIGN_IN_TEXT_RE = re.compile(r"(?<![\w$])([A-Za-z_]\w*)(?:\[[^\]]*\])?\+?=")
@@ -3067,7 +3325,8 @@ def _unmodelled_assigns(cmds: List[Tuple[List[str], List[str]]], cmd: str) -> Se
     có toán tử (`Z=${HOME%/}`), `unset`, tham số vị trí sau `set …`; `eval` có mở rộng, `source`/`.` → mọi biến."""
     # mảng chữ: `${a[*]}`/`${a[0]}` guard mô hình (review #426); `$a`/`${a}` (phần tử đầu) thì không
     arrays = {m[1] for m in ARRAY_ASSIGN_RE.finditer(cmd)}
-    out = {n for n in arrays if re.search(rf"\$\{{?{n}(?![\w\[])", cmd)}
+    # T-3940: mảng còn gán vô hướng ở chỗ khác (`X=1; X=(-h); … "${X[0]}"`) — bảng biến giữ giá trị vô hướng
+    out = {n for n in arrays if re.search(rf"\$\{{?{n}(?![\w\[])|(?<![\w$]){n}\+?=(?!\()", cmd)}
     seeded = {m[1] for seg, words in cmds if not words for t in seg if (m := ASSIGN_LIT_RE.fullmatch(t))}
     for seg, words in cmds:
         plain = [_dequote(t) for t in _no_redirects(seg) if t not in SHELL_KEYWORDS]
@@ -3087,12 +3346,77 @@ def _unmodelled_assigns(cmds: List[Tuple[List[str], List[str]]], cmd: str) -> Se
     return out
 
 
-def _glob_loop_names(cmds: List[Tuple[List[str], List[str]]]) -> Set[str]:
-    """Biến `for f in *.txt` (danh sách chữ/glob, không mở rộng) chỉ gán ở đó: tên tệp có sẵn — toán tử cắt trên nó
-    (`mv "$f" "${f%.txt}.md"`, AUD-SEC-823) tính như biến gán chữ (T-3937)."""
+def _glob_loop_names(cmds: List[Tuple[List[str], List[str]]], cmd: str) -> Set[str]:
+    """Biến `for f in *.txt` mà mọi cắt `${f%chữ}`/`${f#chữ}` ráp được với từng từ của danh sách (`_glob_loop_splices`):
+    toán tử cắt trên nó (`mv "$f" "${f%.txt}.md"`, AUD-SEC-823) cho qua cổng giá trị mờ vì BẢN THAY được quét."""
+    return _glob_loop_splices(cmd, cmds)[0]
+
+
+# T-3940 (cổng ký lần 5, hồi quy #648): biến `for` duyệt glob mang TÊN TỆP THẬT (`for d in ~/*/` → `/home/u/a/`) — cắt
+# hậu tố/tiền tố trên nó không phải chữ đã tính. Bản thay: mỗi lần cắt (ngoài nháy đơn, sau `for`, không lồng trong
+# `${…}` khác) thay bằng kết quả cắt trên TỪ CỦA DANH SÁCH, glob giữ nguyên và ra ngoài nháy (`rm -rf ""~/*""`) để luật
+# chính xét như `rm -rf ~/*`. Cắt chắc chỉ khi phần chữ ở đầu (`#`)/cuối (`%`) của từ dài ít nhất bằng mẫu — khác (`for f
+# in *; … "${f%x}"`) → không ráp (BUDGET ở cổng giá trị mờ).
+GLOB_LOOP_CUT_RE = re.compile(r"\$\{([A-Za-z_]\w*)(%%?|##?)([^{}]*)\}")
+GLOB_LIST_WORD_RE = re.compile(r"~?[\w./*?\[\]!@%+,:=-]*")
+GLOB_LOOP_VARIANTS = 64  # số tổ hợp từ tối đa (vượt → không ráp)
+
+
+def _glob_loops(cmds: List[Tuple[List[str], List[str]]]) -> Dict[str, List[str]]:
     assigned = [n for seg, _ in cmds for n in _seg_assigned(seg)]
     loops = (w for _, w in cmds if w[:1] == ["for"] and w[2:3] == ["in"])
-    return {w[1] for w in loops if not any(re.search(r"[$`]", t) for t in w[3:]) and assigned.count(w[1]) == 1}
+    return {w[1]: w[3:] for w in loops if not any(re.search(r"[$`]", t) for t in w[3:]) and assigned.count(w[1]) == 1}
+
+
+def _glob_loop_splices(cmd: str, cmds: List[Tuple[List[str], List[str]]]) -> Tuple[Set[str], List[str]]:
+    """(tên biến `for` ráp được, bản thay của `cmd` cho mọi tổ hợp từ của các danh sách đó)."""
+    loops = _glob_loops(cmds) if "${" in cmd else {}
+    view = _CodeView(cmd) if loops else None
+    if view is None or view.why:
+        return set(), []
+    hits: Dict[str, List["re.Match[str]"]] = {}
+    for m in GLOB_LOOP_CUT_RE.finditer(cmd):
+        if m[1] in loops and view.kind[m.start()] != "q":
+            hits.setdefault(m[1], []).append(m)
+    values: Dict[str, List[List[str]]] = {}
+    spans = [(m.start(), _raw_group_end(cmd, m.start() + 2, "{")) for m in re.finditer(r"\$\{", cmd)]
+    for name, ms in hits.items():
+        cuts = [[_glob_word_cut(w, m[2], m[3]) for m in ms] for w in loops[name]]
+        if all(_glob_cut_placed(cmd, spans, name, m) for m in ms) and all(None not in c for c in cuts):
+            values[name] = [[str(v) for v in c] for c in cuts]
+    combos = list(itertools.islice(itertools.product(*values.values()), GLOB_LOOP_VARIANTS + 1))
+    if len(combos) > GLOB_LOOP_VARIANTS:
+        return set(), []
+    picked = [m for name in values for m in hits[name]]
+    out = [_splice_glob_cuts(cmd, view, picked, [v for c in combo for v in c]) for combo in combos if picked]
+    return set(values), list(dict.fromkeys(out))
+
+
+def _glob_cut_placed(cmd: str, spans: List[Tuple[int, int]], name: str, m: "re.Match[str]") -> bool:
+    """Lần cắt đứng sau `for <tên> in` và không nằm trong `${…}` khác (`spans`: mọi `${…}` của lệnh)."""
+    loop = re.search(rf"(?<![\w$]){name}[ \t]+in(?![\w-])", cmd)
+    nested = any(s < m.start() < e for s, e in spans)
+    return loop is not None and loop.start() < m.start() and not nested
+
+
+def _glob_word_cut(word: str, op: str, pat: str) -> Optional[str]:
+    """Kết quả cắt `op`+`pat` trên từ danh sách `word` (glob giữ nguyên); None = không chắc."""
+    if not GLOB_LIST_WORD_RE.fullmatch(word) or not GLOB_OP_RE.fullmatch(op + pat):
+        return None
+    marks = [i for i, c in enumerate(word) if c in "*?[]" or c == "~" and i == 0]
+    lit = word[: marks[0]] if op[0] == "#" and marks else word[marks[-1] + 1 :] if marks else word
+    if marks and len(lit) < len(pat):
+        return None
+    if op[0] == "#":
+        return word[len(pat) :] if lit.startswith(pat) else word
+    return word[: len(word) - len(pat)] if pat and lit.endswith(pat) else word
+
+
+def _splice_glob_cuts(cmd: str, view: "_CodeView", hits: List["re.Match[str]"], values: List[str]) -> str:
+    for m, val in sorted(zip(hits, values), key=lambda p: -p[0].start()):
+        word = val or "''"
+        cmd = cmd[: m.start()] + (f'"{word}"' if view.kind[m.start()] == "d" else word) + cmd[m.end() :]
+    return cmd
 
 
 # Toán tử trên biến đã gán chữ mà bảng biến của guard tính (AUD-SEC-829: `X=xxfeat; X=${X:2}`): cắt chuỗi offset
@@ -3104,7 +3428,9 @@ def _value_ops_modelled(value: str, seeded: Set[str]) -> bool:
     return all(n in seeded and SAFE_VALUE_OP_RE.fullmatch(op) for n, op in _dd_params(value) if op)
 
 
-CD_ENV_DIR_RE = re.compile(r'"?\$(?:\{(HOME|PWD)\}|(HOME|PWD)(?!\w))([^$`"]*)"?|"?\$\(pwd\)([^$`"]*)"?')
+CD_ENV_DIR_RE = re.compile(
+    r'"?\$(?:\{(HOME|PWD)\}|(HOME|PWD)(?!\w))([^$`"]*)"?|"?\$\((?:(?:builtin|command)\s+)?pwd(?:\s+-[LP])?\)([^$`"]*)"?'
+)
 
 
 def _cd_leaves_project(word: str) -> bool:
@@ -3159,7 +3485,7 @@ def _runner_dyn_why(cmd: str) -> str:
 # cờ không ăn giá trị của trình chạy gói hay gặp; cờ khác (không `=`) có thể ăn từ kế (`uv run --with zq …`)
 RUNNER_BOOL_FLAGS = frozenset(
     "--frozen --locked --no-sync --isolated --no-project --all-extras --no-dev --quiet -q --verbose -v --offline"
-    " --no-cache --active --exact --refresh --no-env-file --all-packages --all-groups".split()
+    " --no-cache --active --exact --refresh --no-env-file --all-packages --all-groups -y --yes --no-install --silent".split()
 )
 
 
@@ -3223,14 +3549,12 @@ def _xargs_rest(prefix: List[str], seg: List[str]) -> Optional[List[str]]:
 
 def _xargs_bad(rest: List[str], replace: bool = False, listed: bool = False) -> bool:
     plain = [_dequote(t) for t in rest]
-    i = 0
-    while i < len(plain) and posixpath.basename(plain[i]) in XARGS_BARE_WRAPS:
-        i += 1
-        while i < len(plain) and (plain[i][:1] == "-" or XARGS_ARG_RE.fullmatch(plain[i])):
-            i += 1
+    i = _xargs_wraps_end(plain)
     if i >= len(plain):
         return i > 0  # `xargs env` — chữ stdin là tên lệnh; `xargs` trần chạy echo
     name = posixpath.basename(plain[i])
+    if not XARGS_NAME_RE.fullmatch(name):  # T-3940: tên lệnh là chuỗi thay (`xargs -I{} nice {} …`)
+        return True
     if name in SHELLS:
         c = next((k for k in range(i + 1, len(plain)) if re.fullmatch(r"-[a-z]*c", plain[k])), -1)
         return c < 0 or c + 1 >= len(plain) or bool(POSITIONAL_USE_RE.search(plain[c + 1]))
@@ -3244,20 +3568,52 @@ def _xargs_bad(rest: List[str], replace: bool = False, listed: bool = False) -> 
     # từ `find`/`git ls-files`/`ls`/`echo` — luật cũ (AUD-SEC-384/396/816, review #405) xét nguồn đó; nguồn khác
     # (`printf`, `cat`, tệp) → BUDGET
     rm_ok = name == "rm" and listed and all(p[:1] == "-" or p == "{}" and replace for p in plain[i + 1 :])
-    writer_ok = name in DD_WRITERS and listed
+    writer_ok = name in DD_WRITERS and listed and not _xargs_dest(name, plain[i + 1 :], replace)
     return bool(re.search(r"[$`]", rest[i])) or not (rm_ok or writer_ok) and _dd_full(name)
+
+
+XARGS_NAME_RE = re.compile(r"[\w.+-]+")
+XARGS_DEST_CMDS = frozenset({"mv", "cp", "ln", "install"})
+XARGS_LIT_DEST_RE = re.compile(r"[\w./:+,=-]+")
+
+
+def _xargs_dest(name: str, args: List[str], replace: bool) -> bool:
+    """T-3940: chữ stdin thành ĐÍCH của `mv`/`cp`/`ln`/`install` — nối vào cuối (không `-t`), hay đối số cuối không phải
+    chữ trơn ở dạng `-I` (`mv x.json {}`, `cp x .claude/{}`)."""
+    if name not in XARGS_DEST_CMDS or any(a[:2] == "-t" or a.startswith("--target") for a in args):
+        return False
+    return not replace or not args or not XARGS_LIT_DEST_RE.fullmatch(args[-1])
 
 
 XARGS_FEED_RE = re.compile(
     r"(?:^|[;&|(])\s*(?:(?:[A-Za-z_]\w*=\S*|command|env|nice|timeout|stdbuf|ionice|nohup|setsid|time|-\S+|\d\S*)\s+)*"
-    r"(?:find|git\s+ls-files|ls|echo)\s[^|;&]*\|\s*xargs(?![\w-])"
+    r"(find|git\s+ls-files|ls|echo)(\s[^|;&]*)\|\s*xargs(?![\w-])"
 )
 XARGS_WORD_RE = re.compile(r"(?<![\w-])xargs(?![\w-])")
+# T-3940: nguồn liệt kê có đoạn đường bắt đầu bằng `.` (`.claude`, `.c*`) hay `ls -a`/`-A` có thể ra tệp hàng rào
+XARGS_DOT_RE = re.compile(r"(?:^|/)\.(?!\.?(?:/|$))")
+LS_ALL_RE = re.compile(r"-[a-zA-Z]*[aA][a-zA-Z]*")
+CD_ONLY_RE = re.compile(r"(?<![\w.-])(?:cd|pushd|popd)(?![\w.-])")
 
 
 def _xargs_listed(cmd: str) -> bool:
-    """Mọi `xargs` của lệnh nhận stdin trực tiếp từ `find`/`git ls-files`/`ls`/`echo` (T-3937)."""
-    return len(XARGS_FEED_RE.findall(cmd)) == len(XARGS_WORD_RE.findall(cmd))
+    """Mọi `xargs` của lệnh nhận stdin trực tiếp từ `find`/`git ls-files`/`ls`/`echo` (T-3937); T-3940: không `cd`, nguồn
+    không chạm đoạn đường dấu chấm, nguồn `echo` thì phải viết lại được thành lệnh trơn (`_xargs_fed_all`)."""
+    feeds = list(XARGS_FEED_RE.finditer(cmd))
+    if len(feeds) != len(XARGS_WORD_RE.findall(cmd)) or CD_ONLY_RE.search(cmd):
+        return False
+    echoes = sum(m[1] == "echo" for m in feeds)
+    if echoes and len(_xargs_fed_all(cmd)) < echoes:
+        return False
+    words = [(m[1], w) for m in feeds for w in _xargs_src_words(m[2])]
+    return not any(XARGS_DOT_RE.search(w) or src == "ls" and LS_ALL_RE.fullmatch(w) for src, w in words)
+
+
+def _xargs_src_words(text: str) -> List[str]:
+    try:
+        return shlex.split(text)
+    except ValueError:
+        return [".?"]  # không tách được: coi như chạm đoạn dấu chấm
 
 
 def _scan_last_arg(
@@ -3268,15 +3624,19 @@ def _scan_last_arg(
     variant = _last_arg_splice(cmd) if "$" in cmd else None
     bodies = [b for b in map(_bind_positional, _positional_calls(cmd)) if b] if "$" in cmd else []
     variants = [v for v in [variant, *(_xargs_fed_all(cmd) if "xargs" in cmd else [])] if v]
+    variants += _glob_loop_splices(cmd, _simple_cmds(cmd) or [])[1] if "for" in cmd and "${" in cmd else []  # T-3940
     deny = _scan_scripts(variants, root, cwd, depth, asks, 0, budget, rw) if variants else ""
     return deny or (_scan_scripts(bodies, root, cwd, depth, asks, 1, budget, rw) if bodies else "")
 
 
 # T-3937: `echo a b | xargs mv x.json` — nguồn chữ trơn (`echo`, `printf '%s\n'`, `ls` không mở rộng/glob) nối vào argv
 # lệnh sau xargs (`-I{}`: thay `{}`) rồi quét như lệnh trơn (`mv x.json a b`); nguồn khác giữ luật xargs hiện tại
+# T-3940: nguồn chữ có nháy (`echo ".claude/x"`), `echo -n`, `ls -d`; chữ trong nháy không mở rộng
+XARGS_ITEM = r"""(?:'[^'$`\n]*'|"[^"$`\\\n]*"|[\w./:@%+,=-]+)"""
 XARGS_FED_RE = re.compile(
-    r"(?:^|(?<=[;&(\n]))\s*(?:(?:[A-Za-z_]\w*=\S*|command|env|nice|timeout|-\S+|\d\S*)\s+)*(echo|printf\s+'%s\\n'|ls)\s+"
-    r"([\w./:@%+,=-]+(?:[ \t]+[\w./:@%+,=-]+)*)\s*\|\s*(xargs\s[^|;&<>`$()\n]*)(?=$|[;&)\n])",
+    r"(?:^|(?<=[;&(\n]))\s*(?:(?:[A-Za-z_]\w*=\S*|command|env|nice|timeout|-\S+|\d\S*)\s+)*"
+    r"(echo(?:\s+-[neE]+)*|printf\s+'%s\\n'|ls(?:\s+-d)?)\s+"
+    rf"({XARGS_ITEM}(?:[ \t]+{XARGS_ITEM})*)\s*\|\s*(xargs\s[^|;&<>`$()\n]*)(?=$|[;&)\n])",
     re.S,
 )
 
@@ -3296,13 +3656,36 @@ def _xargs_fed(cmd: str) -> Optional[str]:
         return None
     seg = cmds[0][0]
     rest = _xargs_rest(seg[: len(seg) - len(cmds[0][1])], seg) or []
-    if not rest or posixpath.basename(_dequote(rest[0])) not in XARGS_FED_CMDS:
+    at = _xargs_wraps_end([_dequote(t) for t in rest])
+    if at >= len(rest) or posixpath.basename(_dequote(rest[at])) not in XARGS_FED_CMDS:
         return None  # git/gh qua xargs: luật riêng (UNRESOLVED_TARGET…) giữ nguyên
-    words = m[2].split()
-    if "{}" not in rest:
-        return " ".join([*rest, *words])
-    items = [" ".join(words)] if m[1] == "echo" else words  # `-I`: mỗi dòng một lệnh; `echo` in một dòng
-    return "; ".join(" ".join(shlex.quote(item) if t == "{}" else t for t in rest) for item in items)
+    words = shlex.split(m[2])
+    token = _xargs_token([_dequote(t) for t in seg[: len(seg) - len(rest)]])
+    if token is None:
+        return " ".join([*rest, *map(shlex.quote, words)])
+    items = [" ".join(words)] if m[1][:4] == "echo" else words  # `-I`: mỗi dòng một lệnh; `echo` in một dòng
+    return "; ".join(" ".join(t.replace(token, shlex.quote(item)) for t in rest) for item in items)
+
+
+def _xargs_wraps_end(plain: List[str]) -> int:
+    """Chỉ số tên lệnh sau các trình bọc trần (`env`, `nice -n 5`, `timeout 5`) đứng sau xargs."""
+    i = 0
+    while i < len(plain) and posixpath.basename(plain[i]) in XARGS_BARE_WRAPS:
+        i += 1
+        while i < len(plain) and (plain[i][:1] == "-" or XARGS_ARG_RE.fullmatch(plain[i])):
+            i += 1
+    return i
+
+
+def _xargs_token(opts: List[str]) -> Optional[str]:
+    """Chuỗi thay của `-I R`/`-IR`/`-i[R]`/`--replace[=R]` trong tuỳ chọn xargs; None = nối vào cuối."""
+    for k, p in enumerate(opts):
+        rep = XARGS_REPLACE_RE.fullmatch(p) if p[:2] != "--" else None
+        if rep:
+            return rep[2] or ("{}" if rep[1] == "i" else (opts[k + 1 : k + 2] or ["{}"])[0])
+        if p.startswith("--rep"):
+            return p.partition("=")[2] or "{}"
+    return None
 
 
 # T-3937 (fuzz cổng ký lần 4): `bash -c 'rm -rf "$1"' _ ~` — tham số vị trí của thân `sh -c` lấy từ đối số sau thân.
@@ -17316,6 +17699,16 @@ def _container_asks(ctr: List[Tuple[str, List[str]]], depth: int, budget: Option
     return out
 
 
+# T-3940 (fuzz cổng ký lần 5): thân shell lồng tách từ nháy kép (`sh -c "X=-rf; rm \"\$X\" ~"`) — `shlex` chỉ bỏ `\`
+# trước `"`/`\`; bash bỏ cả trước `$`/backtick, nên thân thật là `rm "$X" ~`. Từ đã tách không còn biết nháy gốc (`'\$X'`
+# giữ `\`), nên quét THÊM bản bỏ `\` trước `$`/backtick — chặt hơn của hai cách đọc.
+DQ_ESCAPED_RE = re.compile(r"\\([$`])")
+
+
+def _dq_unescaped(scripts: List[str]) -> List[str]:
+    return list(dict.fromkeys(v for s in scripts for v in (s, DQ_ESCAPED_RE.sub(r"\1", s))))
+
+
 def _scan_scripts(
     scripts: List[str],
     root: str,
@@ -17329,7 +17722,7 @@ def _scan_scripts(
     """Quét từng script con ở độ sâu `depth + deeper`; trả lý do deny (rỗng nếu không). `deeper=0` cho bản viết lại CÙNG
     lệnh (thay biến, hậu tố của lệnh bọc) — không phải shell lồng, không tốn độ sâu nhưng tốn `rewrites`. Script đã quét
     trong quyết định này bị bỏ qua (cùng chuỗi → cùng kết quả)."""
-    for script in scripts:
+    for script in _dq_unescaped(scripts) if deeper else scripts:
         if deeper and depth >= MAX_NEST:
             asks.append(f"{NEST_ASK} — guard không quét hết")
             break

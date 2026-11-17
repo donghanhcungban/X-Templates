@@ -19009,7 +19009,7 @@
    },
    "expect": {
     "allowed": false,
-    "code": "BUDGET"
+    "code": "RULE_DENY"
    },
    "note": "review adr-guard: heredoc fd tường minh / trình thông dịch chạy stdin — thân mở rộng hai lần (lớp C)"
   },
@@ -19024,7 +19024,7 @@
    },
    "expect": {
     "allowed": false,
-    "code": "BUDGET"
+    "code": "RULE_DENY"
    },
    "note": "review adr-guard: heredoc fd tường minh / trình thông dịch chạy stdin — thân mở rộng hai lần (lớp C)"
   },
@@ -19039,7 +19039,7 @@
    },
    "expect": {
     "allowed": false,
-    "code": "BUDGET"
+    "code": "RULE_DENY"
    },
    "note": "review adr-guard: heredoc fd tường minh / trình thông dịch chạy stdin — thân mở rộng hai lần (lớp C)"
   },
@@ -23216,7 +23216,7 @@
 {"id": "aud610-ctl-fd-dup", "origin": "control", "refs": ["AUD-SEC-610"], "input": {"command": "git status 2>&1"}, "expect": {"allowed": true}},
 {"id": "aud610-ctl-amp-redirect", "origin": "control", "refs": ["AUD-SEC-610"], "input": {"command": "git status &>/dev/null"}, "expect": {"allowed": true}},
 {"id": "aud610-ctl-clobber", "origin": "control", "refs": ["AUD-SEC-610"], "input": {"command": "git status >|/dev/null"}, "expect": {"allowed": true}},
-{"id": "aud610-raw-reader-heredoc-shell", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-610"], "input": {"command": "true&&< /dev/null bash 0<<EOF\ngit \\$(echo push) --force origin main\nEOF"}, "expect": {"allowed": false, "code": "BUDGET"}, "note": "review #516 🔴 R1: bộ đọc thô `_raw_tokens` (heredoc vào shell) cũng gộp `&&<` — dùng chung `_unglue`; dạng cách của ca adr65r1-392-fd0"},
+{"id": "aud610-raw-reader-heredoc-shell", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-610"], "input": {"command": "true&&< /dev/null bash 0<<EOF\ngit \\$(echo push) --force origin main\nEOF"}, "expect": {"allowed": false, "code": "RULE_DENY"}, "note": "review #516 🔴 R1: bộ đọc thô `_raw_tokens` (heredoc vào shell) cũng gộp `&&<` — dùng chung `_unglue`; dạng cách của ca adr65r1-392-fd0"},
 {"id": "aud610-raw-reader-patch-fence", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-610"], "input": {"command": "echo x;< /dev/null patch -p0 <<'EOF'\n--- .claude/settings.json\n+++ .claude/settings.json\n@@ -1 +1 @@\n-{\n+x\nEOF"}, "expect": {"allowed": false, "code": "HOOK_BYPASS"}, "note": "review #516 🔴 R1: dạng cách của ca t3663-414-patch-fence"},
 {"id": "aud610-amp-newline-redirect", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-610"], "input": {"command": "sleep 0 &\n< /dev/null git push origin feat/me --force"}, "expect": {"allowed": false, "code": "RULE_DENY"}, "note": "review #516 🔴 R2: `&` rồi xuống dòng rồi `<` là ba toán tử"},
 {"id": "aud610-close-paren-semi-redirect", "origin": "adversarial-reviewer", "refs": ["AUD-SEC-610"], "input": {"command": "(echo x);< /dev/null git push origin feat/me --force"}, "expect": {"allowed": false, "code": "RULE_DENY"}, "note": "review #516 🔴 R3: `)` dính `;<`"},
@@ -23818,6 +23818,57 @@
   {"id": "d503s4-cd-pwd-parent", "origin": "audit", "refs": ["D-503", "AUD-SEC-867"], "input": {"command": "cd \"$PWD/..\" && rm -rf zz"}, "expect": {"allowed": false}},
   {"id": "d503s4-cd-pwd-subst-parent", "origin": "audit", "refs": ["D-503", "AUD-SEC-867"], "input": {"command": "cd \"$(pwd)/..\" && rm -rf zz"}, "expect": {"allowed": false}},
   {"id": "d503s4-xargs-echo-protected", "origin": "audit", "refs": ["D-503", "AUD-SEC-865"], "input": {"command": "echo .claude/settings.json | xargs mv x.json"}, "expect": {"allowed": false}},
-  {"id": "aud863-uv-run-tee-protected", "origin": "audit", "refs": ["AUD-SEC-863", "D-503"], "input": {"command": "uv run tee .claude/settings.json < /dev/null"}, "expect": {"allowed": false}}
+  {"id": "aud863-uv-run-tee-protected", "origin": "audit", "refs": ["AUD-SEC-863", "D-503"], "input": {"command": "uv run tee .claude/settings.json < /dev/null"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-000", "origin": "audit", "refs": ["D-503", "AUD-SEC-869"], "input": {"command": "for d in ~/*/; do rm -rf \"${d%/}\"; done"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-001", "origin": "audit", "refs": ["D-503", "AUD-SEC-869"], "input": {"command": "for d in /*; do rm -rf \"${d%/}\"; done"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-006", "origin": "audit", "refs": ["D-503", "AUD-SEC-869"], "input": {"command": "for f in ~/.ssh/*; do rm -f \"${f%.pub}\"; done"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-010", "origin": "audit", "refs": ["D-503", "AUD-SEC-869"], "input": {"command": "for f in .claude/*.json; do cp /dev/null \"${f%x}\"; done"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-016", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/x/$(cat f)/e\" f"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-021", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/x/$(date +%D)/\" f"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-026", "origin": "audit", "refs": ["D-503"], "input": {"command": "rm -f x; sed \"s/__V__/$(cat VERSION)/\" tpl > out"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-037", "origin": "audit", "refs": ["D-503", "AUD-SEC-870"], "input": {"command": "sh -c \"X=-rf; rm \\\"\\$X\\\" ~\""}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-038", "origin": "audit", "refs": ["D-503", "AUD-SEC-870"], "input": {"command": "sh -c \"export X=~; rm -rf \\\"\\$X\\\"\""}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-041", "origin": "audit", "refs": ["D-503", "AUD-SEC-871"], "input": {"command": "CDPATH=/ cd etc ; rm -rf ssl"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-044", "origin": "audit", "refs": ["D-503", "AUD-SEC-871"], "input": {"command": "cd ~+/.. && rm -rf proj"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-048", "origin": "audit", "refs": ["D-503", "AUD-SEC-871"], "input": {"command": "CDPATH=/home; cd u && rm -rf zz"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-050", "origin": "audit", "refs": ["D-503", "AUD-SEC-871"], "input": {"command": "env -C \"$PWD/..\" rm -rf proj"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-054", "origin": "audit", "refs": ["D-503", "AUD-SEC-871"], "input": {"command": "pushd +1 && rm -rf zz"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-057", "origin": "audit", "refs": ["D-503", "AUD-SEC-871"], "input": {"command": "cd && rm -rf zz"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-061", "origin": "audit", "refs": ["D-503", "AUD-SEC-872"], "input": {"command": "echo .claude/settings.json | xargs env mv x.json"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-064", "origin": "audit", "refs": ["D-503", "AUD-SEC-872"], "input": {"command": "cd .autopilot && ls | xargs cp /dev/null"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-066", "origin": "audit", "refs": ["D-503", "AUD-SEC-872"], "input": {"command": "find .claude/settings.json -maxdepth 0 | xargs mv x.json"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-070", "origin": "audit", "refs": ["D-503", "AUD-SEC-872"], "input": {"command": "echo settings.json | xargs -I{} nice mv x.json .claude/{}"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-074", "origin": "audit", "refs": ["D-503", "AUD-SEC-872"], "input": {"command": "printf '%s\\n' git | xargs -I{} nice {} push --force origin main"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-077", "origin": "audit", "refs": ["D-503", "AUD-SEC-872"], "input": {"command": "X=1; X=(-h); dropdb \"${X[0]}\" db.prod.example.com app"}, "expect": {"allowed": false}},
+  {"id": "d503s5-deny-079", "origin": "audit", "refs": ["D-503"], "input": {"command": "cd \"$HOME\" && git pull"}, "expect": {"allowed": false}},
+  {"id": "d503s5-allow-000", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in *.txt; do mv \"$f\" \"${f%.txt}.md\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-001", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in docs/*.md; do echo \"${f#docs/}\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-002", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in build/*.o; do rm -f \"${f%.o}.d\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-003", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in a b; do rm -rf \"${f%x}\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-004", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in src/*.ts; do cp \"$f\" \"${f##src/}.bak\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-005", "origin": "audit", "refs": ["D-503", "AUD-SEC-873"], "input": {"command": "sed -i \"s/^updated: .*/updated: $(date +%F)/\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-008", "origin": "audit", "refs": ["D-503"], "input": {"command": "NEW=v1.2; sed -i \"s/x/${NEW}/\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-011", "origin": "audit", "refs": ["D-503", "AUD-SEC-873"], "input": {"command": "sed -i -e \"s/a/$(date +%s)/g\" -e 's/b/c/' f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-012", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -n --expression \"s|a|$(date -u +%FT%T)|p\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-013", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -E -i.bak \"1,/x/ s#a#$(date +%Y)#2\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-014", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/x/$(date +%F)/\" -- f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-015", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/x/y/\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-016", "origin": "audit", "refs": ["D-503", "AUD-SEC-873"], "input": {"command": "mv report.html \"report-$(date +%Y%m%d).html\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-017", "origin": "audit", "refs": ["D-503", "AUD-SEC-873"], "input": {"command": "cp X \"/tmp/x-$(date +%F).md\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-018", "origin": "audit", "refs": ["D-503", "AUD-SEC-873"], "input": {"command": "make test | tee \"/tmp/test-$(date +%s).log\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-019", "origin": "audit", "refs": ["D-503", "AUD-SEC-874"], "input": {"command": "npx -y prettier --write \"$FILE\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-020", "origin": "audit", "refs": ["D-503", "AUD-SEC-874"], "input": {"command": "npx --yes prettier --write \"$FILE\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-021", "origin": "audit", "refs": ["D-503", "AUD-SEC-874"], "input": {"command": "npx --no-install prettier --write \"$FILE\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-022", "origin": "audit", "refs": ["D-503", "AUD-SEC-874"], "input": {"command": "pnpm dlx --silent prettier --write \"$FILE\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-023", "origin": "audit", "refs": ["D-503"], "input": {"command": "find . -name '*.pyc' | xargs rm -f"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-024", "origin": "audit", "refs": ["D-503"], "input": {"command": "ls *.md | xargs -I{} cp {} /tmp/"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-025", "origin": "audit", "refs": ["D-503"], "input": {"command": "find docs -name '*.md' | xargs sed -i s/a/b/"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-026", "origin": "audit", "refs": ["D-503"], "input": {"command": "echo docs/a.md | xargs -I{} cp {} /tmp/"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-027", "origin": "audit", "refs": ["D-503"], "input": {"command": "echo a.md b.md | xargs -t cp -t /tmp/"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-028", "origin": "audit", "refs": ["D-503"], "input": {"command": "cd build && rm -rf out"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-029", "origin": "audit", "refs": ["D-503"], "input": {"command": "d=build; cd \"$d\" && rm -rf out"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-030", "origin": "audit", "refs": ["D-503"], "input": {"command": "sh -c \"echo \\\"hi\\\"\""}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-031", "origin": "audit", "refs": ["D-503"], "input": {"command": "pushd build && rm -rf out"}, "expect": {"allowed": true}},
+  {"id": "d503s5-allow-032", "origin": "audit", "refs": ["D-503"], "input": {"command": "X=(a b); echo \"${X[0]}\""}, "expect": {"allowed": true}}
  ]
 }

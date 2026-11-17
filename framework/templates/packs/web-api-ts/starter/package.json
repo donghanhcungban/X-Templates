@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "build": "node scripts/build.ts",
+    "audit:exceptions": "node scripts/check-audit-exceptions.ts",
     "migrate": "node src/migrate.ts",
     "start": "node src/server.ts"
   },
