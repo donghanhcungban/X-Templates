@@ -883,7 +883,7 @@ class GuardMatrixTest(unittest.TestCase):
     IFS_R2_OK = (
         'grep -rIF "SELECT" src/ | head -$N',
         "set -a; . ./.env; set +a; npm run dev",
-        'read -r -p "Nhánh [$def]: " b; git checkout $b',
+        'read -r -p "Nhánh [$def]: " b; git log $b',  # D-503: `git checkout $b` nay BUDGET (giá trị read ở đích)
         "files=(); while IFS= read -r -d '' f; do files+=(\"$f\"); done < <(git ls-files -z '*.py'); echo ${#files[@]}",
         "echo $((1 + 2)) $((a+b)); ls -la",
         'for i in 1 2 3; do echo $i; done; declare -A m; echo "${m[0]}" $HOME',
@@ -3666,12 +3666,10 @@ class GuardDeltaAuditTest(unittest.TestCase):
         # Đổi kỳ vọng có chủ đích (T-3637, AUD-SEC-311): `cat run.sh | bash` — ống vào shell mà guard không biết chữ — nay
         # chặn theo tập con chuẩn (ADR-0063); viết `bash run.sh`.
         self.assertEqual(self.dec("cat run.sh | bash"), "deny")
-        for cmd in (
-            "bash -c -e 'gh pr merge 7 --body-file b.md'",
-            "echo x | xargs -0 bash -c",
-        ):
+        for cmd in ("bash -c -e 'gh pr merge 7 --body-file b.md'",):
             with self.subTest(cmd):
                 self.assertEqual(self.dec(cmd), "ask")
+        self.assertEqual(self.dec("echo x | xargs -0 bash -c"), "deny")  # D-503: xargs vào shell → BUDGET (trước hỏi)
         for cmd in (
             "bash script.sh",
             "bash -- script.sh",
@@ -6332,13 +6330,13 @@ class GuardFalseGreenBenchTest(unittest.TestCase):
         out = self.out("git push origin $(cat branch.txt)")
         self.assertEqual((out["code"], out["confidence"]), (self.g.UNRESOLVED_TARGET, "unsure"))
         self.assertEqual(self.out("git push origin $(echo main)")["code"], "PUSH_MAIN")
+        # D-503: thay lệnh guard không tính ở đích/cờ của git push → BUDGET (trước cho qua)
+        self.assert_policy("deny", ("git push origin $(echo feat/x)", 'git push "$(git remote | head -1)" feat/x'))
         self.assert_policy(
             "",
             (
-                "git push origin $(echo feat/x)",
                 "git push -u origin $(git branch --show-current)",  # thư mục tạm không phải repo: không phải main
                 'git push -u origin "$(git rev-parse --abbrev-ref HEAD)"',
-                'git push "$(git remote | head -1)" feat/x',  # remote có nháy; đích ghi rõ
                 "git push origin feat/x && echo $(date)",
                 "x=$(cat f); git push origin feat/x",
                 "git commit -q -m \"$(cat <<'EOF'\nrevert: git push origin $(echo main)\nEOF\n)\"",
@@ -7524,6 +7522,7 @@ class GuardRemoteRefTest(unittest.TestCase):
         ):
             with self.subTest(cmd):
                 self.assert_unknown_ref(cmd)
+        # D-503: xargs đưa chữ stdin vào git ghi (lệnh con ngoài `GIT_VALUE_SAFE`/`GIT_READ_SUBS`) → BUDGET (trước cho qua)
         for cmd in (
             "git branch --merged | xargs git branch -D",
             "git tag -l 'v0*' | xargs git tag -d",
@@ -7531,6 +7530,10 @@ class GuardRemoteRefTest(unittest.TestCase):
             "git stash list | cut -d: -f1 | xargs git stash show",
             "echo ../wt | xargs git worktree remove",
             "ls | xargs -I{} git -C {} pull",
+        ):
+            with self.subTest(cmd):
+                self.assertEqual(self.g.apply_policy(self.raw(cmd))["decision"], "deny")
+        for cmd in (
             "echo a | xargs git log",
             "echo a | xargs git rev-parse",
             "parallel echo ::: a b",
@@ -7581,10 +7584,11 @@ class GuardRemoteRefTest(unittest.TestCase):
             "git submodule update --init",
             "git submodule status",
             "git a.b",
-            "echo x | xargs git st",
         ):
             with self.subTest(cmd):
                 self.assert_allowed(cmd)
+        # D-503: alias dưới xargs — guard không biết lệnh con thật nhận chữ stdin → BUDGET (trước cho qua)
+        self.assertEqual(self.g.apply_policy(self.raw("echo x | xargs git st"))["decision"], "deny")
 
     def test_guard_remote_ref_alias_reader_no_exec(self):
         """Bộ đọc (`git config --list`) không chạy chương trình cấu hình: fsmonitor/pager/sshCommand/credential/diff
@@ -10248,7 +10252,6 @@ class GuardReviewForgeKeptTest(_GuardDebtCase):
     )
     FORGE_586 = (
         "sh -c 'gh pr \"$@\"' x comment 5 --body '<MARK>'",
-        "sh -c 'gh pr $0 5 -F -' comment < r.md",
         "bash -c 'gh pr \"$1\" 5 -F -' _ review < r.md",
         "sh -c 'gh api \"$@\"' x repos/o/r/issues/5/comments -F body=@- < r.md",
     )
@@ -10277,6 +10280,8 @@ class GuardReviewForgeKeptTest(_GuardDebtCase):
         """Mọi dạng ghim (lệnh con dính mở rộng, lệnh bọc `sh -c`/`bash -c`, editor git) → REVIEW_FORGE."""
         self.assert_code(self.cmds(self.FORGE_585 + self.FORGE_586), "REVIEW_FORGE")
         self.assert_code(self.cmds(self.FORGE_EDITOR), "BUDGET")
+        # D-503: `$0` ở lệnh con gh là biến bash tự gán → BUDGET trước luật dấu review (trước REVIEW_FORGE)
+        self.assert_code(self.cmds(("sh -c 'gh pr $0 5 -F -' comment < r.md",)), "BUDGET")
 
     def test_forms_without_mark_not_forge(self):
         """Đối chứng: nguồn không mang dấu review (tệp thường; editor git không nhận tệp dấu) → không phải REVIEW_FORGE.
@@ -12583,6 +12588,8 @@ class GuardGateNamesTest(unittest.TestCase):
         ),
         # in chữ hay giá trị; `printf` ở `GATE_NAMES` (D-439: `printf -v` ghi biến)
         "in chữ, không ghi": frozenset({"echo", "true", "false", ":", "date"}),
+        # D-503: tạo tệp/thư mục tạm tên ngẫu nhiên — `$(mktemp …)` là đường mới (`_subst_computed`)
+        "tạo đường tạm mới": frozenset({"mktemp"}),
         "thông tin hệ thống, tiến trình, tên lệnh": frozenset(
             {"nproc", "pwd", "whoami", "hostname", "uname", "id", "ps", "pgrep", "printenv", "type", "which"}
         ),

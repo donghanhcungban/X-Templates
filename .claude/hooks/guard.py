@@ -2399,19 +2399,10 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _prod_decided_bash_why(cmd)  # AUD-SEC-641
     why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
     why = why or _opaque_value_why(cmd) or _trap_assign_why(cmd)  # D-502: AUD-SEC-821/822/823/830
-    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd) or _redirect_subst_why(cmd)
-
-
-def _redirect_subst_why(cmd: str) -> str:
-    """AUD-SEC-612: đích chuyển hướng ghi có thay lệnh trần dính chữ (`> $(echo).autopilot/state.json`) — bộ tách token
-    cắt đích ở `(` nên luật đích ghi không thấy đuôi; như P4 (ADR-0076) nhưng ở mọi lệnh. Nháy kép thì đích còn nguyên
-    và đuôi được xét như đích (`_subst_tail`)."""
-    raw = _raw_tokens(cmd, True)
-    for argv in (None if raw is None else _plain_argvs(raw)) or []:
-        for op, word in zip(argv, argv[1:]):
-            if (op.lstrip("&").startswith(">") or op == "<>") and _gate_bare_substitution(word, False):
-                return RULED_SUBST_WHY.format(clean_text(f"{op} {word}")[:80])
-    return ""
+    why = why or _runner_dyn_why(cmd) or _xargs_why(cmd)  # D-503
+    # AUD-SEC-612 (đích chuyển hướng ghi có thay lệnh trần dính chữ) nay do `_opaque_value_why` (D-503) bắt: mọi đích ghi
+    # có thay lệnh là giá trị mờ → BUDGET; test AUD-SEC-612 vẫn ghim hành vi.
+    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
 
 
 # AUD-SEC-660/661 (D-415): thân hàm được quét lúc định nghĩa, với bảng biến lúc đó — biến gán sau (trước lời gọi) không
@@ -2496,12 +2487,20 @@ def _set_positional_why(cmd: str) -> str:
 # "!" = mọi `${!…}` (gián tiếp, tham số vị trí `${!#}`); `MAPFILE`/`OPTARG` của `mapfile`/`getopts` không tên đích,
 # `FUNCNAME`/`BASH_ARGV0` (tên hàm, `$0` gán được)
 OPAQUE_VARS = frozenset({"_", "REPLY", "BASH_REMATCH", "MAPFILE", "OPTARG", "FUNCNAME", "BASH_ARGV0", "!"})
+# D-503: biến bash tự gán/đổi giữa các lệnh (`$0` theo `BASH_ARGV0`, `$DIRSTACK`/`$OLDPWD` theo `cd`, `$-`, số đếm) —
+# mọi `BASH_*`/`COMP_*`/`READLINE_*` cũng vậy (`_self_assigned`)
+OPAQUE_VARS |= frozenset(
+    "0 - DIRSTACK OLDPWD PIPESTATUS LINENO RANDOM SRANDOM SECONDS HISTCMD COPROC GROUPS OPTIND PPID SHLVL BASHPID"
+    " BASHOPTS SHELLOPTS EPOCHSECONDS EPOCHREALTIME".split()
+)
+SELF_ASSIGNED_PREFIXES = ("BASH_", "COMP_", "READLINE_")
 OPAQUE_ANY = "*"  # tên đích động: mọi biến mờ
 OPAQUE_PASSIVE = frozenset(
-    "cd pushd popd set for select shopt read readarray mapfile declare typeset local export readonly let printf getopts".split()
+    # D-503: `cd`/`pushd` ra khỏi tập này — đích tương đối phía sau theo thư mục đó (`: ~; cd "$_"; rm -rf zz`)
+    "popd set for select shopt read readarray mapfile declare typeset local export readonly let printf getopts".split()
 )
 RULED_ENV_OP_RE = re.compile(r"\$\{(HOME|PWD|OLDPWD|BASH|SHELL|CLAUDE_PROJECT_DIR|0)(?=[^}\w])")  # `${0%bash}`
-VAR_REF_NAME_RE = re.compile(r"\$(?:\{(!)|\{?([A-Za-z_]\w*))")
+VAR_REF_NAME_RE = re.compile(r"\$(?:\{(!)|\{?([A-Za-z_]\w*|[0-9-]))")  # cả `$0`, `$1`, `$-` (D-503)
 NAMEREF_HEADS = frozenset({"declare", "typeset", "local"})
 OPAQUE_VALUE_WHY = (
     "giá trị guard không tính chắc ở đối số/đích của lệnh có luật (`{}`): `$_`/`$REPLY`/`$BASH_REMATCH`, `printf -v`,"
@@ -2533,7 +2532,13 @@ def _var_refs(word: str) -> Set[str]:
 
 
 def _opaque_ref(refs: Set[str], names: Set[str]) -> bool:
+    if any(map(_self_assigned, refs)):
+        return True
     return bool(refs & names) or OPAQUE_ANY in names and any(r != "!" for r in refs)
+
+
+def _self_assigned(name: str) -> bool:
+    return name.startswith(SELF_ASSIGNED_PREFIXES)
 
 
 def _seg_assigned(seg: List[str]) -> List[str]:
@@ -2541,7 +2546,7 @@ def _seg_assigned(seg: List[str]) -> List[str]:
     plain = [_dequote(t) for t in _no_redirects(seg) if t not in SHELL_KEYWORDS]
     if plain[:1] in (["for"], ["select"]) and len(plain) > 1:
         return [plain[1]]
-    return [*_dyn_assigned(plain), *(t.partition("=")[0].rstrip("+") for t in plain if ASSIGN_ANY_RE.fullmatch(t))]
+    return [*_dyn_assigned(plain), *(m[1] for t in plain if (m := ASSIGN_WORD_RE.match(t)))]  # cả `x[0]=…` (D-503)
 
 
 def _seg_ref_names(seg: List[str]) -> List[str]:
@@ -2556,30 +2561,34 @@ def _seg_ref_names(seg: List[str]) -> List[str]:
         names = [OPAQUE_ANY for a in _name_slots(head, plain) if "$" in a.partition("=")[0]]
     else:
         return []
-    return [OPAQUE_ANY if "$" in n else n for n in names]
+    return [OPAQUE_ANY if "$" in n else n.partition("[")[0] for n in names]  # `printf -v 'd[0]'` gán `$d` (D-503)
 
 
-READ_VALUE_FLAGS = "dinNptuOsCc"  # cờ ăn giá trị của `read`/`mapfile` (`-p "Nhánh [$def]: "`, `-t "$T"`)
+READ_VALUE_FLAGS = "dinNptu"  # cờ ăn giá trị của `read` (`-p "Nhánh [$def]: "`, `-t "$T"`)
+MAPFILE_VALUE_FLAGS = "dnOsuCc"  # của `mapfile`/`readarray` — `-t` là cờ bool (D-503: `mapfile -t A` gán A)
 
 
 def _name_slots(head: str, plain: List[str]) -> List[str]:
     """Từ ở vị trí tên đích của builtin ghi biến: `getopts` từ thứ hai; `read`/`mapfile` bỏ giá trị cờ."""
     if head == "getopts":
         return plain[2:3]
-    reads = head in ("read", "mapfile", "readarray")
-    flag_value = [reads and p[:1] == "-" and p != "--" and p[-1:] in READ_VALUE_FLAGS for p in plain]
+    vals = READ_VALUE_FLAGS if head == "read" else MAPFILE_VALUE_FLAGS if head in ("mapfile", "readarray") else ""
+    flag_value = [bool(vals) and p[:1] == "-" and p != "--" and p[-1:] in vals for p in plain]
     return [a for a, v in zip(plain[1:], flag_value) if a[:1] != "-" and not v]
 
 
-def _opaque_names(cmds: List[Tuple[List[str], List[str]]]) -> Set[str]:
+def _opaque_names(cmds: List[Tuple[List[str], List[str]]], weak: bool = False) -> Set[str]:
     """Tên biến mờ: cơ sở + gán qua builtin/nameref (từ tên lệnh sau lệnh bọc: `command printf -v`, `X=1 printf -v`),
-    lan qua gán từ giá trị mờ (theo hàng đợi, không lặp bậc hai)."""
+    lan qua gán từ giá trị mờ (theo hàng đợi, không lặp bậc hai). `weak` (D-503): thêm biến gán từ `read`/`select`/
+    `for` không chữ/thay lệnh (`_weak_seeds`) — chỉ dùng ở lệnh có luật hẹp (`_dd_checked`)."""
     segs = [seg for seg, _ in cmds]
     names = set(OPAQUE_VARS).union(*(_seg_ref_names(words) for _, words in cmds))
+    names |= set().union(*map(_weak_seeds, segs)) if weak else set()
     users: Dict[str, List[int]] = {}
     for i, seg in enumerate(segs):
         for r in set().union(*map(_var_refs, seg)):
             users.setdefault(r, []).append(i)
+    names |= {r for r in users if _self_assigned(r)}
     queue = list(names)
     while queue and OPAQUE_ANY not in names:
         for i in users.pop(queue.pop(), []):
@@ -2605,11 +2614,261 @@ def _ruled_env_op(word: str, assigned: Set[str]) -> bool:
     return False
 
 
-def _opaque_checked(seg: List[str], words: List[str]) -> List[str]:
-    """Đích chuyển hướng ghi của mọi lệnh đơn; mọi đối số của lệnh có luật trừ lệnh chỉ đặt biến/thư mục."""
-    out = [b for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a]
+def _opaque_checked(seg: List[str], words: List[str]) -> List[Tuple[str, int]]:
+    """(từ, mức xét) cần xét: đích chuyển hướng ghi của mọi lệnh đơn và đối số của lệnh có luật hẹp (`_dd_full`, D-503)
+    ở `DD_FULL`; đối số lệnh có luật khác trừ lệnh chỉ đặt biến/thư mục ở `DD_BASIC` (biến mờ cơ sở như D-502)."""
+    # `> >(tee -a log)`: ghi vào tiến trình, không phải tệp
+    out = [(b, DD_FULL) for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a and b != PROCSUB_WORD]
     name = posixpath.basename(_dequote(words[0])) if words else ""
-    return out + (words[1:] if name in GATE_NAMES and name not in OPAQUE_PASSIVE else [])
+    full = _dd_full(name) and not (name == "git" and _git_read_sub(words[1:]))
+    if name in ("cd", "pushd"):  # chỉ biến mờ cơ sở: `cd "${CLAUDE_PROJECT_DIR:-.}"` vẫn chạy
+        out += [(w, DD_NAMES) for w in words[1:]]
+    elif full or name in GATE_NAMES and name not in OPAQUE_PASSIVE:
+        out += [(w, DD_FULL if full else DD_BASIC) for w in _dd_args(name, words[1:])]
+    return out
+
+
+DD_NAMES, DD_BASIC, DD_FULL = -1, 0, 1
+GIT_READ_SUBS = frozenset("diff log show shortlog range-diff whatchanged".split())  # chỉ đọc: mức D-502
+
+
+def _git_read_sub(args: List[str]) -> bool:
+    plain = [_dequote(a) for a in args]
+    k = _git_sub_at(plain)
+    return k < len(plain) and plain[k] in GIT_READ_SUBS and "$" not in args[k]
+
+
+# D-503 (T-3934; D-502, D-415): mặc định chặn theo CẤU TRÚC ở lệnh có luật hẹp — xoá tệp (`DD_DELETERS`), git (trừ lệnh
+# con chỉ đọc/đưa vào chỉ mục `GIT_VALUE_SAFE`), gh (trừ lệnh đọc `GH_VALUE_SAFE`), phá dữ liệu/hạ tầng, `mkfs*`, và
+# đích chuyển hướng ghi của mọi lệnh. Từ ở vị trí đích/cờ/lệnh con (mọi đối số trừ giá trị cờ chữ `-m`/`--body`…) mà
+# guard không tính chắc → BUDGET: thay lệnh/tiến trình, `${!…}`, biến bash tự gán, biến gán từ thay lệnh/`read`/
+# `select`/`for` không chữ (`_weak_seeds`), mở rộng tham số có toán tử trên biến không gán chữ (`_dd_op_ok`). Cho phép:
+# biến gán chữ trước lần dùng (`_lit_names`), `$HOME`/`$PWD`/`$TMPDIR` và biến môi trường khác TRẦN, `"$@"`/`$1`, số
+# học, `$_` khi lệnh trước là lệnh đơn có đối số cuối là chữ (`_last_arg_splice` — bản thay quét như lệnh).
+DD_DELETERS = frozenset({"rm", "shred", "unlink", "rmdir", "find", "rsync", "dd"})
+GIT_VALUE_SAFE = frozenset(
+    "status add ls-files rev-parse blame describe cat-file rev-list merge-base show-ref ls-tree version".split()
+)
+GH_VALUE_SAFE = frozenset({("pr", "view"), ("pr", "list"), ("pr", "checks"), ("pr", "status"), ("pr", "diff")})
+GH_VALUE_SAFE |= frozenset({("issue", "view"), ("issue", "list"), ("run", "view"), ("run", "list"), ("run", "watch")})
+GH_VALUE_SAFE |= frozenset({("repo", "view"), ("auth", "status")})
+# Giá trị cờ là chữ/ghim mà luật riêng đã xét (thân commit/PR quét ghi công; `--match-head-commit` so với head ở
+# merge-check — AUD-SEC-016), không thành cờ/đích
+DD_TEXT_FLAGS = {"git": frozenset({"-m", "--message"})}
+DD_TEXT_FLAGS["gh"] = frozenset({"-t", "--title", "-b", "--body", "--notes", "--match-head-commit"})
+DD_RULED_ENV = frozenset({"HOME", "PWD", "OLDPWD", "BASH", "SHELL", "CLAUDE_PROJECT_DIR", "TMPDIR", "0"})
+DD_PARAM_RE = re.compile(r"([#!]?)([A-Za-z_]\w*|[0-9]+|[-@*#?$!_])(\[[^\]]*\])?(.*)", re.S)
+# `${X:?…}` giữ giá trị; `${X:-chữ}`/`${X:=chữ}`/`${X:+chữ}`: giá trị là X (biến không biết) hay chữ — bản thay quét cả
+# hai (`_sub_vars`, `_param_rewrites`)
+DD_FREE_OP_RE = re.compile(r":?\?.*|:?[-=+][^$`~'\"\\(){}]*", re.S)
+DD_ALT_OP_RE = re.compile(r":?\+[^$`~'\"\\(){}]*")  # `${HOME:+chữ}` không mang giá trị HOME
+DD_SUBST_RE = re.compile(r"\$\(|`|[<>]\(")
+
+
+def _dd_full(name: str) -> bool:
+    tables = (DESTROY_CMDS, DESTROY_ALWAYS, DESTROY_STMT_FLAGS, DESTROY_HOST_FLAGS, DB_CLIENTS)
+    return (
+        name in DD_DELETERS
+        or name in ("git", "gh")
+        or name.startswith(("mkfs", "git-"))
+        or any(name in t for t in tables)
+    )
+
+
+def _dd_args(name: str, args: List[str]) -> List[str]:
+    """Đối số ở vị trí đích/cờ/lệnh con: bỏ giá trị cờ chữ của git/gh (`-m "$(cat <<'EOF' …)"`); git lệnh con chỉ đọc
+    chỉ giữ giá trị `-c` và lệnh con; gh lệnh đọc không giữ gì."""
+    plain = [_dequote(a) for a in args]
+    if name == "git":
+        k = _git_sub_at(plain)
+        if k < len(plain) and plain[k] in GIT_VALUE_SAFE and "$" not in args[k]:
+            return [b for a, b in zip(plain[:k], args[1 : k + 1]) if a == "-c"]
+    if name == "gh" and tuple(p for p in plain if p[:1] != "-")[:2] in GH_VALUE_SAFE:
+        return []
+    text = DD_TEXT_FLAGS.get(name, frozenset())
+    value = [False] + [p in text for p in plain[:-1]]
+    return [a for a, p, v in zip(args, plain, value) if not v and p.partition("=")[0] not in text]
+
+
+def _dd_params(word: str) -> List[Tuple[str, str]]:
+    """(tên, toán tử) của mỗi `${…}` ở chỗ bash mở rộng: `!` = gián tiếp, `#` đầu = độ dài (không toán tử), tên rỗng =
+    không đọc được."""
+    kind, out, i = _CodeView(word).kind, [], word.find("${")
+    while i >= 0:
+        end = _raw_group_end(word, i + 2, "{")
+        m = DD_PARAM_RE.fullmatch(word, i + 2, max(i + 2, end - 1))
+        if kind[i] != "q":
+            out.append(("", "") if m is None else ("!" if m[1] == "!" else m[2], "" if m[1] == "#" else m[4]))
+        i = word.find("${", i + 2)
+    return out
+
+
+def _dd_op_ok(name: str, op: str, lit: Set[str]) -> bool:
+    """Toán tử `op` trên biến `name` guard tính chắc: biến gán chữ (trừ `@E`/`@Q`/`@A`… guard không tính); biến môi
+    trường khác `DD_RULED_ENV` chỉ `:?`/`:-chữ`."""
+    if not op:
+        return bool(name)
+    if name in lit:
+        return op[:1] != "@" or op in ("@U", "@L", "@u")
+    return (DD_ALT_OP_RE if name in DD_RULED_ENV else DD_FREE_OP_RE).fullmatch(op) is not None
+
+
+def _dd_subst(word: str) -> bool:
+    """Thay lệnh/tiến trình/backtick ở chỗ bash mở rộng (số học `$((…))` không tính)."""
+    if word == PROCSUB_WORD:
+        return True
+    if not DD_SUBST_RE.search(word):
+        return False
+    view = _CodeView(word)
+    pairs = _code_paren_pairs(view) if "$((" in word else {}
+    for m in DD_SUBST_RE.finditer(word):
+        i = m.start()
+        arith = word.startswith("$((", i) and pairs.get(i + 2, -2) + 1 == pairs.get(i + 1, -1)
+        if view.kind[i] != "q" and not arith and not _subst_computed(word, i):
+            return True
+    return bool(view.why)
+
+
+def _subst_computed(word: str, i: int) -> bool:
+    """`$(…)` ở `i` mà guard tính được giá trị hay biết chắc là đường mới: `$(pwd)` (= `$PWD`, `PWD_SUBST_RE`), truy
+    vấn nhánh hiện tại (`HEAD`, `CURRENT_BRANCH_QUERIES`), `$(mktemp …)` (tệp/thư mục tạm vừa tạo, tên ngẫu nhiên — không
+    trùng tệp có sẵn)."""
+    end = _raw_group_end(word, i + 2, "(") if word.startswith("$(", i) else -1
+    n = normalize(tokenize(word[i + 2 : end - 1])) if end > 0 else []
+    return n == ["pwd"] or tuple(n) in CURRENT_BRANCH_QUERIES or n[:1] == ["mktemp"] and "$(" not in word[i + 2 : end]
+
+
+def _dd_word_bad(word: str, names: Set[str], lit: Set[str], mode: int) -> bool:
+    if _opaque_ref(_var_refs(word), names):
+        return True
+    if mode != DD_FULL:
+        return mode == DD_BASIC and _ruled_env_op(word, lit)
+    return any(not _dd_op_ok(n, op, lit) for n, op in _dd_params(word)) or _dd_subst(word)
+
+
+def _weak_seeds(seg: List[str]) -> Set[str]:
+    """Biến lệnh đơn `seg` gán giá trị guard không tính (D-503): `select`, `for` mà danh sách có mở rộng khác `"$@"`/
+    `"${a[@]}"`, tên đích `read`/`mapfile`/`getopts`, gán (đầu lệnh) có thay lệnh/tiến trình."""
+    raw = [t for t in _no_redirects(seg) if t not in SHELL_KEYWORDS]
+    k = next((i for i, t in enumerate(raw) if not ASSIGN_WORD_RE.match(t)), len(raw))
+    head = posixpath.basename(_dequote(raw[k])) if k < len(raw) else ""
+    if head in ("for", "select") and k + 1 < len(raw):
+        lits = all(not re.search(r"[$`]", t) or FOR_ARRAY_RE.fullmatch(t) for t in raw[k + 3 :])
+        return set() if head == "for" and lits else {raw[k + 1]}
+    if head in ("read", "mapfile", "readarray", "getopts"):
+        return {n.partition("[")[0] for n in _name_slots(head, [_dequote(t) for t in raw[k:]])}
+    # gán đứng riêng (gán tiền tố `d=$(…) true` chỉ sống trong lệnh đó) hay qua `export`/`local`…
+    assigns = raw[:k] if k == len(raw) else raw[k + 1 :] if head in DECLARE_CMDS else []
+    return {m[1] for t in assigns if (m := ASSIGN_WORD_RE.match(t)) and _dd_subst(t[m.end() :]) and not _lifted(t)}
+
+
+def _lifted(word: str) -> bool:
+    """Gán `x=$(echo chữ)`/`x=$(printf chữ)` không thoát mà `_lifted_scripts` thay bằng gán chữ rồi quét lại."""
+    m = SUBST_ASSIGN_RE.fullmatch(word)
+    return m is not None and "\\" not in m[4] and bool(_subst_values(m))
+
+
+FOR_ARRAY_RE = re.compile(r'"\$(?:[@*]|\{[@*]\}|\{[A-Za-z_]\w*\[[@*]\]\})"')
+
+
+def _lit_names(cmds: List[Tuple[List[str], List[str]]], cmd: str) -> Set[str]:
+    """Biến guard tính chắc giá trị: mọi lần gán là gán CHỮ đứng riêng (không sau từ khoá `then`/`do`, không trong hàm)
+    hay `for` trên danh sách chữ, và lần gán đầu đứng trước lần dùng đầu (D-503). Chữ dạng gán ở đối số lệnh khác
+    (`echo HOME=1`) không phải gán. Lệnh có `&&`/`||` ở tầng mã: chỉ gán ở lệnh đơn đầu tiên là chắc — gán đứng sau có
+    thể không chạy (`false && HOME=/x; rm -rf "${HOME%/x}"`)."""
+    if FUNC_DEF_RE.search(cmd):
+        return set()
+    cond = _cond_segs(cmd, cmds)
+    used: Set[str] = set()
+    cand: Set[str] = set()
+    bad: Set[str] = set()
+    for k, (seg, words) in enumerate(cmds):
+        lit = set() if k in cond else _lit_assigns(seg, words)
+        for name in _seg_assigned(seg):
+            (cand if name in lit and name not in used else bad).add(name)
+        used |= set().union(*map(_var_refs, seg))
+    return cand - bad
+
+
+def _cond_segs(cmd: str, cmds: List[Tuple[List[str], List[str]]]) -> Set[int]:
+    """Chỉ số lệnh đơn có thể không chạy: đứng sau `||`, sau `&&` mà lệnh trái không phải `true`/`:` hay chính nó có thể
+    không chạy. Chuỗi không phẳng (ống, nhóm, thay lệnh) có `&&`/`||` → mọi lệnh sau lệnh đầu."""
+    view = _CodeView(cmd)
+    code = "".join(c if k == "c" else " " for c, k in zip(cmd, view.kind))
+    if not view.why and not re.search(r"&&|\|\|", code):
+        return set()
+    seps = re.findall(r"&&|\|\||[;\n]", code.strip(" \t\n;"))
+    bare = re.sub(r"\$\{[^{}]*\}?", "", code)  # `${X/X}` không phải nhóm (thân `${…}` đã trắng, `}` có thể còn)
+    if view.why or re.search(r"\$\(|`|<<|(?<!\|)\|(?!\|)|[(){}]", bare) or len(seps) != len(cmds) - 1:
+        return set(range(1, len(cmds)))
+    out: Set[int] = set()
+    for k, sep in enumerate(seps, 1):
+        sure = sep == "&&" and k - 1 not in out and cmds[k - 1][1] in (["true"], [":"])
+        out |= {k} if sep == "||" or sep == "&&" and not sure else set()
+    return out
+
+
+def _lit_assigns(seg: List[str], words: List[str]) -> Set[str]:
+    if words[:1] == ["for"] and words[2:3] == ["in"]:
+        return set() if any(re.search(r"[$`*?\[{~]", t) for t in words[3:]) else {words[1]}
+    if words or not seg or seg[0] in SHELL_KEYWORDS:
+        return set()
+    return {m[1] for t in seg if (m := ASSIGN_LIT_RE.fullmatch(t))}
+
+
+ASSIGN_WORD_RE = re.compile(r"([A-Za-z_]\w*)(?:\[[^\]]*\])?\+?=")
+ASSIGN_LIT_RE = re.compile(r"([A-Za-z_]\w*)=[^$`()<>]*", re.S)  # gán chữ: không mở rộng, mảng, thay tiến trình
+UNDERSCORE_RE = re.compile(r"\$(?:\{_\}|_(?!\w))")
+LAST_ARG_PLAIN_RE = re.compile(r"[\w./:@%+,=-]+")
+LAST_ARG_WORD_RE = re.compile(r"[\w./:@%+,=~-]+|'[^']*'|\"[^\"$`\\]*\"")
+LAST_ARG_SEPS = " \t\n;&"
+LAST_ARG_FLOW = frozenset("{ } ! if then else elif while until do for select case esac done fi in function".split())
+
+
+def _last_arg_splice(cmd: str) -> Optional[str]:
+    """`cmd` với mỗi `$_` thay bằng đối số cuối (nguyên văn) của lệnh đơn đứng ngay trước (D-503): chỉ chuỗi lệnh đơn
+    phẳng nối bằng `;`/`&&`/xuống dòng (không ống, nhóm, thay lệnh, heredoc, từ khoá), đối số cuối là chữ không glob;
+    `"$_"` cả từ nhận chữ nguyên văn (cả `~`, nháy), `$_` dính chữ chỉ nhận chữ trơn. Không tính chắc → None."""
+    view = _CodeView(cmd)
+    code = "".join(c if k == "c" else " " for c, k in zip(cmd, view.kind))
+    seps = re.findall(r"&&|[;\n]", code.strip(" \t\n;"))
+    flat = not (view.why or re.search(r"\$\(|`|<<", cmd) or re.search(r"[|(){}]|(?<!&)&(?!&)", code))
+    cmds = _simple_cmds(cmd) if flat else None
+    if not cmds or len(seps) != len(cmds) - 1 or any(not s or s[0] in LAST_ARG_FLOW for s, _ in cmds):
+        return None
+    values: List[str] = []
+    for k, (seg, _) in enumerate(cmds):
+        uses = sum(len(_underscores(w)) for w in seg)
+        prev = _no_redirects(cmds[k - 1][1]) if k else []
+        # lệnh trước chắc đã chạy: nối với lệnh này bằng `&&` (nó thành công), hay chính nó không đứng sau `&&`
+        ran = k < 2 or seps[k - 1] == "&&" or seps[k - 2] != "&&"
+        last = prev[-1] if prev and ran else ""
+        if uses and not (LAST_ARG_WORD_RE.fullmatch(last) and not re.search(r"[*?\[]", last)):
+            return None
+        values += [last] * uses
+    return _splice_last_args(cmd, view, values)
+
+
+def _underscores(word: str) -> List[int]:
+    kind = _CodeView(word).kind
+    return [m.start() for m in UNDERSCORE_RE.finditer(word) if kind[m.start()] != "q"]
+
+
+def _splice_last_args(cmd: str, view: "_CodeView", values: List[str]) -> Optional[str]:
+    hits = [m for m in UNDERSCORE_RE.finditer(cmd) if view.kind[m.start()] != "q"]
+    if not hits or len(hits) != len(values):
+        return None
+    for m, val in reversed(list(zip(hits, values))):
+        s, e = m.span()
+        quoted = cmd[s - 1 : s] == '"' == cmd[e : e + 1]
+        s, e = (s - 1, e + 1) if quoted else (s, e)
+        whole = (s == 0 or cmd[s - 1] in LAST_ARG_SEPS) and (e == len(cmd) or cmd[e] in LAST_ARG_SEPS)
+        if not (whole and (quoted or LAST_ARG_WORD_RE.fullmatch(val) and val[:1] not in "'\"")):
+            if not LAST_ARG_PLAIN_RE.fullmatch(val):
+                return None
+            s, e = m.span()
+        cmd = cmd[:s] + val + cmd[e:]
+    return cmd
 
 
 # AUD-SEC-830: `trap` chạy mã XEN GIỮA các lệnh (`DEBUG` trước mỗi lệnh, cả trong thân hàm; `RETURN`/`ERR`; tín hiệu tự
@@ -2628,6 +2887,7 @@ TRAP_ASSIGN_WHY = (
 
 
 def _trap_assign_why(cmd: str) -> str:
+    funcs = _func_names(cmd) if "trap" in cmd else set()  # D-503: `trap 'f;' DEBUG` gọi hàm có gán
     for _, words in _simple_cmds(cmd) or []:
         args = [_dequote(w) for w in _no_redirects(words[1:])]
         if not words or posixpath.basename(_dequote(words[0])) != "trap" or args[:1] in (["-p"], ["-l"]):
@@ -2635,22 +2895,140 @@ def _trap_assign_why(cmd: str) -> str:
         args = args[1:] if args[:1] == ["--"] else args
         sigs = {s.upper().removeprefix("SIG") for s in args[1:]} - {"EXIT", "0"}
         bare = bool(args) and re.fullmatch(r"[\w.:-]+", args[0].strip()) is not None
+        bare = bare or bool(args) and bool(funcs.intersection(re.split(r"[\s;&|]+", args[0])))
         if sigs and (TRAP_ASSIGN_RE.search(args[0]) or bare and sigs & TRAP_STEP_SIGS):
             return TRAP_ASSIGN_WHY
     return ""
 
 
+FUNC_KW_RE = re.compile(r"function\s+([^\s(){};&|]+)")
+FUNC_PARENS_RE = re.compile(r"\(\s*\)")
+FUNC_NAME_SEP_RE = re.compile(r"[\s(){};&|$`'\"]")
+FUNC_NAME_MAX = 256  # nhìn lùi tối đa từ `()` — tuyến tính theo độ dài lệnh
+
+
+def _func_names(cmd: str) -> Set[str]:
+    """Tên hàm định nghĩa trong `cmd` (`function f`, `f()`): tìm `()` rồi lấy từ ngay trước trong cửa sổ có trần (regex
+    tên trước `()` quét từ mọi vị trí là bậc hai trên từ dài)."""
+    names = {m[1] for m in FUNC_KW_RE.finditer(cmd)}
+    for m in FUNC_PARENS_RE.finditer(cmd):
+        names.add(FUNC_NAME_SEP_RE.split(cmd[max(0, m.start() - FUNC_NAME_MAX) : m.start()].rstrip())[-1])
+    return names - {""}
+
+
 def _opaque_value_why(cmd: str) -> str:
-    cmds = _simple_cmds(cmd) if "$" in cmd else None
+    cmds = _simple_cmds(cmd) if DD_SUBST_RE.search(cmd) or "$" in cmd else None
     if not cmds:
         return ""
-    names = _opaque_names(cmds)
-    assigned = {n for seg, _ in cmds for n in _seg_assigned(seg)}
+    names, weak = _opaque_names(cmds), _opaque_names(cmds, True)
+    if _last_arg_splice(cmd) is not None:  # bản thay quét ở `_scan_last_arg`
+        names.discard("_")
+        weak.discard("_")
+    lit, moved = _lit_names(cmds, cmd), False
     for seg, words in cmds:
-        for w in _opaque_checked(seg, words):
-            if _opaque_ref(_var_refs(w), names) or _ruled_env_op(w, assigned):
+        checked = _opaque_checked(seg, words)
+        if moved and any(mode == DD_FULL for _, mode in checked):  # đích tương đối theo thư mục mờ
+            return OPAQUE_VALUE_WHY.format(clean_text(" ".join(words))[:80])
+        for w, mode in checked:
+            if _dd_word_bad(w, weak if mode == DD_FULL else names, lit, mode):
                 return OPAQUE_VALUE_WHY.format(clean_text(w)[:80])
+        moved = moved or any(mode == DD_NAMES and _opaque_ref(_var_refs(w), weak) for w, mode in checked)
     return ""
+
+
+# D-503 (b): tên lệnh động dưới trình chạy gói/trình bọc chạy lệnh (`uv run "$G" push --force`) — guard không biết lệnh
+# nào chạy. Từ đầu tiên sau tên trình chạy không phải cờ/lệnh con của trình chạy (`run`, `exec`, `-c`…) có mở rộng →
+# BUDGET. Chặt: giá trị cờ có mở rộng đứng trước lệnh (`uv run --with "$X" pytest`) cũng chặn.
+RUNNER_HEADS = frozenset(
+    "direnv nix nix-shell op doppler dotenv aws-vault conda mamba micromamba pixi bundle rye pipx uvx devbox mise asdf"
+    " rtx envchain chamber sops".split()
+)
+RUNNER_SUBWORDS = frozenset("run exec x dlx develop shell tool --".split())
+RUNNER_DYN_WHY = (
+    "tên lệnh có mở rộng dưới trình chạy gói/trình bọc (`{}`) — guard không biết lệnh nào chạy (D-503); viết lại: tên"
+    " lệnh nguyên văn"
+)
+
+
+def _runner_dyn_why(cmd: str) -> str:
+    for _, words in _simple_cmds(cmd) or []:
+        name = posixpath.basename(_dequote(words[0])) if words else ""
+        if not (name in PKG_WRAPPERS or name in GATE_RUNNERS or name in RUNNER_HEADS or name in RUNNERS):
+            continue
+        for w in words[1:]:
+            p = _dequote(w)
+            if p[:1] == "-" or p in RUNNER_SUBWORDS:
+                continue
+            if _var_refs(w) or _dd_params(w) or _dd_subst(w):
+                return RUNNER_DYN_WHY.format(clean_text(" ".join(words))[:80])
+            break
+    return ""
+
+
+# D-503 (c): xargs nối chữ stdin vào lệnh — vào shell có tham số vị trí (`sh -c '…"$1"…' _ {}`), trình bọc thiếu lệnh
+# (`xargs env`/`nice`/`timeout` — chữ stdin thành tên lệnh), lệnh xoá khác `rm` (luật cũ của `rm` giữ: `xargs rm -rf` →
+# WIPE_OUTSIDE), git lệnh con ngoài `GIT_VALUE_SAFE`, lệnh có luật hẹp khác, tên lệnh động → BUDGET.
+XARGS_BARE_WRAPS = frozenset(
+    "env nice timeout nohup setsid stdbuf ionice chrt taskset time command exec builtin sudo doas busybox".split()
+)
+XARGS_ARG_RE = re.compile(r"[\d.]+[smhd]?|[A-Za-z_]\w*=.*", re.S)  # `timeout 30`, `env X=1`
+POSITIONAL_USE_RE = re.compile(r"\$(?:[1-9@*]|\{[1-9@*#])")
+XARGS_WHY = (
+    "xargs đưa chữ stdin vào shell/trình bọc thiếu lệnh/lệnh xoá/git (`{}`) — guard không thấy đối số lúc chạy (D-503);"
+    " viết lại: vòng `while IFS= read -r x; do …; done` với lệnh nguyên văn, hoặc liệt kê đích"
+)
+
+
+def _xargs_why(cmd: str) -> str:
+    for seg, words in _simple_cmds(cmd) or []:
+        rest = _xargs_rest(seg[: len(seg) - len(words)], seg)
+        if rest is not None and _xargs_bad(rest):
+            return XARGS_WHY.format(clean_text(" ".join(seg))[:80])
+    return ""
+
+
+def _xargs_rest(prefix: List[str], seg: List[str]) -> Optional[List[str]]:
+    """Từ (còn nháy) sau `xargs` và tuỳ chọn của nó (cờ dài viết tắt qua `_wrapper_long`); None = lệnh không qua xargs."""
+    plain = [_dequote(t) for t in seg]
+    k = next((i for i, p in enumerate(plain[: len(prefix)]) if posixpath.basename(p) == "xargs"), -1)
+    if k < 0:
+        return None
+    i = k + 1
+    while i < len(plain) and plain[i][:1] == "-" and plain[i] != "-":
+        rep = XARGS_REPLACE_RE.fullmatch(plain[i])
+        opt = _wrapper_long("xargs", plain[i])
+        takes = opt in WRAPPER_OPTS_WITH_VALUE["xargs"] or bool(rep and rep[1] == "I" and not rep[2])
+        i += 2 if takes else 1
+    return seg[i:]
+
+
+def _xargs_bad(rest: List[str]) -> bool:
+    plain = [_dequote(t) for t in rest]
+    i = 0
+    while i < len(plain) and posixpath.basename(plain[i]) in XARGS_BARE_WRAPS:
+        i += 1
+        while i < len(plain) and (plain[i][:1] == "-" or XARGS_ARG_RE.fullmatch(plain[i])):
+            i += 1
+    if i >= len(plain):
+        return i > 0  # `xargs env` — chữ stdin là tên lệnh; `xargs` trần chạy echo
+    name = posixpath.basename(plain[i])
+    if name in SHELLS:
+        c = next((k for k in range(i + 1, len(plain)) if re.fullmatch(r"-[a-z]*c", plain[k])), -1)
+        return c < 0 or c + 1 >= len(plain) or bool(POSITIONAL_USE_RE.search(plain[c + 1]))
+    if name == "git":
+        k = i + 1 + _git_sub_at(plain[i + 1 :])
+        return k >= len(plain) or plain[k] not in GIT_VALUE_SAFE | GIT_READ_SUBS
+    if name == "gh":  # lệnh đọc (`xargs gh pr view`); gh khác — luật `_xargs_gh_why`/BUDGET
+        return tuple(p for p in plain[i + 1 :] if p[:1] != "-")[:2] not in GH_VALUE_SAFE
+    return bool(re.search(r"[$`]", rest[i])) or name != "rm" and _dd_full(name)
+
+
+def _scan_last_arg(
+    cmd: str, root: str, cwd: Optional[str], depth: int, asks: List[str], budget: "ScanBudget", rw: int
+) -> str:
+    """D-503: `$_` tính được (`_last_arg_splice`) → bản thay quét như lệnh (`: ~; cd "$_"; rm -rf zz`)."""
+    variant = _last_arg_splice(cmd) if "$" in cmd else None
+    return _scan_scripts([variant], root, cwd, depth, asks, 0, budget, rw) if variant else ""
 
 
 # AUD-SEC-681: git chạy `git-<tên>` ngoài nếu có, không thì autocorrect đoán lệnh khác — chuỗi bật autocorrect mà đổi
@@ -10964,10 +11342,30 @@ def _db_rule(name: str, args: List[str]) -> str:
 
 def _db_hosts(name: str, args: List[str]) -> List[str]:
     """Máy chủ client CSDL `name` (khoá của `DB_CLIENTS`) nêu: cờ host, URI/conninfo ở đối số vị trí hoặc `-d`/`-u`."""
+    args = _long_abbrevs(args, (*DB_CLIENTS[name], *DB_URI_FLAGS))
     hosts = _flag_values(args, DB_CLIENTS[name])
     for a in _positionals(args, (*DB_CLIENTS[name], *DB_URI_FLAGS, *DB_VALUE_FLAGS)) + _flag_values(args, DB_URI_FLAGS):
         hosts += _url_hosts(a) + CONNINFO_HOST_RE.findall(a)
     return hosts
+
+
+def _destroy_hosts(flags: Tuple[str, ...], args: List[str]) -> List[str]:
+    """D-503: máy chủ của lệnh luôn phá (`dropdb`, `mysqladmin`, `sqlcmd`): cờ host (cả viết tắt `--ho`), URI/conninfo
+    ở MỌI đối số (`--maintenance-db=<URI máy xa>`)."""
+    hosts = _flag_values(_long_abbrevs(args, flags), flags)
+    return hosts + [h for a in args for h in _url_hosts(a) + CONNINFO_HOST_RE.findall(a)]
+
+
+def _long_abbrevs(args: List[str], flags: Tuple[str, ...]) -> List[str]:
+    """Cờ dài viết tắt kiểu getopt_long (`--ho x`, `--ho=x`) → tên đầy đủ trong `flags` khi chỉ khớp một cờ của bảng
+    (chiều chặt: không biết cờ khác của công cụ cùng tiền tố — `--h` của `dropdb` tính là `--host`)."""
+    longs = [f for f in flags if f[:2] == "--"]
+    out: List[str] = []
+    for a in args:
+        key, eq, val = a.partition("=")
+        hits = [f for f in longs if f.startswith(key)] if key[:2] == "--" and len(key) > 2 else []
+        out.append(hits[0] + eq + val if len(hits) == 1 else a)
+    return out
 
 
 # AUD-HAR-420 (D-502): lệnh phá dữ liệu tới máy chủ KHÔNG cục bộ → DATA_DESTROY (deny mọi pha/chính sách). Cục bộ =
@@ -11025,7 +11423,7 @@ def _data_destroy_rule(n: List[str]) -> Tuple[str, str]:
     name, args = posixpath.basename(n[0]), n[1:]
     if name not in DESTROY_STMT_FLAGS and name not in DESTROY_ALWAYS:
         return "", ""
-    hosts = _db_hosts(name, args) if name in DB_CLIENTS else _flag_values(args, DESTROY_HOST_FLAGS[name])
+    hosts = _db_hosts(name, args) if name in DB_CLIENTS else _destroy_hosts(DESTROY_HOST_FLAGS[name], args)
     if all(_destroy_local(h) for h in hosts):
         return "", ""
     words = DESTROY_ALWAYS.get(name)
@@ -13538,6 +13936,9 @@ def _attribution_kinds(argv: List[str], depth: int = 0) -> FrozenSet[str]:
         return frozenset({"commit"})
     if any(_gh_pr_text_args(r) is not None for r in _gh_pr_readings(n)):
         return frozenset({"pr"})
+    tails = _runner_tails(argv) if depth < STRICT_EVAL_DEPTH else []
+    if tails:  # D-503: commit/PR dưới trình chạy gói (`uv run git commit -F - <<E`)
+        return frozenset().union(*(_attribution_kinds(t, depth + 1) for t in tails))
     script = _shell_c_script(argv) if depth < STRICT_EVAL_DEPTH else None
     if not script:
         return frozenset()
@@ -13701,6 +14102,9 @@ def _attribution_targets(
     target = _attribution_target(argv, here, root)
     if target is not None:
         return [target]
+    runs = [t for s in _runner_tails(argv) for t in [_attribution_target(s, here, root)] if t is not None]
+    if runs:  # D-503: `uv run git commit -F - <<'E'` — commit dưới trình chạy gói đọc như dạng trơn
+        return runs
     nested = _attribution_kinds(argv) if _shell_c_script(argv) else frozenset()
     return [(here or root, [], kind) for kind in sorted(nested)]
 
@@ -13716,12 +14120,14 @@ def ai_attribution(cmd: str, commands: List[Tuple[List[str], Optional[str]]], ro
     Xét `git commit` và `gh pr create|edit|merge` qua Bash, chữ thấy được lúc quyết định — không thấy: `echo … | git
     commit -F -`, file `-F` do lệnh trước trong chuỗi tạo, `git merge -m`/`git tag -m` (tool MCP: `mcp_attribution`)
     (LOOP-HARNESS-027)."""
-    for target in (t for argv, here in commands for t in _attribution_targets(argv, here, root)):
+    for argv, target in ((a, t) for a, here in commands for t in _attribution_targets(a, here, root)):
         if not AI_ATTRIBUTION_KEY_RE.search(_read_head(_xt_yaml_for(target[0]))):
             continue
         gdir, pairs, kind = target
-        # `-F` tương đối tính từ thư mục git chạy (sau `-C`), như git.
+        # `-F` tương đối tính từ thư mục git chạy (sau `-C`), như git. Here-string (`-F - <<< $'…'"…"`, D-503) đọc như
+        # chữ bash ghép xong
         texts = [v if k == "m" else _read_head(posixpath.join(gdir, v)) for k, v in pairs]
+        texts += [b for a, b in zip(argv, argv[1:]) if a == "<<<"]
         bodies = _heredoc_bodies(cmd, GIT_COMMIT_TEXT_RE if kind == "commit" else GH_PR_TEXT_RE)
         hit = next((m.group(0) for t in [*texts, *bodies] for m in [AI_ATTRIBUTION_RE.search(t)] if m), "")
         if not hit and "<<" in cmd:
@@ -16294,7 +16700,8 @@ def _decoded_feed(pipe: List[List[str]], i: int) -> Tuple[List[str], Optional[st
         chain.insert(0, _decoder(pipe[j]))
         j -= 1
     src = normalize(pipe[j]) if j >= 0 else []
-    text: Optional[str] = _echoed_scripts(src)[0] if chain and src[:1] in (["echo"], ["printf"]) else None
+    plain = chain and src[:1] in (["echo"], ["printf"]) and not _echo_opaque(src)  # D-503: `printf '\x6d' | rev | sh`
+    text: Optional[str] = _echoed_scripts(src)[0] if plain else None
     for name in chain:
         text = _decode(name, text) if text is not None else None
     return chain, text
@@ -16393,15 +16800,26 @@ def _exec_trigger(word: str) -> bool:
     `builtin`) thì không: `direnv exec . git …` có `exec` là lệnh con của direnv."""
     name = posixpath.basename(word)
     wrapper = name in WRAPPERS and name not in BASH_BUILTINS
-    return name in EXEC_TRIGGER_NAMES or name in SHELLS or wrapper or name in RUNNERS or name in DESTROY_CMDS
+    ruled = _dd_full(name) or name == "git_filter_repo" or bool(INTERP_RE.fullmatch(name))  # D-503: mọi tên có luật
+    return name in EXEC_TRIGGER_NAMES or name in SHELLS or wrapper or name in RUNNERS or ruled
+
+
+def _trigger_starts(rest: List[str]) -> List[int]:
+    return [k for k, t in enumerate(rest) if _exec_trigger(t)][:RUNNER_SUFFIXES]
 
 
 def _trigger_suffixes(rest: List[str]) -> List[str]:
-    """Phần lệnh từ TỪ ĐẦU TIÊN là tên lệnh có luật (vị trí lệnh sau trình bọc, AUD-SEC-817). Chữ trong đối số của
-    lệnh bên trong (`commit -m "rm -rf ~ is bad"`, `npm test -- -t "git reset --hard"`) là dữ liệu: không quét lại từ
-    có khoảng trắng hay tên có luật đứng sau như lệnh mới (reviewer #134)."""
-    k = next((k for k, t in enumerate(rest) if _exec_trigger(t)), -1)
-    return [_join_tokens(rest[k:])] if k >= 0 else []
+    """Phần lệnh từ MỌI từ là tên lệnh có luật (vị trí lệnh sau trình bọc, AUD-SEC-817; D-503: không chỉ từ đầu tiên —
+    `uv run --with rm git push --force`), tối đa `RUNNER_SUFFIXES` hậu tố. Chữ trong đối số của lệnh bên trong
+    (`commit -m "rm -rf ~ is bad"`, `npm test -- -t "git reset --hard"`) là dữ liệu: từ có khoảng trắng không phải tên
+    lệnh (reviewer #134)."""
+    return [_join_tokens(rest[k:]) for k in _trigger_starts(rest)]
+
+
+def _runner_tails(argv: List[str]) -> List[List[str]]:
+    """Các hậu tố (token) bắt đầu ở tên lệnh có luật của lệnh tên lạ/trình chạy gói (`_unmodelled_runner`)."""
+    words = _strip_prefixes(argv)
+    return [words[1 + k :] for k in _trigger_starts(words[1:])] if _unmodelled_runner(words) else []
 
 
 def _procsub_scripts(tokens: List[str], dirs: List[Optional[str]]) -> Placed:
@@ -16788,7 +17206,7 @@ def _parallel_head(s: List[str], seps: List[str], files: List[str]) -> Tuple[int
 def _xargs_replace(opts: List[str]) -> Optional[str]:
     """Chuỗi thay của `xargs -I R|-IR|-i[R]|--replace[=R]` trong tuỳ chọn của xargs; None = nối đối số vào cuối."""
     for i, t in enumerate(opts):
-        if t.startswith("--replace"):
+        if _wrapper_long("xargs", t.partition("=")[0]) == "--replace":  # cả viết tắt `--rep=Z` (D-503)
             return t.partition("=")[2] or "{}"
         m = XARGS_REPLACE_RE.fullmatch(t)
         if m:
@@ -18228,7 +18646,7 @@ GATE_PASSIVE: FrozenSet[str] = frozenset(
     "python python3 node perl ruby php cat tac head tail wc grep egrep fgrep zgrep diff cmp jq echo"
     " date true false nproc pwd ls whoami hostname uname id test [ [[ basename dirname readlink realpath stat file"
     " du md5sum sha1sum sha224sum sha256sum sha384sum sha512sum b2sum cksum more ps pgrep cut type which"
-    " printenv tr :".split()
+    " printenv tr : mktemp".split()  # D-503: `$(mktemp …)` là đường mới (`_subst_computed`)
 )
 # Tên lệnh có luật — mọi tên luật rẽ nhánh, gồm cả `GATE_PASSIVE`: tập để hỏi "tên này có luật không" (đọc lại hậu tố của
 # lát 6, D-432), còn `GATE_NAMES` chỉ để kích hoạt cổng. Đúng bằng tập tên rẽ nhánh mà bộ đọc mã của `GuardGateNamesTest`
@@ -18239,7 +18657,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     # Review #526: `m4` (`_is_m4`), `mkfs` (`GLOB_COMMANDS` định nghĩa sau), `for` (`_argv_split_trigger`), `alias`
     # (`_alias_rule` khớp mẫu `_may_be_alias`). Từ khoá shell (`SHELL_KEYWORDS`: `if then else elif while until do !`)
     # không thuộc tập: `_strip_prefixes` bỏ chúng trước khi lấy tên nên cổng không bao giờ gặp chúng làm tên lệnh.
-    + "m4 mkfs for alias".split()
+    + "m4 mkfs for alias mktemp".split()
 ).union(
     IMPLICIT_TOOL_HEADS,  # công cụ nạp tệp ngầm: `just`, `pytest`, `mvn`… (`_implicit_tools`)
     HEREDOC_RUN_SAFE - {""},  # `:`, `tr` (`_heredoc_runner`)
@@ -18884,6 +19302,7 @@ def _bash_decision(
     ) or _scan_nested(cmd, tokens, root, cwd, depth, asks, budget, rewrites, _cwd_picks(placed))
     nested_deny = nested_deny or _scan_glob_rewrites(cmd, tokens, root, cwd, depth, asks, budget, rewrites)
     nested_deny = nested_deny or _scan_param_rewrites(cmd, root, cwd, depth, asks, budget, rewrites)  # AUD-SEC-803
+    nested_deny = nested_deny or _scan_last_arg(cmd, root, cwd, depth, asks, budget, rewrites)  # D-503
     if nested_deny:
         return _nested_deny_result(res, nested_deny, budget)
     asks += _late_pending_asks(cmd, tokens, every, root, cwd, pending_bare, budget)

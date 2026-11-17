@@ -3626,10 +3626,10 @@ class GuardAud612FormsTest(unittest.TestCase):
         "bash <(echo x) <<EOF\nrm -rf ~\nEOF",
         "cat <(echo) <<EOF | bash\nrm -rf ~\nEOF",
     )
+    # D-503: `echo x > "$(echo)"out.txt`, `rm -rf "$(git rev-parse --show-toplevel)/build"` nay BUDGET (thay lệnh ở đích
+    # chuyển hướng ghi/lệnh xoá); `$(mktemp …)` guard biết là đường mới nên vẫn chạy
     ALLOW = (
-        'echo x > "$(echo)"out.txt',
         'cp /tmp/x "$(echo)"notes.txt',
-        'rm -rf "$(git rev-parse --show-toplevel)/build"',
         'echo x > "$(mktemp -d)/out.log"',
         'tar -xf a.tar -C "$(mktemp -d)"',
         "printf 'echo %s\\n' hi | bash",

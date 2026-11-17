@@ -211,7 +211,8 @@ class ExecHelperTest(unittest.TestCase):
         self.assertTrue(guard._wrapper_opt_takes_next("xargs", "--process"))
 
     def test_trigger_suffixes(self):
-        self.assertEqual(guard._trigger_suffixes(["a", "git", "x", "rm", "y"]), ["git x rm y"])
+        # D-503: mọi từ là tên lệnh có luật mở một hậu tố (`uv run --with rm git push --force`)
+        self.assertEqual(guard._trigger_suffixes(["a", "git", "x", "rm", "y"]), ["git x rm y", "rm y"])
         self.assertEqual(guard._trigger_suffixes(["a", "rm -rf x", "b c"]), [])
         self.assertEqual(guard._trigger_suffixes(["exec", ".", "nohup", "x"]), ["nohup x"])
         for name in ("git", "git-foo", "watch", "python3.12", ":::", "5", "bind"):
