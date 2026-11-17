@@ -213,6 +213,12 @@ class ProdDecidedBashTest(AuditOrangeCase):
                 f"cd docs && grep -rn '{PHRASE}' .",
                 f"grep -rn '{PHRASE}' docs | sed -n 1,5p",
                 f"grep -n '{PHRASE}' {LEDGER}",
+                # lệnh bọc/gán đầu lệnh/lệnh trơn đứng trước (bất biến fuzz `allow-kept`)
+                f"XT_FUZZ=1 git grep -n '{PHRASE}'",
+                f"command git grep -n '{PHRASE}'",
+                f"true; git log -S '{PHRASE}'",
+                f"true && cd docs && grep -rn '{PHRASE}' .",
+                f"X='{PHRASE}'; echo ok",
             )
         )
 
@@ -224,6 +230,9 @@ class ProdDecidedBashTest(AuditOrangeCase):
                 f"git log -S '{PHRASE}' --output=notes.md": "BUDGET",
                 f"git grep -nO '{PHRASE}'": "BUDGET",
                 f"cd docs && python3 x.py '{PHRASE}'": "BUDGET",
+                f"GIT_DIR=/tmp/r git log -S '{PHRASE}'": "BUDGET",
+                f"git -C docs grep '{PHRASE}'": "BUDGET",
+                f"git commit -m '{PHRASE}'": "BUDGET",
             }
         )
 

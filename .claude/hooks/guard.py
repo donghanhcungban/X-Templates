@@ -1134,19 +1134,26 @@ def _prod_decided_bash_why(cmd: str) -> str:
 
 
 PROD_READ_GIT_OPTS = ("--output", "--open-files-in-pager")  # `git log --output=F` ghi tệp, `git grep -O` chạy pager
+PROD_PASSIVE = frozenset({"cd", "pushd", "popd", "true", "false", ":"})
+PROD_GIT_READS = frozenset({"grep", "log", "show", "diff"})
 
 
 def _prod_reader(argv: List[str]) -> bool:
-    """Lệnh chỉ đọc cho luật cụm dòng quyết: danh sách trắng ADR-0066 (`_reuse_reader`: `grep`, `sed -n`, `git log`…),
-    `git grep`, `cd`/`pushd`/`popd`; lệnh git có `--output`/`-O` (ghi tệp, chạy pager) thì không."""
-    if argv[:1] in (["cd"], ["pushd"], ["popd"]):
-        return True
-    if argv[:1] == ["git"] and any(
-        a[:1] == "-" and a[1:2] != "-" and "O" in a or _long_match(a.partition("=")[0], PROD_READ_GIT_OPTS)
-        for a in argv[1:]
-    ):
-        return False
-    return _reuse_reader(argv) or argv[:2] == ["git", "grep"]
+    """Lệnh chỉ đọc cho luật cụm dòng quyết: lệnh bọc (`command`, `env`, `nice`…) và gán đầu lệnh bóc như `_go_reader`
+    (gán `PATH`/`GIT_*`/`LESS*` mất miễn); `cd`/`true`; `git grep|log|show|diff` không `-c`/`-C` trước lệnh con, không
+    `--output`/`-O` (ghi tệp, chạy pager); còn lại danh sách trắng ADR-0066 (`_reuse_reader`: `grep`, `sed -n`…)."""
+    n = normalize(argv)
+    head = posixpath.basename(n[0]) if n else ""
+    k = next((i for i, a in enumerate(argv) if posixpath.basename(a) == head), 0)
+    if not n or any(REUSE_ENV_RE.fullmatch(a) for a in argv[:k]):
+        return not n
+    if head == "git":
+        bad = any(
+            a[:1] == "-" and a[1:2] != "-" and "O" in a or _long_match(a.partition("=")[0], PROD_READ_GIT_OPTS)
+            for a in n[2:]
+        )
+        return argv[k + 1 : k + 2] == n[1:2] and "".join(n[1:2]) in PROD_GIT_READS and not bad
+    return head in PROD_PASSIVE or _reuse_reader(n)
 
 
 def edit_decision(path: str, root: str, tool_input: Optional[Dict[str, object]] = None) -> Tuple[str, str]:
