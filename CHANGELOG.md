@@ -233,6 +233,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   mờ → chặn như `stage`; dòng `Khi chạy thật đã quyết` ghi tay (Edit/Write/Bash) và hàm `decide_prod` nạp trong tiến
   trình → chặn; trong phiên agent, `stage approve` và hàng promotion của `release-check` fetch nhánh chính trước khi đọc
   khoá `stage_approval`/`release_signoff` (fetch lỗi → chỉ người).
+- AUD-SEC-629/630 (T-3909): ô Tên chỉ gồm ký tự vô hình/điều khiển không còn tính là người ký §5 (xt), và guard chặn
+  Write/MCP GO-NO-GO có NUL; neo `subject:` đọc như `release-check` (chỉ bỏ space/tab) nên hậu tố khoảng trắng Unicode
+  không chuyển được chữ ký sang ứng viên khác. AUD-HAR-385 chấp nhận có hạn (D-498, làm cùng T-3858).
 - AUD-HAR-394/395, AUD-SEC-649 (T-3914): `dev-task.sh format`/`format-file` bị ngắt (TERM/INT/HUP) giữa formatter vẫn
   khôi phục `GO-NO-GO*.md` và dọn bản chụp; mẫu `xt.yaml` hướng dẫn thêm `GO-NO-GO*.md` vào file ignore của formatter
   Markdown để cổng `format_check` không đỏ sau khi lập GO-NO-GO.
