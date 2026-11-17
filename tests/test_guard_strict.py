@@ -1483,6 +1483,7 @@ class ReasonCodeLockTest(unittest.TestCase):
         "PUSH_ALL": "git push --all origin",
         "WIPE_OUTSIDE": "rm -rf ~/x",
         "STASH_DROP": "git stash drop",
+        "DATA_DESTROY": "dropdb -h db.example.com prod",  # AUD-HAR-420
         "DESTROY": "gh repo delete o/r --yes",
         "AUTO_MERGE_ENABLE": "gh pr merge 5 --auto --squash",
         "MERGE_ADMIN": "gh pr merge 5 --admin --squash",
@@ -1531,6 +1532,7 @@ class ReasonCodeLockTest(unittest.TestCase):
         ("BUDGET", "echo " + "a" * guard.CMD_MAX_CHARS),  # vượt ngân sách quét (mẫu ở EXAMPLES là lớp tập con)
         ("BUDGET", "gh pr merge$Z 5"),  # tên lệnh/tên cờ gh có mở rộng (AUD-SEC-587)
         ("BUDGET", "git pus? --force origin main"),  # lệnh con git không đọc chắc (AUD-SEC-635)
+        ("BUDGET", "sed -i s/a/b/ docs/autopilot/DECISIONS.md"),  # Bash ghi sổ quyết định (AUD-SEC-804)
     )
 
     def test_every_marker_blocks_a_real_command(self):
@@ -2508,11 +2510,15 @@ class GuardLiteralFormsT3663Test(unittest.TestCase):
                 "echo $HOME; ls ~",
                 'HOME=/tmp/h; echo "${HOME}"',
                 "[[ -v HOME ]] && echo $HOME",
-                'rm -rf "${HOME:?HOME unset}/.cache/x"',
             ),
             "AUD-SEC-414",
             guard._home_dyn_why,
         )
+        # T-3929 (D-502): `${HOME:?…}` đọc như `$HOME` — xoá ngoài dự án như `rm -rf ~/.cache/x` (trước: cho chạy); lớp
+        # AUD-SEC-414 vẫn không bắt
+        cmd = 'rm -rf "${HOME:?HOME unset}/.cache/x"'
+        self.assertEqual((decide(cmd)["decision"], decide(cmd).get("code")), ("deny", "WIPE_OUTSIDE"))
+        self.assertEqual(guard._home_dyn_why(cmd), "")
         for cmd in (
             'HOME="$(mktemp -d)"; cd ~ && rm -f settings.json',
             'export HOME="$PWD/.claude"; rm -f $HOME/s.json',
@@ -2702,8 +2708,10 @@ class GuardReview429Test(unittest.TestCase):
             f"HOME=/tmp/x true; cd ~ && rm -rf {p}",
             f"env HOME=/tmp/x true; cd ~ && rm -rf {p}",
         )
-        self.assert_deny(cmds, str(ROOT.parent))
-        self.assert_deny(cmds[:1])  # HOME=/root thật: `~/.ssh`
+        # `~/.ssh` dưới HOME giả: checkout dưới `/tmp` thì HOME giả là thư mục tạm, xoá ở đó được phép (AUD-TEST-097) —
+        # ca `.ssh` đo với HOME ngoài thư mục tạm
+        self.assert_deny(cmds[1:], str(ROOT.parent))
+        self.assert_deny(cmds[:1], "/root")
         self.assertTrue(guard._sets_home(["HOME=/tmp/x"]))
         self.assertTrue(guard._sets_home(["declare", "-x", "HOME=/tmp/x"]))
         self.assertTrue(guard._sets_home(["printf", "-v", "HOME", "%s", "x"]))
@@ -2716,11 +2724,11 @@ class GuardReview429Test(unittest.TestCase):
     def test_r429_2_tilde_captured_before_home_change(self):
         """🔴2: `~` đã lấy vào biến trước khi đổi HOME mở theo home THẬT (bash mở lúc gán)."""
         p = self.P
+        self.assert_deny(("h=~; HOME=/tmp/y; rm -rf $h/.ssh",), "/root")  # HOME ngoài thư mục tạm (AUD-TEST-097)
         self.assert_deny(
             (
                 "x=~; HOME=/tmp/y; rm -rf $x",
                 'x=~; export HOME=/tmp/y; rm -rf "$x"',
-                "h=~; HOME=/tmp/y; rm -rf $h/.ssh",
                 f"x=~/{p}; HOME=/tmp/y; rm -rf $x",
                 f"a=~; HOME=/tmp/y; rm -rf $a/{p}",
                 f"x=~; HOME=/tmp/y; cd $x && rm -rf {p}",

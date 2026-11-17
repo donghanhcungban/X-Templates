@@ -264,6 +264,8 @@ class DeployStatusTest(TmpRepoCase):
             ({"smoke": {**STEP, "exit_code": 1}}, "`smoke`"),
             ({"rollback": STEP}, "`rollback`"),
             ({"finished": "2026-11-14T11:59:59Z"}, "`finished`"),
+            # AUD-TEST-110: cùng múi +07:00, `started` = `finished` — chỉ luật UTC bắt được (luật thứ tự không thấy)
+            ({"started": "2026-11-14T12:00:00+07:00", "finished": "2026-11-14T12:00:00+07:00"}, "ISO 8601 UTC"),
             ({"result": "rolled_back", "rollback": STEP, "previous_digest": CONTENT}, "`served_digest`"),
             ({"result": "rolled_back", "previous_digest": DIGEST}, "`rollback`"),
             ({"result": "rolled_back", "rollback": STEP}, "`previous_digest`"),

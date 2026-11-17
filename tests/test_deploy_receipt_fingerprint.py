@@ -42,8 +42,10 @@ class DeployReleaseFingerprintTest(TmpRepoCase):
                 neighbor = self.repo / "app" / relative
                 neighbor.parent.mkdir(parents=True, exist_ok=True)
                 neighbor.write_text("pass\n", encoding="utf-8")
-                self.assertNotEqual(self.release_content(), baseline)
-                neighbor.unlink()
+                try:  # AUD-TEST-111: subTest đỏ vẫn xoá tệp hàng xóm, không làm bẩn subTest sau
+                    self.assertNotEqual(self.release_content(), baseline)
+                finally:
+                    neighbor.unlink()
                 self.assertEqual(self.release_content(), baseline)
 
     def test_receipt_path_counts_as_project_content_without_opt_in(self):

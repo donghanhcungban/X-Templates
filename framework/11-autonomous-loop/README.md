@@ -1,7 +1,7 @@
 ---
 title: Vòng lặp tự động (autopilot)
 kind: index
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # 11 — Vòng lặp tự động (autopilot)
@@ -67,9 +67,8 @@ template và `AGENTS.md` chỉ tóm tắt và liên kết, không chép bảng/n
    (Gate, tick PLAN, `.autopilot/` riêng); `hook-stop`/`checkpoint` luôn theo `CLAUDE_PROJECT_DIR` — vòng ở worktree thì mở phiên
    Claude với thư mục dự án là worktree đó (`loop init` cảnh báo khi khác).
 10. **Mỗi vòng**: `<XT> loop status --json` → `continue` kèm `task`, `executor` (ADR-0029/0061; `null` = tự làm; `escalated` =
-    chuyển cấp kèm diff + evidence lỗi + giả thuyết đã loại), `milestone_done` + `milestone_audit` (`now` → audit delta theo
-    [`../00-method/audit.md`](../00-method/audit.md) §1 trước task kế, 🔴/🟠 thành task mới; `g7` ở pha build → làm tiếp —
-    ADR-0033) → làm task → Gate **y nguyên** qua `<XT> loop record --task T-NNN [--executor <agent>] -- '<Gate>'` (Gate là MỘT đối số
+    chuyển cấp kèm diff + evidence lỗi + giả thuyết đã loại), `milestone_done` + `milestone_audit` (không audit theo mốc,
+    làm tiếp: `g7` = build, audit cuối đợt; `signoff` = harden, audit ở cổng ký — [`audit.md`](../00-method/audit.md) §1) → làm task → Gate **y nguyên** qua `<XT> loop record --task T-NNN [--executor <agent>] -- '<Gate>'` (Gate là MỘT đối số
     bọc nháy đơn — mỗi `'` trong Gate viết `'\''`; ghi `.autopilot/evidence/T-NNN.json`: `exit_code`, `cmd`, `head`, 40 dòng cuối).
 11. Exit 0 → máy tự tick `[x]` (`--no-tick` để tự tay), commit nhỏ (conventional) qua cổng commit (`commit_gate`, [`LOOP-HARNESS-008`](harness-files.md)).
     Exit ≠ 0 → sửa; cùng chữ ký lỗi lần 2 → đổi cách tiếp cận (ghi D-NNN); lần 3 → máy đặt `blocked`

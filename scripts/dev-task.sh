@@ -258,7 +258,8 @@ loop_noop() { # $1=task $2=lệnh -> true (kèm log) nếu autopilot đang chạ
 guard_ok() { # $1=lệnh -> 0 nếu được chạy
   local xt; xt="$(dirname "$0")/xt.py"
   [ -f "$xt" ] && command -v "$FRAMEWORK_PYTHON" >/dev/null 2>&1 || return 0
-  # Chỉ exit 126 (guard cấm) là chặn; xt.py sập (python cũ…) → chạy như cũ (fail-open về luồng, ADR-0002).
+  # Chỉ exit 126 là chặn: guard cấm lệnh, HOẶC xt.py từ chối runtime không phải CPython 3.15.x (ADR-0078 — chủ đích,
+  # không phải fail-open). xt.py sập kiểu khác (exit ≠ 126) → chạy như cũ (fail-open về luồng, ADR-0002).
   CLAUDE_PROJECT_DIR="$ROOT" "$FRAMEWORK_PYTHON" "$xt" guard-check -- "$1"
   [ "$?" -ne 126 ]
 }
@@ -283,12 +284,19 @@ guard_ok_all() { # $@=lệnh -> 126 nếu guard cấm lệnh nào, 0 nếu đư�
   esac
   return 0
 }
-guard_turn() { # $@=task -> 0 nếu mọi lệnh phân giải được của lượt được chạy; 126 (kèm log) nếu guard cấm lệnh nào
+guard_turn() { # $@=task -> 0 nếu mọi lệnh phân giải được của lượt được chạy; 126 (kèm log) nếu guard cấm/runtime sai
   local t c; local -a cmds=()
   for t in "$@"; do c="$(resolve "$t")"; [ -n "$c" ] && cmds+=("$c"); done
   [ "${#cmds[@]}" -gt 0 ] || return 0
   guard_ok_all "${cmds[@]}" && return 0 # gọi thẳng, không ống: GUARDED_CMDS phải đặt ở shell này, không phải subshell
-  log "$TASK: guard cấm một lệnh của xt.yaml → không chạy lệnh nào (LOOP-STOP-027)"
+  # 126 cũng là xt.py từ chối runtime (ADR-0078): kiểm runtime thẳng (không hỏi guard lần hai — T-1715 một lần hỏi
+  # mỗi lượt) để log không đổ cho guard (AUD-DOC-296)
+  if "$FRAMEWORK_PYTHON" -c 'import sys; sys.exit(sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 15))' \
+    >/dev/null 2>&1; then
+    log "$TASK: guard cấm một lệnh của xt.yaml → không chạy lệnh nào (LOOP-STOP-027)"
+  else
+    log "$TASK: xt.py không chạy được bằng '$FRAMEWORK_PYTHON' (exit 126: cần CPython 3.15.x — ADR-0078; đặt XT_FRAMEWORK_PYTHON) → không chạy lệnh nào"
+  fi
   return 126
 }
 
@@ -509,11 +517,35 @@ e2e_run() { # $1=I $2=N (mặc định 1 1)
 json_ok() { # $1=file → 0 nếu là JSON hợp lệ; không có python3 thì không kiểm được (coi như không hợp lệ: không giữ bản sao)
   command -v python3 >/dev/null 2>&1 && python3 -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$1" >/dev/null 2>&1
 }
+# AUD-HAR-422: chỉ bỏ qua thư mục user hiện tại KHÔNG đi xuyên được (thiếu `x`): còn `x` mất `r` (chmod 311) thì formatter
+# đi theo chỉ mục git (`git ls-files | xargs …`, `pre-commit run --all-files`) vẫn mở được GO-NO-GO trong đó → dừng.
+# $1=stderr của find (LC_ALL=C) → 0 nếu mọi dòng là "Permission denied" trên thư mục có thật thiếu `x`; dòng lạ → 1.
+go_skippable() {
+  local line p
+  [ -s "$1" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in *"find: "*": Permission denied") ;; *) return 1 ;; esac
+    p="${line#*find: }"; p="${p%: Permission denied}" # tên chương trình là argv[0]: `find` hay `/usr/bin/find`
+    case "$p" in "'"*"'") p="${p:1:${#p}-2}" ;; esac # GNU bọc nháy đơn, busybox không
+    [ -d "$ROOT/$p" ] && [ ! -x "$ROOT/$p" ] || return 1
+  done <"$1"
+}
 # AUD-SEC-628: formatter khai báo không theo từng file (`prettier --write .`) vẫn chuẩn hoá được dòng §5 → chụp mọi
 # `GO-NO-GO*.md` (tên không phân biệt hoa thường) dưới gốc dự án trước khi chạy formatter, khôi phục file nào đổi/mất.
 go_snapshot() { # $1=thư mục chụp (rỗng, đã tồn tại)
-  local i=0 f
-  ( cd "$ROOT" && find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o -type f -iname 'go-no-go*.md' -print0 ) >"$1/list" || return 1
+  local i=0 f rc=0
+  # AUD-HAR-399: cả symlink mang tên GO-NO-GO (`GO-NO-GO-v9.md → draft.md`): `cp`/`cmp` đi theo liên kết nên chụp và khôi phục
+  # đúng đích; liên kết treo không có gì để chụp → bỏ khỏi danh sách.
+  ( cd "$ROOT" || exit 2; LC_ALL=C find . \( -name .git -o -name node_modules -o -name .venv \) -prune -o \( -type f -o -type l \) -iname 'go-no-go*.md' -print0 2>"$1/err" ) >"$1/all" || rc=$?
+  # AUD-HAR-417: thư mục không đọc được (dữ liệu docker mode 700 của user khác, chmod 000) — formatter chạy cùng user cũng
+  # không đọc được nên bỏ qua; find lỗi khác (hay lỗi không lời) vẫn dừng formatter. LC_ALL=C: thông báo find tiếng Anh.
+  if [ "$rc" -ne 0 ]; then
+    if ! go_skippable "$1/err"; then cat -- "$1/err" >&2; return 1; fi
+    log "$TASK: bỏ qua $(wc -l <"$1/err" | tr -d ' ') thư mục không đọc được khi tìm GO-NO-GO"
+  fi
+  while IFS= read -r -d '' f; do
+    if [ -f "$ROOT/$f" ]; then printf '%s\0' "$f"; fi
+  done <"$1/all" >"$1/list"
   while IFS= read -r -d '' f; do
     i=$((i + 1)); cp -p -- "$ROOT/$f" "$1/$i" || return 1
   done <"$1/list"

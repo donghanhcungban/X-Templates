@@ -104,6 +104,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- `loop status` (AUD-HAR-412, D-500): pha harden không còn đòi audit theo mốc — `milestone_audit: signoff` (audit delta
+  dồn về cổng ký, ADR-0080) thay cho `now`; pha build giữ `g7`; `topo: review`/`audit` ở harden ghi "gom về cổng ký".
+  README mảng 11 bước 10, `/autopilot` bước 5, `/complete` bước 4, `audit.md` §1, mẫu PLAN đổi theo. Skill review/gate
+  và bảng điều phối nói rõ PR rủi ro cao chỉ bị bắt review khi `merge_review: required` (AUD-HAR-413; `autonomy-bench`
+  thêm 4 ca `merge_review`); `/complete` bước 5.3 nêu lối ra `blocked`/`budget`/khác và `stage submit --evidence`
+  (AUD-HAR-414). Dự án đích: chạy lại `install.py` (nhận `xt.py`, skill).
+
 - Repo khung bật `release_signoff: agent` (ADR-0074, D-401/D-402; chủ repo 2026-11-17): agent ký §5 GO-NO-GO bằng
   `xt.py release-sign` khi `release-check` không FAIL và chỉ còn chữ ký. Khoá thuộc HARD_GATED_KEYS — PR này do người merge.
 - ADR-0080 (D-494): pha harden chạy hai nhịp lặp tới `release-check` GO — **vét việc** (PLAN-harden từ sổ audit đang
@@ -231,10 +238,97 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-HAR-419/420, AUD-SEC-818 (T-3931, D-502): thân heredoc tới `git commit`/`gh pr` đọc theo token (tên lệnh có nháy,
+  nhóm `{…}`, `exec N<<`, `git -c $'…'`, `sh -c 'git commit -F -' <<E`) nên dòng ghi công AI không còn lọt
+  `ai_attribution: forbid`; không đọc chắc mà có chữ ghi công → BUDGET. Heredoc vào shell cũng gắn theo token
+  (`( bash ) <<E`, `exec <<E` rồi `bash`): thân quét như script. Mã mới `DATA_DESTROY`: client CSDL phá dữ liệu tới máy chủ không cục bộ bị chặn (tài liệu
+  `stop-points-and-escalation.md` khớp hành vi). In biến token GitHub (`printenv GH_TOKEN`, `echo "$GH_TOKEN"`) chặn như
+  `gh auth token`. Dự án đích: chạy lại `install.py`.
+
+- AUD-SEC-820/821/822/823/828/829/830/832/835 (T-3929, D-502): guard đóng lớp "giá trị không tính chắc ở đối số/đích
+  của lệnh có luật" → BUDGET: `$_`/`$REPLY`/`$BASH_REMATCH`, `printf -v`, nameref, `${!x}`, biến gán từ chúng, toán tử
+  trên `$HOME`/`$PWD`/`$OLDPWD`/`$BASH`/`$SHELL`; `set` nhận theo từ lệnh (`'set'`, `-o x`, `-eo x`). Guard tính
+  `${X/mẫu[/từ]}`, cắt chuỗi của biến `for` chữ và `X=${X:2}`; vị trí bát phân/thập lục và `trap` gán biến ngoài
+  `EXIT` → BUDGET. Bản viết lại `${X:+…}` không đệ quy, bỏ heredoc nháy; mẫu có biến đã biết, `\#`, `[a-z]` tính được.
+  Dự án đích: chạy lại `install.py`.
+
+- AUD-SEC-815/816/817/824/825/827/831/833/834 (T-3930, D-502): guard đóng lớp "kênh chạy lệnh guard không mô hình":
+  chữ `printf`/`echo` vào shell mà guard không dựng chắc (thoát ngoài `\n`/`\t`, `%b`/`%c`/`%q`/độ chính xác, echo có
+  `\`) → BUDGET; `xargs -I/-i/--replace` đọc thêm như không có từ chứa chỗ thay (`rm -rf {}` ≡ `rm -rf` không đích);
+  lệnh lạ và trình chạy gói (`uv run`, `direnv exec`, `nix develop -c`…) quét hậu tố từ tên lệnh có luật, thêm
+  `setpriv`/`bwrap`/`capsh`/`prlimit`/`firejail`/`hyperfine`/`entr`/`gdb`… vào bảng trình bọc; cờ dài viết tắt của
+  `timeout`/`nice`/`stdbuf`/`time`/`xargs`; `--ctx=v "$X"` ở công cụ có lệnh con; thân `sh -c`/`eval` nhắc biến gán
+  không phải chữ; `:branch`/`:owner`/`:repo` của `gh api`; `git init --t=`; `python3 -Im git_filter_repo`.
+  Dự án đích: chạy lại `install.py`.
+
+- AUD-HAR-422/423, AUD-TEST-112…116, AUD-DOC-298/299/300 (T-3932): `dev-task.sh format`/`format-file` chỉ bỏ qua thư
+  mục user không đi xuyên được (thiếu `x`); thư mục còn `x` mất `r` (formatter theo `git ls-files` vẫn mở được GO-NO-GO
+  trong đó) lại dừng formatter. `loop stop` khi vòng đã dừng mà `.autopilot` là symlink báo "đã tắt sẵn", không báo
+  "vòng vẫn bật". Test guard/merge không gọi `gh` thật; ghim `LC_ALL=C` và đường `verify` qua symlink; dọn subTest
+  bằng `try/finally`. Dự án đích: chạy lại `install.py`.
+
+- AUD-HAR-415/416/417/418, AUD-DOC-296 (T-3927): `.autopilot` là symlink khi vòng đang bật không còn kẹt phiên — lượt
+  Stop do chính hook kích (`stop_hook_active`) cho dừng kèm `systemMessage` bảo người thay liên kết bằng thư mục thật,
+  `loop stop` nói rõ việc đó (không ghi gì qua liên kết); `perf trial` không tạo khoá ở đích liên kết. Repo
+  `--separate-git-dir` thật: hàng `verify` của `release-check` về N/A, `release-sign` không từ chối. `dev-task.sh
+  format`/`format-file` bỏ qua thư mục không đọc được khi chụp GO-NO-GO (lỗi `find` khác vẫn dừng formatter); log cổng
+  tách "runtime không phải CPython 3.15" khỏi "guard cấm lệnh". Dự án đích: chạy lại `install.py`.
+
+- AUD-SEC-804/805/806/807/808/811 (T-3925, ADR-0080): guard so sổ quyết định `DECISIONS*.md` (mọi hoa/thường,
+  qua symlink) SAU lần Edit/MultiEdit/Write với đĩa — dòng `Khi chạy thật đã quyết` mới (cả Edit hai bước, lộ khỏi chú
+  thích, đổi mục) → deny; Bash ghi sổ (đích ghi, liên kết, lệnh lạ nêu tên) → BUDGET, trừ `xt.py loop decide`; lệnh chỉ
+  đọc nhắc cụm (`git grep`, `git log -S`, `cd … && grep`, `| sed -n`) cho chạy. Autocorrect của git chỉ tin
+  `git-<tên>` ở exec-path mặc định agent không đổi được (bỏ PATH). `gh api` ghi nhánh `@tệp`/`{branch}` tính như nhánh
+  chính. Thêm `fetch-pack --upload-pack/--exec`, `instaweb --httpd/-d`, `send-email --*-cmd`, `clone -c/--config`
+  vào luật lệnh lồng/khoá cấu hình. Cắt chuỗi biến đã gán (`${X:2}`, `${X#a}`, `${X%%z*}`) ra giá trị; dạng không
+  tính chắc → BUDGET. Test: `tests/test_guard_audit_orange.py`; ca bench `aud804-*`…`aud811-*`.
+- AUD-SEC-812/813 (T-3925): guard quét bộ lọc shell của `git filter-branch` (`--*-filter`, `--setup`) như `sh -c`;
+  chặn (BUDGET) `git send-email --smtp-server=<đường chương trình>` (tên máy vẫn chạy) và viết tắt
+  `git clone|init --templ=<dir>`; ca bench `aud812-*`, `aud813-*`.
+- AUD-SEC-801/802/803 (T-3924, ADR-0080): guard chặn hàm có biến gán muộn bằng `for`/`select`, `${X:=…}`,
+  `getopts`, `unset` (BUDGET); `eval -- <lệnh>` quét như `eval <lệnh>`; mở rộng tham số có từ thay thế (`${X:+từ}`,
+  `${X+từ}`, `${X/mẫu/từ}`, mặc định lồng `${X:-$HOME}`) quét thêm bản thay từ, đổi hoa/thường biến đã gán
+  (`${X,,}`, `${X@L}`…) ra giá trị. Dạng lành (`"${X:-default}"`, `${#a[@]}`, `${f%.txt}`, `echo ${X:+a}`) vẫn chạy.
+  Test: `tests/test_guard_audit_red.py`; ca bench `aud801-*`…`aud803-*`.
+
+- AUD-TEST-109/110/111, AUD-DOC-294/295/297, AUD-DEP-030 (T-3926): `tests/test_green_gh.py` dùng merge-check giả, không
+  gọi `gh` thật, và ghim allow/OTHER_ASK của merge trơn/có chuyển hướng; receipt triển khai có ca `+07:00` chỉ luật UTC
+  bắt; subTest dọn trạng thái trong `finally`. CONTRIBUTING và runbook steward liệt kê 5 check (thêm `pack-npm-audit`;
+  ruleset sống còn 4), README sửa số MUST và thêm `doctor --offline`, `install.py --new`; `requirements*.txt` sinh lại
+  với `--exclude-newer <ngày−7>`.
+
+- AUD-SEC-560/561/602/653/667/747/754, AUD-HAR-349, AUD-TEST-096/097/099 (T-3918): guard chặn merge REST theo id
+  `repositories/<id>/pulls/N/merge` (UNVERIFIED), `git credential fill`/`git credential-<helper> get` (in token), xoá
+  nhánh trùng tên trên remote/repo khác `origin`, `python3 -m git_filter_repo`, mở rộng lồng/`~-` đứng đầu từ của `gh`,
+  hàm thân `if`/`while`/`for` đăng `gh`, glob đầu từ của `git push`, cờ `gh` dựng từ `$!` rỗng (`$!--admin` như
+  `$X--admin`, cả ở `XT_GUARD_POLICY=strict`); cho qua `grep … xt.py -e decide-prod`, `git filter-repo
+  --help|--version`, pathspec/`-n N`/ref lặp của `filter-branch`, `git push -n|--dry-run … --delete`, `git push .
+  :<nhánh>`. Test: `tests/test_green_shell.py`; `GuardReview429Test` xanh khi checkout dưới `/tmp`; ca `aud605-ctl-*`
+  đổi origin `control`.
+- AUD-HAR-342/356/357/360/364/365/366, AUD-SEC-562/565/589/601/603 (T-3917): guard cho qua dạng trợ giúp gh in thật
+  (`release-sign --help`, `-h=false`, `gh pr -R o/r merge 12 --help`, `gh --help -X DELETE api …`, `gh repo --help
+  edit …`), `gh 2>&1 pr view`, message `git commit` nhắc `gh pr … review`; chặn `gh pr merge --delete-branch`
+  (REMOTE_DELETE), `gh auth git-credential`/`gh config get oauth_token` (in token), DELETE `git/ref/` số ít,
+  `labels/kind%2Fbug`, đường `repositories/<id>`, `force` qua query/`-f`/`-F force=False`, heredoc thân PR sau tiêu
+  đề có `;`/`|` trong nháy. Test: `tests/test_green_gh.py`.
 - Nợ review 🟢 (T-3921): `pack-npm-audit` vào required checks của `.github/rulesets/main.json` (AUD-DEP-023; ruleset
   sống do chủ repo áp); `cooldown` Dependabot 7 ngày (AUD-DEP-025); test ghim job không nhận `if:` và chỉ xét đúng job
   (AUD-DEP-027/029); bộ kiểm index migration của `web-api-ts` bỏ chú thích, chuẩn hoá tên, cấm builder `createIndex(`,
   chỉ miễn bảng mới hẳn trong `up()`, ghim từng index của 0005 và kiểm trạng thái/hạn dòng sổ (AUD-DATA-014…018).
+- Nợ review 🟢 `release-sign`/`release-check`/`stage` (T-3919): hàng `tree` so nội dung với index tạm dựng từ HEAD và
+  bỏ `GIT_*` trỏ repo khác (fsmonitor nói dối, `GIT_WORK_TREE`, sửa cùng kích thước trả mtime — AUD-HAR-374), nêu tệp +
+  cờ index (AUD-HAR-335), lệnh git hỏng (AUD-HAR-337), FAIL khi vân tay thấy bẩn sau `status` sạch (AUD-HAR-338);
+  `stage submit` chặn tệp assume-unchanged/skip-worktree (AUD-HAR-336); `release-sign` giữ CRLF/quyền tệp, ghi nguyên tử
+  (AUD-HAR-343), mục worktree không khớp thư mục thật → từ chối (AUD-HAR-372), thông điệp nêu sổ và cách gỡ
+  (AUD-HAR-346/373); lời từ chối §5 tên trống (`Hold`, `?`) có hiệu lực (AUD-HAR-345); hàng `verify`: bản ghi đỏ cùng
+  vân tay ở sổ nào cũng thắng, không vân tay/không có `git` → FAIL (AUD-HAR-402/403). Test ghim đột biến
+  AUD-TEST-093/098/103; test ID task trùng giữa các PLAN (AUD-HAR-384); mẫu GO-NO-GO §4 và ADR-0074 §Giới hạn
+  (AUD-HAR-348, AUD-DOC-279/280).
+- AUD-SEC-652/TEST-101/102, AUD-HAR-396/397/399 (T-3920): `install.py` từ chối có lý do (mã 2, không traceback) khi file
+  thường chiếm `.claude`/`.github`, `legacy_refs` không đọc xuyên thư mục symlink, cảnh báo `bỏ qua symlink` nêu chính
+  liên kết; `dev-task.sh` chụp và khôi phục cả symlink mang tên `GO-NO-GO*.md` (đích tên khác). Test mới
+  `tests/test_green_install.py` ghim `--plan` Gemini dưới symlink, dòng `skip format-file`, ba nhánh formatter xoá/hardlink/`mktemp`;
+  `ParentSymlinkTest` mỗi ca một thư mục riêng.
 - AUD-HAR-371/400 (T-3911): `release-sign` và hàng `verify` của `release-check` tìm cây chính đúng khi git in thư mục
   git (submodule, `--separate-git-dir`) và với git < 2.36 (không có `worktree list -z`); không suy được → từ chối.
 - AUD-SEC-545/654/641/625/637 (T-3908): `release-sign` qua `python3 -m xt`, glob, đường mờ → GO_SIGN; `loop` có lệnh con

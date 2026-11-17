@@ -1847,7 +1847,7 @@ class LoopRecordBranchesTest(TmpMixin, RealAutopilotUntouchedMixin, unittest.Tes
         self.assertIn("`topo: review`: phiên chính tự làm (LOOP-ORCH-024)", v["reason"])
 
     def test_milestone_done_marks_section_transition(self):
-        """Task kế là task đầu của mục mới và mọi task trước đã đóng → `milestone_done` = mục trước (audit delta theo mốc)."""
+        """Task kế là task đầu của mục mới và mọi task trước đã đóng → `milestone_done` = mục trước; không pha nào audit theo mốc (D-500)."""
         write(
             self.base / "docs" / "autopilot" / "PLAN.md",
             """
@@ -1867,20 +1867,23 @@ class LoopRecordBranchesTest(TmpMixin, RealAutopilotUntouchedMixin, unittest.Tes
         self.assertIsNone(xt.milestone_done(tasks, tasks[3]))  # cùng mục với task trước
         self.assertIsNone(xt.milestone_done(tasks, tasks[0]))  # task đầu PLAN
         v = xt.loop_verdict(self.base)
-        self.assertEqual((v["task"], v["milestone_done"], v["milestone_audit"]), ("T-003", "Lát 1 — skeleton", "now"))
-        self.assertIn("mốc «Lát 1 — skeleton» đã xong → audit delta", v["reason"])
+        self.assertEqual(
+            (v["task"], v["milestone_done"], v["milestone_audit"]), ("T-003", "Lát 1 — skeleton", "signoff")
+        )  # harden: audit dồn về cổng ký (ADR-0080, D-500)
+        self.assertIn("pha harden: audit delta dồn về cổng ký (ADR-0080)", v["reason"])
+        self.assertNotIn("audit delta trước khi sang mốc kế", v["reason"])
         write(self.base / "xt.yaml", "delivery_phase: build\n")  # ADR-0033: pha build gom audit theo mốc về trước G7
         v = xt.loop_verdict(self.base)
         self.assertEqual((v["milestone_done"], v["milestone_audit"]), ("Lát 1 — skeleton", "g7"))
         self.assertIn("pha build: audit delta ở cuối đợt (D-177)", v["reason"])
         self.assertNotIn("audit delta trước khi sang mốc kế", v["reason"])
-        for phase in ("Build", "prod", "harden", ""):  # giá trị lạ/vắng = harden → audit theo mốc như cũ (ADR-0031)
+        for phase in ("Build", "prod", "harden", ""):  # giá trị lạ/vắng = harden (ADR-0031) → dồn về cổng ký
             write(self.base / "xt.yaml", f"delivery_phase: {phase}\n")
-            self.assertEqual(xt.loop_verdict(self.base)["milestone_audit"], "now", phase)
+            self.assertEqual(xt.loop_verdict(self.base)["milestone_audit"], "signoff", phase)
         (self.base / "xt.yaml").write_bytes(
             b"delivery_phase: build\n\xfa"
-        )  # không đọc được → now, không vỡ (review #189)
-        self.assertEqual(xt.loop_verdict(self.base)["milestone_audit"], "now")
+        )  # không đọc được → harden, không vỡ (review #189)
+        self.assertEqual(xt.loop_verdict(self.base)["milestone_audit"], "signoff")
         (self.base / "xt.yaml").unlink()
         write(
             self.base / "docs" / "autopilot" / "PLAN.md",

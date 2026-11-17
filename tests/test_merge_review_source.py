@@ -300,7 +300,7 @@ class GuardReviewMissingTest(unittest.TestCase):
     UNPINNED = (
         "gh pr merge 7 --squash",
         "gh pr merge 7",
-        "gh pr merge 7 --squash --delete-branch",
+        "gh pr merge 7 --squash --body-file b.md",  # `--delete-branch` nay là REMOTE_DELETE (AUD-SEC-565)
         f"gh pr merge 7 --squash --body-file b.md --match-head-commit {HEAD}",
         "gh pr -R o/r merge 7 --squash",
         "gh api -X PUT repos/o/r/pulls/7/merge -f merge_method=squash",
