@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import install  # noqa: E402  (đường dẫn thêm ở trên)
+import install
 
 ROW = "  | người | An | GO | 2026-11-11 |\n"
 
