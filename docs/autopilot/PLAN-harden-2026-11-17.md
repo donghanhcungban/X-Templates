@@ -79,3 +79,10 @@
 - [x] `T-3934` 🔴 AUD-SEC-836…843, AUD-SEC-846…850; 🟠 AUD-SEC-844/851/852, AUD-HAR-424/425; 🟢 AUD-SEC-854: mặc định chặn ở đích/cờ/lệnh con của lệnh có luật, quét mọi hậu tố sau trình bọc, xargs tới shell/trình bọc — Gate: `python3 -m unittest tests.test_guard_default_deny` (files: .claude/hooks/guard.py, tests/test_guard_default_deny.py, tests/test_guard_fuzz.py)
 - [x] `T-3935` 🟠 AUD-TEST-117; 🟢 AUD-HAR-427/428, AUD-TEST-118: test không gọi mạng, go_skippable — Gate: `python3 -m unittest tests.test_signoff3_isolation` (files: scripts/dev-task.sh, tests/)
 - [x] `T-3936` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3934, T-3935; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 7 — đóng bất biến D-503 theo fuzz (cổng ký lần 4)
+> 829/15 778 tổ hợp lọt theo 9 gốc + hồi quy. Tiêu chí: bộ fuzz → 0 lọt, tập con tất định ghim thành test.
+
+- [ ] `T-3937` 🔴 AUD-SEC-857…862, 🟠 AUD-SEC-863…867, 🟢 AUD-SEC-868, AUD-TEST-119 — Gate: `python3 -m unittest tests.test_guard_d503_invariant tests.test_guard_signoff4` (files: .claude/hooks/guard.py, tests/)
+- [ ] `T-3939` GHSA-fc5q-39xc-vjpf (picomatch, chưa có bản vá, chỉ qua devDependency vitest) làm `pack-npm-audit` đỏ: ngoại lệ có hạn theo BASE-DEP-004 (D-504) — Gate: `python3 -m unittest tests.test_packs` (files: framework/templates/packs/web-api-ts/starter/, tests/)
+- [ ] `T-3938` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3937; files: docs/ops/AUDIT-STATUS.md)

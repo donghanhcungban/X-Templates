@@ -45,3 +45,14 @@ Ba lô theo D-502 (diff sửa + hồi quy): #637, #638/#639, #636. Không hồi 
 | #636 scripts/tests | CÓ PHÁT HIỆN | 🟠 AUD-TEST-117 · 🟢 AUD-HAR-427/428, AUD-TEST-118 |
 
 Liệt kê biến thể trong lớp không hội tụ → D-503: mặc định chặn (BUDGET) trong lệnh có luật kèm danh sách cho phép hẹp; cổng ký lần 4 kiểm bất biến bằng fuzz có hướng + hồi quy. Đợt 6: T-3934…T-3936.
+
+## Cổng ký lần 4 (ứng viên `a662344e`, sau đợt 6)
+
+Hai lô theo D-503: fuzz bất biến có hướng và hồi quy. Blueprint `--run` exit 0; tốc độ quyết định 1,16× nền (p95 42 ms); #642/#644 đủ.
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| Fuzz bất biến (47 lệnh gốc × ~120 dạng, 15 778 tổ hợp; bash thật trong sandbox) | CÓ PHÁT HIỆN: 829 tổ hợp nguy hiểm lọt (815 có từ trước, 14 hồi quy #643) theo 9 gốc | 🔴 AUD-SEC-857…862 · 🟠 AUD-SEC-863/864/865 |
+| Hồi quy D-503 + #642/#644 + nguồn AUD-TEST-119 | CÓ PHÁT HIỆN; AUD-TEST-119 do `ConcurrentDecisionTest` vá `os.environ` trong luồng | 🔴 (gộp AUD-SEC-861) · 🟠 AUD-SEC-866 · 🟢 AUD-SEC-868 |
+
+Sự cố: lần chạy oracle đầu dùng đường sandbox tương đối nên 480 ca gọi `/usr/bin/rm` thật; HOME khi đó cũng tương đối (không tồn tại), chỉ thư mục sandbox bị xoá — đã kiểm `/home/liend`, `.ssh`, `git fsck` repo nguyên vẹn. Tiêu chí đợt 7: chạy lại bộ fuzz → 0 ca lọt; tập con tất định thành test hồi quy (`tests/test_guard_d503_invariant.py`).
