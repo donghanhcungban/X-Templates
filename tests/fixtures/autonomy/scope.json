@@ -95,7 +95,7 @@
    ]
   },
   {
-   "reason": "Hook shell, cổng commit, cài đặt — đường chạy tiến trình (`dev-task.sh`, `pre-*-guard.sh`, `install.py`, `loop record`); test_hooks.py, test_install.py chạy hook thật; khóa state thiếu fcntl/flock và guard lỗi nạp/fallback (ADR-0054) là đường CLI/Gate có file thật: UpdateStateTest, GuardChokePointTest kiểm state bất biến và canary không chạy",
+   "reason": "Hook shell, cổng commit, cài đặt — đường chạy tiến trình (`dev-task.sh`, `pre-*-guard.sh`, `install.py`, `loop record`); test_hooks.py, test_install.py chạy hook thật; khóa state thiếu fcntl/flock và guard lỗi nạp/fallback (ADR-0054) là đường CLI/Gate có file thật: UpdateStateTest, GuardChokePointTest kiểm state bất biến và canary không chạy AUD-SEC-670/655, AUD-HAR-404/405 (symlink của hook/.git/.autopilot): tests.test_install.HooksRealDirTest, tests.test_xt_loop.AutopilotSymlinkStopTest.",
    "ids": [
     "AUD-HAR-001",
     "AUD-HAR-002",
@@ -125,7 +125,11 @@
     "AUD-HAR-306",
     "AUD-HAR-308",
     "AUD-HAR-311",
-    "AUD-HAR-312"
+    "AUD-HAR-312",
+    "AUD-SEC-670",
+    "AUD-SEC-655",
+    "AUD-HAR-404",
+    "AUD-HAR-405"
    ]
   },
   {
