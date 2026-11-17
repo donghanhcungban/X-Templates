@@ -2275,7 +2275,19 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _home_dyn_why(cmd) or _run_named_why(cmd) or _implicit_load_why(cmd) or _patch_file_why(cmd)
     why = why or _prefix_why(cmd) or _nested_quote_why(cmd) or _func_scope_why(cmd)  # P0 lát 4; AUD-SEC-750/660/661
     why = why or _prod_decided_bash_why(cmd)  # AUD-SEC-641
-    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
+    return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd) or _redirect_subst_why(cmd)
+
+
+def _redirect_subst_why(cmd: str) -> str:
+    """AUD-SEC-612: đích chuyển hướng ghi có thay lệnh trần dính chữ (`> $(echo).autopilot/state.json`) — bộ tách token
+    cắt đích ở `(` nên luật đích ghi không thấy đuôi; như P4 (ADR-0076) nhưng ở mọi lệnh. Nháy kép thì đích còn nguyên
+    và đuôi được xét như đích (`_subst_tail`)."""
+    raw = _raw_tokens(cmd, True)
+    for argv in (None if raw is None else _plain_argvs(raw)) or []:
+        for op, word in zip(argv, argv[1:]):
+            if (op.lstrip("&").startswith(">") or op == "<>") and _gate_bare_substitution(word, False):
+                return RULED_SUBST_WHY.format(clean_text(f"{op} {word}")[:80])
+    return ""
 
 
 # AUD-SEC-660/661 (D-415): thân hàm được quét lúc định nghĩa, với bảng biến lúc đó — biến gán sau (trước lời gọi) không
@@ -11538,6 +11550,9 @@ def _where(t: str, root: str, cwd: Optional[str]) -> List[str]:
     old = OLDPWD_REF_RE.match(t)
     if old:
         return _where(t[old.end() :].lstrip("/") or ".", root, None)
+    tail = None if PWD_REF_RE.match(t) else _subst_tail(t)
+    if tail is not None:  # AUD-SEC-612: `"$(echo)".claude/settings.json` — thay lệnh ra rỗng hay một thư mục
+        return [t, *_where(tail, root, cwd), *_where(tail.lstrip("/"), root, None)] if tail.strip("/") else [t]
     if cwd is not None:
         return _fd_where(_resolve_target(t, root, cwd), root, cwd)
     t = PROJECT_REF_RE.sub(lambda _: root, t, count=1)
@@ -11576,6 +11591,18 @@ def _fd_dir_tail(path: str) -> Optional[str]:
         if 2 <= len(stack) <= 4 and FD_DIR_RE.fullmatch("/" + "/".join(stack)):
             return "/".join(p for p in parts[i + 1 :] if p not in ("", ".")) or None
     return None
+
+
+def _subst_tail(t: str) -> Optional[str]:
+    """Phần sau các thay lệnh `$(…)`/`` `…` `` đứng đầu đích `t` (không số học `$((`); không mở đầu bằng thay lệnh hay
+    thay lệnh không đóng → None. Guard không biết chữ thay lệnh in ra: rỗng thì đích là đuôi (AUD-SEC-612)."""
+    i = 0
+    while t.startswith(("$(", "`"), i) and not t.startswith("$((", i):
+        end = t.find("`", i + 1) + 1 if t[i] == "`" else _raw_group_end(t, i + 2, "(")
+        if end <= 0:
+            return None
+        i = end
+    return t[i:] if i else None
 
 
 def _fd_where(t: str, root: str, cwd: Optional[str]) -> List[str]:
@@ -13559,17 +13586,55 @@ def _echoed_scripts(src: List[str]) -> List[str]:
 def _echo_texts(name: str, words: List[str]) -> List[str]:
     """Chữ `echo`/`printf` (`name`) in ra từ các đối số `words`."""
     if name == "printf":
+        words = words[1:] if words[:1] == ["--"] else words
         if words and "%" in words[0]:  # cả các đối số nối bằng khoảng trắng: `printf '%s ' rm -rf / | sh` (AUD-SEC-605)
-            return [words[0].replace("\\n", "\n"), *words[1:], " ".join(words[1:])]
+            rendered = _printf_render(words[0], words[1:])  # `printf 'rm -rf %s\\n' '~' | sh` (AUD-SEC-612)
+            return [words[0].replace("\\n", "\n"), *words[1:], " ".join(words[1:]), rendered]
         return [" ".join(words).replace("\\n", "\n")]
     while words and words[0] in ("-n", "-e", "-E", "-ne", "-en"):
         words = words[1:]  # cờ của echo; phần còn lại (kể cả `--hard`) là lệnh sẽ chạy
     return [" ".join(words)]
 
 
+PRINTF_SPEC_RE = re.compile(r"%%|%[-+ #0']*(?:\d+|\*)?(?:\.(?:\d+|\*)?)?[A-Za-z]")
+
+
+def _printf_render(fmt: str, args: List[str]) -> str:
+    """Chữ `printf fmt args…` in ra (xấp xỉ): mỗi đặc tả lấy một đối số (thiếu → rỗng), định dạng lặp lại tới khi hết
+    đối số như bash; `\\n`/`\\t` thành ký tự thật."""
+    rest = list(args)
+
+    def fill(m: "re.Match[str]") -> str:
+        return "%" if m.group() == "%%" else (rest.pop(0) if rest else "")
+
+    out = [PRINTF_SPEC_RE.sub(fill, fmt)]
+    while 0 < len(rest) < len(args):  # định dạng không ăn đối số nào thì in một lần
+        out.append(PRINTF_SPEC_RE.sub(fill, fmt))
+    return "".join(out).replace("\\n", "\n").replace("\\t", "\t")
+
+
+def _xargs_words(text: str) -> List[str]:
+    """Chữ vào `xargs sh -c`, cộng từ đầu sau khi bỏ nháy kiểu xargs (`xargs bash -c <<< "'rm -rf ~'"` chạy `rm -rf ~`)."""
+    try:
+        words = shlex.split(text)
+    except ValueError:
+        return [text]
+    return [text, words[0]] if words and words[0] != text else [text]
+
+
 def _here_strings(tokens: List[str]) -> List[str]:
-    """Here-string vào shell (`bash <<< '…'`): chuỗi là lệnh (AUD-SEC-028)."""
-    return [c[i + 1] for c in split_commands(tokens) if _stdin_shell(c) for i, t in enumerate(c[:-1]) if t == "<<<"]
+    """Here-string vào shell (`bash <<< '…'`): chuỗi là lệnh (AUD-SEC-028); cả vào `xargs sh -c` không chuỗi lệnh hay
+    `xargs -I{} sh -c '…{}…'` — xargs đưa chữ đó làm lệnh (AUD-SEC-612)."""
+    out: List[str] = []
+    for c in split_commands(tokens):
+        here = [c[i + 1] for i, t in enumerate(c[:-1]) if t == "<<<"]
+        if here and _stdin_shell(c):
+            out += here
+        elif here and _argless_shell_c(_no_redirects(c)):
+            out += [w for s in here for w in _xargs_words(s)]
+        elif here and (rs := _xargs_replace_script(_no_redirects(c))):
+            out += [rs[1].replace(rs[0], ln) for s in here for ln in s.split("\n") if ln.strip()]
+    return out
 
 
 Span = Tuple[int, int, str]  # (đầu, sau cuối, thân) của một thay lệnh trong chuỗi
@@ -14400,8 +14465,10 @@ def _shell_feeds(tokens: List[str], placed: PlacedCmds) -> Placed:
     i = 0
     for pipe in pipelines(tokens):
         for feed, down, here in zip(_pipe_feeds(pipe), pipe[1:], dirs[i + 1 :]):
-            if feed and (_stdin_shell(down) or _argless_shell_c(down)):
+            if feed and _stdin_shell(down):
                 out += [(s, here) for s in feed]
+            elif feed and _argless_shell_c(down):
+                out += [(w, here) for s in feed for w in _xargs_words(s)]
             elif feed and (rs := _xargs_replace_script(down)):  # `echo 'rm -rf ~' | xargs -I{} sh -c {}` (review #405)
                 out += [(rs[1].replace(rs[0], ln), here) for s in feed for ln in s.split("\n") if ln.strip()]
         i += len(pipe)
