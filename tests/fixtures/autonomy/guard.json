@@ -23610,6 +23610,12 @@
 {"id": "aud796-prefix-assign-still-denied", "origin": "audit", "refs": ["AUD-SEC-796"], "input": {"command": "LESSOPEN='|rm %s' git log"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud612-dest-after-empty-subst", "origin": "audit", "refs": ["AUD-SEC-612"], "input": {"command": "echo '{}' > $(echo).autopilot/state.json"}, "expect": {"allowed": false, "code": "BUDGET"}},
 {"id": "aud612-xargs-herestring-sh", "origin": "audit", "refs": ["AUD-SEC-612"], "input": {"command": "xargs -I{} sh -c {} <<< 'rm -rf ~'"}, "expect": {"allowed": false}},
-{"id": "aud612-ctl-quoted-subst-dest", "origin": "control", "refs": ["AUD-SEC-612"], "input": {"command": "echo x > \"$(mktemp -d)/out.log\""}, "expect": {"allowed": true}}
+{"id": "aud612-ctl-quoted-subst-dest", "origin": "control", "refs": ["AUD-SEC-612"], "input": {"command": "echo x > \"$(mktemp -d)/out.log\""}, "expect": {"allowed": true}},
+  {"id": "aud607-multiline-assign-prefix", "origin": "audit", "refs": ["AUD-SEC-607"], "input": {"command": "X='a\nb' git push --force origin main"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud646-restore-end-of-options", "origin": "audit", "refs": ["AUD-SEC-646"], "input": {"command": "git restore --end-of-options -s ."}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "aud681-autocorrect-path-change", "origin": "audit", "refs": ["AUD-SEC-681"], "input": {"command": "rm ~/bin/git-psuh; git -c help.autocorrect=1 psuh --force origin main"}, "expect": {"allowed": false, "code": "UNRESOLVED_TARGET"}},
+  {"id": "aud731-set-positional-for", "origin": "audit", "refs": ["AUD-SEC-731"], "input": {"command": "set -- /; for d do rm -rf $d; done"}, "expect": {"allowed": false, "code": "BUDGET"}},
+  {"id": "aud731-ctl-set-positional-echo", "origin": "control", "refs": ["AUD-SEC-731"], "input": {"command": "set -- 1; for x do echo $x; done"}, "expect": {"allowed": true}},
+  {"id": "aud624-gh-repo-flag-after-cd", "origin": "audit", "refs": ["AUD-SEC-624"], "input": {"command": "cd /tmp && gh -R o/r pr create -t x -b 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'"}, "expect": {"allowed": false, "code": "RULE_DENY"}}
  ]
 }

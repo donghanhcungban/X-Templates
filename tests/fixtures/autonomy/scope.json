@@ -644,6 +644,16 @@
    "ids": [
     "AUD-HAR-393"
    ]
+  },
+  {
+   "reason": "Hook shell, cổng commit, cài đặt — đường chạy tiến trình (`dev-task.sh`, `pre-*-guard.sh`, `install.py`, `loop record`); test_hooks.py, test_install.py chạy hook thật; khóa state thiếu fcntl/flock và guard lỗi nạp/fallback (ADR-0054) là đường CLI/Gate có file thật: UpdateStateTest, GuardChokePointTest kiểm state bất biến và canary không chạy AUD-SEC-753 (cờ `no_verify` của commit viết tắt): tests.test_hooks.GuardMiscOrangeTest.",
+   "ids": [
+    "AUD-SEC-753"
+   ]
+  },
+  {
+   "reason": "Cổng phát hành của xt.py (`release-check` hàng tree, `release-sign` đọc `loop defer`) — không phải quyết định guard/harness/pr để mô phỏng bằng corpus; đỡ bằng repo git tạm trong tests.test_release_contract (PromotionTest.test_status_config_cannot_hide_dirty_tree) và tests.test_release_signoff (test_deferred_read_from_every_worktree, test_unknown_or_broken_state_refuses, ReleaseSignSubdirTest); hàng `verify` đọc sổ máy mọi worktree (AUD-HAR-369): tests.test_release_contract.ReleaseVerifyWorktreeTest.",
+   "ids": []
   }
  ]
 }

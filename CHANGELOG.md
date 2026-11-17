@@ -248,6 +248,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 - AUD-HAR-394/395, AUD-SEC-649 (T-3914): `dev-task.sh format`/`format-file` bị ngắt (TERM/INT/HUP) giữa formatter vẫn
   khôi phục `GO-NO-GO*.md` và dọn bản chụp; mẫu `xt.yaml` hướng dẫn thêm `GO-NO-GO*.md` vào file ignore của formatter
   Markdown để cổng `format_check` không đỏ sau khi lập GO-NO-GO.
+- AUD-SEC-607/646/681/731/753/624 (T-3912): gán giá trị nhiều dòng trước lệnh không còn che lệnh sau; `git restore`/
+  `checkout --end-of-options .` bị chặn như `-- .`; autocorrect khi chuỗi đổi PATH/exec-path hay xoá `git-*` → BUDGET;
+  `set --` rồi đọc tham số vị trí ở chuỗi có lệnh không chỉ đọc → BUDGET; `--no-verif` viết tắt đặt cờ bỏ hook.
 - `scripts/check-links.py --external`: HEAD 404/410 không còn đủ kết luận link chết — xác nhận lại bằng GET (NIST nvlpubs và
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.
