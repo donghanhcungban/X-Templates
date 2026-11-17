@@ -235,6 +235,10 @@ CWD_RELATIVE: Dict[str, str] = {
     },
     "aud582-pr-redirect-heredoc-attribution": "`ai_attribution: forbid` ở xt.yaml của repo ca; /tmp không khai "
     "(AUD-SEC-582)",
+    **{
+        f"aud419-{k}": "`ai_attribution: forbid` ở xt.yaml của repo ca; /tmp không khai (AUD-HAR-419)"
+        for k in ("quoted-git", "group", "exec-fd", "quoted-gh")
+    },
     # T-3673 (AUD-SEC-468…477): đích tương đối của ca (thư mục canh, Git dir `gd`) → dưới /tmp sau `cd /tmp`
     **{
         f"t3673-{k}": f"{v} tương đối → /tmp/{v} sau cd /tmp ({ref})"

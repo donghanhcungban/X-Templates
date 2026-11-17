@@ -10243,6 +10243,16 @@ GH_TOKEN_WHY = (
     " `gh auth git-credential`, `gh config get oauth_token`) — lộ bí mật (AUD-SEC-580/589); `gh`, `git` và `xt.py` tự"
     " đọc token từ kho xác thực, không cần in hay truyền tay"
 )
+# AUD-SEC-818 (`token_print`): biến mang token, lệnh chỉ chép/lọc đầu ra (ống tới chúng vẫn in), bộ lọc của `env | …`.
+TOKEN_VARS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+TOKEN_REF_RE = re.compile(r"\$\{?(?:%s)(?![A-Za-z0-9_])" % "|".join(TOKEN_VARS))
+TOKEN_NAME_RE = re.compile(r"(?<![A-Za-z0-9_])(?:%s)(?![A-Za-z0-9_])" % "|".join(TOKEN_VARS))
+TOKEN_PASS = frozenset(
+    {*("cat", "tee", "head", "tail", "grep", "egrep", "fgrep", "rg", "sed", "awk", "cut", "rev", "base64", "jq")}
+    | {"xxd", "sort", "uniq", "less", "more", "xargs"}
+)  # chỉ tên đã có luật khác: bảng không thêm tên vào cổng tập con (`GATE_NAMES`)
+TOKEN_FILTERS = frozenset({"grep", "egrep", "fgrep", "rg", "awk", "sed"})
+TOKEN_PRINT_WHY = f"{GH_TOKEN_WHY} — kể cả in biến `GH_TOKEN`/`GITHUB_TOKEN` (`printenv`, `echo`, AUD-SEC-818)"
 
 
 def _gh_prints_token(args: List[str]) -> bool:
@@ -18265,6 +18275,11 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     REUSE_READERS,
     ENV_OPTS,
     DESTROY_CMDS,
+    DESTROY_STMT_FLAGS,  # AUD-HAR-420: client CSDL phá dữ liệu
+    DESTROY_ALWAYS,
+    DESTROY_HOST_FLAGS,
+    TOKEN_PASS,  # AUD-SEC-818: ống in token
+    TOKEN_FILTERS,
 )
 GATE_NAMES: FrozenSet[str] = _GATE_BRANCHED - GATE_PASSIVE
 
@@ -18377,16 +18392,8 @@ def secret_exfil(tokens: List[str], root: str) -> Optional[str]:
 # `printenv GH_TOKEN`, `echo "$GH_TOKEN"`, `printf %s "${GITHUB_TOKEN}"`, gián tiếp `X=GH_TOKEN; echo "${!X}"`, `env |
 # grep TOKEN`. Đưa sang lệnh tiêu thụ (`echo "$GH_TOKEN" | gh auth login --with-token`, `docker login
 # --password-stdin`) không in → qua; qua ống tới bộ lọc/chép (`| cat`, `| tee`, `| base64`) vẫn in. `env`/`printenv`
-# trơn (in mọi biến, gồm cả token) giữ cho chạy — chặn là chặn oan việc xem môi trường thường ngày.
-TOKEN_VARS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
-TOKEN_REF_RE = re.compile(r"\$\{?(?:%s)(?![A-Za-z0-9_])" % "|".join(TOKEN_VARS))
-TOKEN_NAME_RE = re.compile(r"(?<![A-Za-z0-9_])(?:%s)(?![A-Za-z0-9_])" % "|".join(TOKEN_VARS))
-TOKEN_PASS = frozenset(
-    {*("cat", "tee", "head", "tail", "grep", "egrep", "fgrep", "rg", "sed", "awk", "cut", "tr", "rev", "base64"), "jq"}
-    | {"xxd", "od", "hexdump", "sort", "uniq", "fold", "column", "less", "more", "nl", "strings", "paste", "xargs"}
-)
-TOKEN_FILTERS = frozenset({"grep", "egrep", "fgrep", "rg", "awk", "sed"})
-TOKEN_PRINT_WHY = f"{GH_TOKEN_WHY} — kể cả in biến `GH_TOKEN`/`GITHUB_TOKEN` (`printenv`, `echo`, AUD-SEC-818)"
+# trơn (in mọi biến, gồm cả token) giữ cho chạy — chặn là chặn oan việc xem môi trường thường ngày. Bảng: cạnh
+# `GH_TOKEN_WHY` (tên lệnh của bảng thuộc `_GATE_BRANCHED`).
 
 
 def _token_echo(n: List[str], named: bool) -> bool:
