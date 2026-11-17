@@ -2380,6 +2380,7 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _prefix_why(cmd) or _nested_quote_why(cmd) or _func_scope_why(cmd)  # P0 lát 4; AUD-SEC-750/660/661
     why = why or _prod_decided_bash_why(cmd)  # AUD-SEC-641
     why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
+    why = why or _opaque_value_why(cmd) or _trap_assign_why(cmd)  # D-502: AUD-SEC-821/822/823/830
     return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd) or _redirect_subst_why(cmd)
 
 
@@ -2442,7 +2443,7 @@ def _func_scope_why(cmd: str) -> str:
 # AUD-SEC-731: `set -- …` đặt tham số vị trí mà guard không theo dõi; đọc lại qua `for x do` (không `in` = "$@"), `$1`,
 # `$@`… → giá trị như biến không biết (D-415).
 SET_POSITIONAL_RE = re.compile(r"(?<![\w-])set(?:\s+[-+][A-Za-z]*)*\s+--?(?=\s|$)")
-POSITIONAL_READ_RE = re.compile(r"\bfor\s+\w+\s*(?:;\s*)?do\b|\$\{?[1-9@*]")
+POSITIONAL_READ_RE = re.compile(r"\bfor\s+\w+\s*(?:;\s*)?do\b|\$\{?[1-9@*]|\$\{!")  # `${!#}`/`${!n}`: AUD-SEC-820
 SET_POSITIONAL_WHY = (
     "`set --` đặt tham số vị trí rồi đọc lại (`for x do`, `$1`, `$@`) — guard không theo dõi giá trị đó (AUD-SEC-731);"
     " viết lại: dùng giá trị nguyên văn hay `for x in <giá trị>`"
@@ -2452,7 +2453,11 @@ SET_POSITIONAL_WHY = (
 def _set_positional_why(cmd: str) -> str:
     """Chỉ khi chuỗi có lệnh không chỉ đọc (`rm`, `git`…) — `set -- 1; for x do echo $x; done` vẫn chạy."""
     live = _code_views(_split_view(cmd)[0])[0]
-    if not (SET_POSITIONAL_RE.search(live) and POSITIONAL_READ_RE.search(live)):
+    if not POSITIONAL_READ_RE.search(live):
+        return ""
+    # AUD-SEC-820: `set` nhận theo từ lệnh (`'set'`, cờ ăn giá trị `-o errexit`), không chỉ theo mẫu chữ
+    segs = (s for a in _ifs_argvs(cmd) or [] for s in _brace_segments(a))
+    if not SET_POSITIONAL_RE.search(live) and not any(_sets_positional(*_ifs_head(s)) for s in segs):
         return ""
     heads = _command_heads(cmd)
     passive = REUSE_READERS | {"set", "for", "do", "done", "printf", ":", "true", "false"}
@@ -2461,6 +2466,173 @@ def _set_positional_why(cmd: str) -> str:
         if heads is not None and all(posixpath.basename(_dequote(h)) in passive for h in heads)
         else SET_POSITIONAL_WHY
     )
+
+
+# D-502 (T-3929; AUD-SEC-821/822/823, D-415): giá trị guard không tính chắc ở đối số của lệnh có luật. Bash tự gán (`$_`
+# đối số cuối của lệnh trước, `$REPLY` của `read` không tên, `$BASH_REMATCH` của `[[ =~ ]]`), gán qua builtin/gián tiếp
+# (`printf -v X`, nameref `declare -n`, `${!x}`; tên đích động `printf -v "$n"` làm MỌI biến thành mờ), biến môi trường
+# mà luật đích đọc theo tên (`$HOME`, `$PWD`…) qua toán tử (`${HOME%/*}`, `${HOME:?}`) — luật đích/cờ không thấy chữ
+# thật. Biến gán từ giá trị mờ (`x="$_"`, `for x in "$_"`, `read x <<< "$_"`) cũng mờ. Đối số của lệnh trong
+# `GATE_NAMES` (trừ lệnh chỉ đặt biến/thư mục — chúng truyền độ mờ, không tự ghi/xoá) và đích chuyển hướng ghi của mọi
+# lệnh nhắc giá trị như thế → BUDGET. Biến không biết khác (`read`/glob/môi trường) giữ cách đọc cũ (ADR-0067).
+# "!" = mọi `${!…}` (gián tiếp, tham số vị trí `${!#}`); `MAPFILE`/`OPTARG` của `mapfile`/`getopts` không tên đích,
+# `FUNCNAME`/`BASH_ARGV0` (tên hàm, `$0` gán được)
+OPAQUE_VARS = frozenset({"_", "REPLY", "BASH_REMATCH", "MAPFILE", "OPTARG", "FUNCNAME", "BASH_ARGV0", "!"})
+OPAQUE_ANY = "*"  # tên đích động: mọi biến mờ
+OPAQUE_PASSIVE = frozenset(
+    "cd pushd popd set for select shopt read readarray mapfile declare typeset local export readonly let printf getopts".split()
+)
+RULED_ENV_OP_RE = re.compile(r"\$\{(HOME|PWD|OLDPWD|BASH|SHELL|CLAUDE_PROJECT_DIR|0)(?=[^}\w])")  # `${0%bash}`
+VAR_REF_NAME_RE = re.compile(r"\$(?:\{(!)|\{?([A-Za-z_]\w*))")
+NAMEREF_HEADS = frozenset({"declare", "typeset", "local"})
+OPAQUE_VALUE_WHY = (
+    "giá trị guard không tính chắc ở đối số/đích của lệnh có luật (`{}`): `$_`/`$REPLY`/`$BASH_REMATCH`, `printf -v`,"
+    " nameref, `${{!x}}`, toán tử trên `$HOME`/`$PWD`/`$BASH`… hay biến gán từ chúng (AUD-SEC-821/822/823, D-502);"
+    ' viết lại: giá trị nguyên văn, hoặc gán chữ vào biến thường rồi dùng `"$x"`'
+)
+
+
+def _simple_cmds(cmd: str) -> Optional[List[Tuple[List[str], List[str]]]]:
+    """(lệnh đơn còn nháy, phần từ tên lệnh — sau gán đầu lệnh/từ khoá/lệnh bọc) của mọi lệnh đơn; None = không tách
+    chắc. Cùng bộ đọc với `_command_heads`."""
+    raw = _raw_tokens(cmd, True)
+    argvs = None if raw is None else _plain_argvs(raw)
+    if argvs is None:
+        return None
+    out: List[Tuple[List[str], List[str]]] = []
+    for seg in (s for argv in argvs for s in _brace_segments(argv)):
+        rest = _ifs_prefix(seg)[1]
+        out.append((seg, rest[len(rest) - len(_strip_prefixes([_dequote(t) for t in rest])) :]))
+    return out
+
+
+def _var_refs(word: str) -> Set[str]:
+    """Tên biến từ còn nháy `word` đọc ở chỗ bash mở rộng (ngoài nháy đơn); `!` cho `${!…}`."""
+    if "$" not in word:
+        return set()
+    kind = _CodeView(word).kind
+    return {m[1] or m[2] for m in VAR_REF_NAME_RE.finditer(word) if kind[m.start()] != "q"}
+
+
+def _opaque_ref(refs: Set[str], names: Set[str]) -> bool:
+    return bool(refs & names) or OPAQUE_ANY in names and any(r != "!" for r in refs)
+
+
+def _seg_assigned(seg: List[str]) -> List[str]:
+    """Tên lệnh đơn `seg` gán (chặt): biến `for`/`select`, tên sau `read`/`printf`/`mapfile`/`getopts`, gán `x=…`."""
+    plain = [_dequote(t) for t in _no_redirects(seg) if t not in SHELL_KEYWORDS]
+    if plain[:1] in (["for"], ["select"]) and len(plain) > 1:
+        return [plain[1]]
+    return [*_dyn_assigned(plain), *(t.partition("=")[0].rstrip("+") for t in plain if ASSIGN_ANY_RE.fullmatch(t))]
+
+
+def _seg_ref_names(seg: List[str]) -> List[str]:
+    """Tên mờ ngay khi gán: đích `printf -v`, nameref `declare -n`; tên đích có mở rộng → `OPAQUE_ANY`."""
+    plain = [_dequote(t) for t in _no_redirects(seg) if t not in SHELL_KEYWORDS]
+    head = posixpath.basename(plain[0]) if plain else ""
+    if head == "printf":
+        names = [b for a, b in zip(plain, plain[1:]) if a == "-v"] + [a[2:] for a in plain if a[:2] == "-v" and a[2:]]
+    elif head in NAMEREF_HEADS and any(a[:1] == "-" and "n" in a for a in plain[1:]):
+        names = [a.partition("=")[0] for a in plain[1:] if a[:1] != "-"]
+    elif head in DYN_ASSIGNERS or head in NAMEREF_HEADS or head in ("export", "readonly"):
+        names = [OPAQUE_ANY for a in _name_slots(head, plain) if "$" in a.partition("=")[0]]
+    else:
+        return []
+    return [OPAQUE_ANY if "$" in n else n for n in names]
+
+
+READ_VALUE_FLAGS = "dinNptuOsCc"  # cờ ăn giá trị của `read`/`mapfile` (`-p "Nhánh [$def]: "`, `-t "$T"`)
+
+
+def _name_slots(head: str, plain: List[str]) -> List[str]:
+    """Từ ở vị trí tên đích của builtin ghi biến: `getopts` từ thứ hai; `read`/`mapfile` bỏ giá trị cờ."""
+    if head == "getopts":
+        return plain[2:3]
+    reads = head in ("read", "mapfile", "readarray")
+    flag_value = [reads and p[:1] == "-" and p != "--" and p[-1:] in READ_VALUE_FLAGS for p in plain]
+    return [a for a, v in zip(plain[1:], flag_value) if a[:1] != "-" and not v]
+
+
+def _opaque_names(cmds: List[Tuple[List[str], List[str]]]) -> Set[str]:
+    """Tên biến mờ: cơ sở + gán qua builtin/nameref (từ tên lệnh sau lệnh bọc: `command printf -v`, `X=1 printf -v`),
+    lan qua gán từ giá trị mờ (theo hàng đợi, không lặp bậc hai)."""
+    segs = [seg for seg, _ in cmds]
+    names = set(OPAQUE_VARS).union(*(_seg_ref_names(words) for _, words in cmds))
+    users: Dict[str, List[int]] = {}
+    for i, seg in enumerate(segs):
+        for r in set().union(*map(_var_refs, seg)):
+            users.setdefault(r, []).append(i)
+    queue = list(names)
+    while queue and OPAQUE_ANY not in names:
+        for i in users.pop(queue.pop(), []):
+            new = set(_seg_assigned(segs[i])) - names
+            names |= new
+            queue += new
+    return names
+
+
+def _ruled_env_op(word: str, assigned: Set[str]) -> bool:
+    """`${HOME…}`/`${PWD…}`… có toán tử (ngoài nháy đơn) mà lệnh không gán biến đó (gán chữ: cắt chuỗi AUD-SEC-811).
+    Không tính: `${HOME:?…}` (giá trị giữ nguyên — bản thay biến đọc như `${HOME}`), từ thay `${HOME:+…}`/`${HOME/…/…}`
+    (bản viết lại AUD-SEC-803 xét)."""
+    if "${" not in word:
+        return False
+    kind = _CodeView(word).kind
+    for m in RULED_ENV_OP_RE.finditer(word):
+        p = PARAM_OP_RE.match(word, m.start())
+        kept = word.startswith("?", m.end()) or word.startswith(":?", m.end())
+        rewritten = p is not None and (p[1][:1] == "/" or p[1][-1] == "+")
+        if kind[m.start()] != "q" and m[1] not in assigned and not kept and not rewritten:
+            return True
+    return False
+
+
+def _opaque_checked(seg: List[str], words: List[str]) -> List[str]:
+    """Đích chuyển hướng ghi của mọi lệnh đơn; mọi đối số của lệnh có luật trừ lệnh chỉ đặt biến/thư mục."""
+    out = [b for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a]
+    name = posixpath.basename(_dequote(words[0])) if words else ""
+    return out + (words[1:] if name in GATE_NAMES and name not in OPAQUE_PASSIVE else [])
+
+
+# AUD-SEC-830: `trap` chạy mã XEN GIỮA các lệnh (`DEBUG` trước mỗi lệnh, cả trong thân hàm; `RETURN`/`ERR`; tín hiệu tự
+# gửi `kill -INT $$`) — guard theo dõi giá trị biến theo thứ tự lệnh nên gán trong trap (`trap 'd=~' DEBUG`) đổi đích
+# mà guard không thấy. Thân trap có gán/builtin ghi biến, hay là tên lệnh trần (hàm) ở `DEBUG`/`RETURN`/`ERR` → BUDGET;
+# chỉ `EXIT` (chạy sau lệnh cuối) thì không.
+TRAP_ASSIGN_RE = re.compile(
+    r"(?<![\w$-])(?:[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=|(?:read|printf|declare|typeset|local|export|readonly|unset|mapfile"
+    r"|readarray|getopts|set|shift|eval|source)(?![\w.-])|\.(?=\s))"
+)
+TRAP_STEP_SIGS = frozenset({"DEBUG", "RETURN", "ERR"})
+TRAP_ASSIGN_WHY = (
+    "`trap` gán biến hay gọi hàm xen giữa các lệnh (`trap 'd=…' DEBUG`, AUD-SEC-830) — guard không theo dõi giá trị đó;"
+    " viết lại: gán ở lệnh thẳng, trap chỉ dọn dẹp ở `EXIT`"
+)
+
+
+def _trap_assign_why(cmd: str) -> str:
+    for _, words in _simple_cmds(cmd) or []:
+        args = [_dequote(w) for w in _no_redirects(words[1:])]
+        if not words or posixpath.basename(_dequote(words[0])) != "trap" or args[:1] in (["-p"], ["-l"]):
+            continue
+        args = args[1:] if args[:1] == ["--"] else args
+        sigs = {s.upper().removeprefix("SIG") for s in args[1:]} - {"EXIT", "0"}
+        bare = bool(args) and re.fullmatch(r"[\w.:-]+", args[0].strip()) is not None
+        if sigs and (TRAP_ASSIGN_RE.search(args[0]) or bare and sigs & TRAP_STEP_SIGS):
+            return TRAP_ASSIGN_WHY
+    return ""
+
+
+def _opaque_value_why(cmd: str) -> str:
+    cmds = _simple_cmds(cmd) if "$" in cmd else None
+    if not cmds:
+        return ""
+    names = _opaque_names(cmds)
+    assigned = {n for seg, _ in cmds for n in _seg_assigned(seg)}
+    for seg, words in cmds:
+        for w in _opaque_checked(seg, words):
+            if _opaque_ref(_var_refs(w), names) or _ruled_env_op(w, assigned):
+                return OPAQUE_VALUE_WHY.format(clean_text(w)[:80])
+    return ""
 
 
 # AUD-SEC-681: git chạy `git-<tên>` ngoài nếu có, không thì autocorrect đoán lệnh khác — chuỗi bật autocorrect mà đổi
@@ -2540,11 +2712,7 @@ GIT_SUB2 = frozenset({"stash", "remote", "worktree", "reflog", "config"})  # `co
 
 def _ruled_word_why(cmd: str, only_p4: bool = False) -> str:
     """Lý do (rỗng = qua) của cổng P1 cấp hai/P2/P3/P4 trên mọi lệnh đơn — cùng bộ đọc với `_command_heads`."""
-    raw = _raw_tokens(cmd, True)
-    argvs = None if raw is None else _plain_argvs(raw)
-    for seg in (s for argv in argvs or [] for s in _brace_segments(argv)):
-        rest = _ifs_prefix(seg)[1]
-        words = rest[len(rest) - len(_strip_prefixes([_dequote(t) for t in rest])) :]
+    for _, words in _simple_cmds(cmd) or []:
         bad = "" if only_p4 else _gate_bad_word(words)
         if bad:
             return RULED_WORD_WHY.format(clean_text(bad)[:80])
@@ -3190,10 +3358,15 @@ def _array_word(word: str, lits: Dict[str, Optional[List[str]]]) -> Optional[str
 
 
 def _sets_positional(head: str, args: List[str]) -> bool:
-    """`set --`, `set a b` đặt tham số vị trí (cờ `-e`/`-o pipefail` thì không)."""
+    """`set --`, `set -`, `set a b` đặt tham số vị trí (cờ `-e`/`-o pipefail` thì không). AUD-SEC-820: cờ gộp có `o`
+    (`-eo pipefail`, `+euo x`) cũng ăn một giá trị; sau `--`/`-` mọi từ là tham số."""
     words = [_dequote(w) for w in _no_redirects(args)]
-    after_o = [i > 0 and words[i - 1] in SET_VALUE_OPTS for i in range(len(words))]
-    return head == "set" and any(w == "--" or (w[:1] not in "-+" and not o) for w, o in zip(words, after_o))
+    after_o = [i > 0 and _set_value_opt(words[i - 1]) for i in range(len(words))]
+    return head == "set" and any(w in ("--", "-") or (w[:1] not in "-+" and not o) for w, o in zip(words, after_o))
+
+
+def _set_value_opt(w: str) -> bool:
+    return w[:1] in "-+" and w not in ("--", "-") and "o" in w[1:]  # `-o`/`+o` (SET_VALUE_OPTS), gộp `-eo`
 
 
 def _array_lifted(cmd: str) -> str:
@@ -15450,13 +15623,43 @@ def _sub_case(text: str, env: Dict[str, str]) -> str:
         return m.group(0) if val is None else _case_conv(val, m.group(2) or m.group(3))
 
     def cut(m: "re.Match[str]") -> str:
-        val = None if m[1] in env.get(DYN_VARS, "").split("\0") else env.get(m[1])
-        out = None if val is None else _slice_value(val, m)
-        if val is not None and out is None:
-            raise ScanTooComplex(VAR_SLICE_WHY.format(m[0][:80]))
-        return m[0] if out is None else out
+        return _computed(env, m, VAR_SLICE_RE, _slice_value)
 
-    return VAR_SLICE_RE.sub(cut, VAR_CASE_RE.sub(conv, text)) if "${" in text else text
+    def repl(m: "re.Match[str]") -> str:  # AUD-SEC-828
+        return _computed(env, m, VAR_REPL_RE, _repl_value)
+
+    def kept(m: "re.Match[str]") -> str:  # D-502: `${X:?lời}` = giá trị X (không đặt thì bash dừng)
+        return "${" + m[1] + "}" if (v := _known_value(env, m[1])) is None else v
+
+    if "${" not in text:
+        return text
+    text = VAR_ERR_RE.sub(kept, text)
+    return VAR_REPL_RE.sub(repl, VAR_SLICE_RE.sub(cut, VAR_CASE_RE.sub(conv, text)))
+
+
+def _known_value(env: Dict[str, str], name: str) -> Optional[str]:
+    """Giá trị chữ của biến mà mọi lần gán đều là chữ đã biết (`DYN_VARS`); None = không biết."""
+    return None if name in env.get(DYN_VARS, "").split("\0") else env.get(name)
+
+
+def _computed(
+    env: Dict[str, str],
+    m: "re.Match[str]",
+    rx: "re.Pattern[str]",
+    calc: Callable[[str, "re.Match[str]"], Optional[str]],
+) -> str:
+    """Giá trị của mở rộng `m` (khớp `rx`) trên biến đã biết; biến không biết giữ nguyên; biến đã biết mà guard không
+    tính chắc → BUDGET (AUD-SEC-811). AUD-SEC-835: biến đã biết trong mẫu/từ thay (`${f%$ext}`) thay trước khi tính."""
+    val = _known_value(env, m[1])
+    if val is None:
+        return m[0]
+    if "$" in m[0][2:]:
+        inner = VAR_REF_RE.sub(lambda r: r[0] if (v := _known_value(env, r[1] or r[2])) is None else v, m[0][2:-1])
+        m = rx.fullmatch("${" + inner + "}") or m
+    out = None if "$" in m[0][2:] else calc(val, m)
+    if out is None:
+        raise ScanTooComplex(VAR_SLICE_WHY.format(m[0][:80]))
+    return out
 
 
 # AUD-SEC-811: cắt chuỗi của biến đã gán chữ — `${X:vị trí[:độ dài]}`, `${X#mẫu}`/`##`, `${X%mẫu}`/`%%` → giá trị đã cắt
@@ -15468,8 +15671,14 @@ def _sub_case(text: str, env: Dict[str, str]) -> str:
 # lần gán là chữ (ADR-0067: giá trị không biết không chặn vì cắt chuỗi) — biến này giữ nguyên như trước AUD-SEC-811.
 DYN_VARS = "\0dyn"
 VAR_SLICE_RE = re.compile(r"\$\{(\w+)(?::(?![-=?+])([^{}]*)|(##?|%%?)([^{}]*))\}")
-SLICE_NUM_RE = re.compile(r"\s*(-?\d+)\s*(?::\s*(-?\d+)\s*)?")
-SLICE_PAT_BAD_RE = re.compile(r"[$`'\"\\\[\]()]")
+# AUD-SEC-829: số có `0` đầu là bát phân, `0x` thập lục (`${X:010}` = vị trí 8) — chỉ nhận thập phân trơn, khác → BUDGET
+SLICE_NUM_RE = re.compile(r"\s*(-?(?:0|[1-9]\d*))\s*(?::\s*(-?(?:0|[1-9]\d*))\s*)?")
+# AUD-SEC-835: mẫu glob — `*`, `?`, lớp `[a-z]`/`[!…]` (không `^`, lớp POSIX lồng), `\c` thoát một ký tự; nháy, `$`,
+# extglob `(…)`, `]`/`[` lẻ → không tính chắc
+GLOB_PIECE_RE = re.compile(r"\[!?[^\[\]!^\\$`'\"()]+\]|\\[^\]!^]|[^\[\]\\$`'\"()]")
+# AUD-SEC-828: thay mẫu `${X/mẫu[/từ]}` (`//` mọi chỗ, `/#` đầu, `/%` cuối); không có từ = xoá
+VAR_REPL_RE = re.compile(r"\$\{(\w+)(/#|/%|//?)((?:[^/{}\\]|\\.)*)(?:/([^{}]*))?\}")
+VAR_ERR_RE = re.compile(r"\$\{(\w+):?\?[^{}]*\}")
 VAR_SLICE_WHY = (
     "cắt chuỗi của biến đã gán guard không tính chắc (`{}` — AUD-SEC-811): bash có thể dựng ra cờ/đích guard không"
     " thấy; viết giá trị nguyên văn"
@@ -15489,20 +15698,50 @@ def _slice_value(val: str, m: "re.Match[str]") -> Optional[str]:
         size = int(num[2]) if num[2] is not None else len(val)
         end = start + size if size >= 0 else len(val) + size
         return val[start:end] if end >= start else None  # độ dài âm vượt vị trí: bash báo lỗi
-    if SLICE_PAT_BAD_RE.search(m[4]):
+    pat = _glob_pieces(m[4])
+    if pat is None:
         return None
-    return _trim_glob(val, m[3], m[4])
+    i = _glob_cut(val, m[3], _fn_glob(pat))
+    return val if i is None else val[i:] if m[3][0] == "#" else val[:i]
 
 
-def _trim_glob(val: str, op: str, pat: str) -> str:
-    """`${X#mẫu}` bỏ tiền tố ngắn nhất khớp mẫu (`##` dài nhất); `%`/`%%` bỏ hậu tố."""
+def _glob_pieces(pat: str) -> Optional[List[str]]:
+    """Mảnh của mẫu glob bash guard tính chắc (`GLOB_PIECE_RE`); None = không."""
+    pieces = GLOB_PIECE_RE.findall(pat)
+    return pieces if "".join(pieces) == pat else None
+
+
+def _fn_glob(pieces: List[str]) -> str:
+    """Mẫu `fnmatch` của các mảnh: `\\c` → `[c]`."""
+    return "".join(f"[{p[1]}]" if p[:1] == "\\" else p for p in pieces)
+
+
+def _rx_glob(pieces: List[str]) -> "re.Pattern[str]":
+    """Biểu thức chính quy của các mảnh (tìm trong chuỗi — `${X/mẫu/…}`): `*` tham, `?`, lớp `[!…]` → `[^…]`."""
+    rx = {"*": ".*", "?": "."}
+    out = [rx.get(p) or ("[^" + p[2:] if p[:2] == "[!" else p) if p[:1] in "*?[" else re.escape(p[-1]) for p in pieces]
+    return re.compile("".join(out), re.S)
+
+
+def _glob_cut(val: str, op: str, pat: str) -> Optional[int]:
+    """Chỗ cắt của `${X#mẫu}` (tiền tố ngắn nhất; `##` dài nhất) / `${X%mẫu}` (hậu tố); None = không khớp."""
     cuts = range(len(val) + 1) if op in ("#", "%%") else range(len(val), -1, -1)
-    for i in cuts:
-        if op[0] == "#" and fnmatch.fnmatchcase(val[:i], pat):
-            return val[i:]
-        if op[0] == "%" and fnmatch.fnmatchcase(val[i:], pat):
-            return val[:i]
-    return val
+    return next((i for i in cuts if fnmatch.fnmatchcase(val[:i] if op[0] == "#" else val[i:], pat)), None)
+
+
+def _repl_value(val: str, m: "re.Match[str]") -> Optional[str]:
+    """Giá trị của `${X/mẫu/từ}` (khớp `VAR_REPL_RE`) khi X = `val`; None = không tính chắc. Từ thay có `&` (bash 5.2
+    `patsub_replacement`: chỗ khớp) hay ký tự trích/mở rộng → None."""
+    op, rep, pieces = m[2], m[4] or "", _glob_pieces(m[3])
+    if pieces is None or re.search(r"[&$`'\"\\]", rep):
+        return None
+    if op in ("/#", "/%"):
+        i = _glob_cut(val, "##" if op == "/#" else "%%", _fn_glob(pieces))  # chỗ khớp dài nhất
+        return val if i is None else rep + val[i:] if op == "/#" else val[:i] + rep
+    rx = _rx_glob(pieces)
+    if not pieces or rx.fullmatch(""):
+        return val if not pieces else None  # `${X/}` giữ nguyên; mẫu khớp rỗng (`*`): bash và `re` khác nhau
+    return rx.sub(lambda _: rep, val, count=0 if op == "//" else 1)
 
 
 VAR_VALUE_MAX = 4096  # giá trị biến dài hơn không được ghi nhận (chặn nhân đôi `a="$a$a"`)
@@ -15542,7 +15781,7 @@ def _record_assigns(c: List[str], env: Dict[str, str], pick: int = 0, home0: Opt
             )
     c = plain
     c = [t for t in c if t not in SHELL_KEYWORDS] if c[0] in SHELL_KEYWORDS else c  # `then x=…`, `do x=…`, `{ x=…`
-    _taint(env, _dyn_assigned(c))  # AUD-SEC-811: `read`/`for`/`$…` — cắt chuỗi giữ nguyên
+    _taint(env, _dyn_assigned(c, env))  # AUD-SEC-811/829: `read`/`for` glob/`$…` không biết — cắt chuỗi giữ nguyên
     words = _for_values(c)
     if words:
         env[c[1]] = _sub_vars(words[min(pick, len(words) - 1)], env)[:VAR_VALUE_MAX]
@@ -15567,15 +15806,27 @@ DYN_ASSIGNERS = frozenset({"read", "mapfile", "readarray", "getopts", "printf"})
 DYN_NAME_RE = re.compile(r"(?:-v)?([A-Za-z_]\w*)\+?(?:=.*)?", re.S)
 
 
-def _dyn_assigned(c: List[str]) -> List[str]:
+def _dyn_assigned(c: List[str], env: Optional[Dict[str, str]] = None) -> List[str]:
     """Tên biến mà lệnh `c` (đã bỏ từ khoá đầu) gán giá trị KHÔNG phải chữ đã biết: biến của `for`; mọi tên sau
-    `read`/`mapfile`/`getopts`/`printf` (chặt: cả đối số thường); gán `x=…` có `$`/backtick trong giá trị."""
+    `read`/`mapfile`/`getopts`/`printf` (chặt: cả đối số thường); gán `x=…` có `$`/backtick trong giá trị. Có bảng biến
+    `env` (AUD-SEC-829): biến `for … in` chỉ không biết khi danh sách có mở rộng/glob; gán chỉ không biết khi vế phải
+    (tính TRƯỚC khi đánh dấu — `X=${X:2}`) còn biến không biết hay mở rộng."""
     if c[:1] == ["for"] and len(c) > 1:
-        return [c[1]]
+        lit = env is not None and c[2:3] == ["in"] and not any(re.search(r"[$`*?\[]", w) for w in c[3:])
+        return [] if lit else [c[1]]
     at = next((i for i, t in enumerate(c) if posixpath.basename(t) in DYN_ASSIGNERS), -1)
     if at >= 0:
         return [m[1] for t in c[at + 1 :] if (m := DYN_NAME_RE.fullmatch(t))]
-    return [t.partition("=")[0].rstrip("+") for t in c if ASSIGN_ANY_RE.fullmatch(t) and re.search(r"[$`]", t)]
+    assigns = [t.partition("=") for t in c if ASSIGN_ANY_RE.fullmatch(t) and re.search(r"[$`]", t)]
+    return [k.rstrip("+") for k, _, v in assigns if env is None or _dyn_value(v, env)]
+
+
+def _dyn_value(v: str, env: Dict[str, str]) -> bool:
+    """Vế phải `v` không thành chữ đã biết: nhắc biến không biết (cả `${y:-a}` khi y không biết), hay còn `$`/backtick
+    sau khi thay (thay lệnh, `${#x}`, `$1`, `${!x}`)."""
+    if any(_known_value(env, r[1] or r[2]) is None for r in VAR_NAME_USE_RE.finditer(v)):
+        return True
+    return bool(re.search(r"[$`]", _sub_vars(v, env)))
 
 
 def _taint(env: Dict[str, str], names: List[str]) -> None:
@@ -17931,31 +18182,67 @@ def _param_rewrites(cmd: str) -> Optional[List[str]]:
     """Bản viết lại của `cmd` với từ thay thế của mở rộng tham số (AUD-SEC-803); None = quá `PARAM_REWRITE_MAX` chỗ."""
     if "${" not in cmd:
         return []
-    v = _CodeView(cmd)
+    text = _blank_quoted_heredocs(cmd)  # AUD-SEC-832: thân heredoc nháy là chữ — không đếm; cùng độ dài với `cmd`
+    v = _CodeView(text)
     hits = [
         m
-        for m in PARAM_OP_RE.finditer(cmd)
+        for m in PARAM_OP_RE.finditer(text)
         if (v.why or v.kind[m.start()] != "q") and (m[1][-1] not in "-=" or re.search(r"[$`]", m[2]))
     ]
     if len(hits) > PARAM_REWRITE_MAX:
         return None
     picks = [hits, *([m] for m in hits)] if len(hits) > 1 else [hits]
-    return [_splice_params(cmd, p) for p in picks] if hits else []
+    out = [_splice_params(cmd, p) for p in picks] if hits else []
+    glued = _splice_params(cmd, hits, True) if any(m[1][:1] == "/" for m in hits) else ""
+    return out + [glued] if glued else out
 
 
-def _splice_params(cmd: str, hits: List["re.Match[str]"]) -> str:
+def _splice_params(cmd: str, hits: List["re.Match[str]"], glue: bool = False) -> str:
     for m in reversed(hits):
-        cmd = cmd[: m.start()] + m[2] + cmd[m.end() :]
+        cmd = cmd[: m.start()] + _param_word(m, glue) + cmd[m.end() :]
     return cmd
+
+
+def _param_word(m: "re.Match[str]", glue: bool = False) -> str:
+    """Chữ thay cho `${X…}` ở bản viết lại: từ thay (mẫu khớp cả X), từ thay lồng cũng thay (`${X:+${Y:+~}}` → `~`).
+    `glue` (AUD-SEC-828): `${X/…/từ}` GHÉP với phần còn lại của X — `${X/#/--}` là `--$X` (cổng cờ thấy `--` dính mở
+    rộng): `/#` từ đứng trước, `/%` đứng sau, `/`/`//` ở giữa."""
+    word = m[2]
+    nested = list(PARAM_OP_RE.finditer(word))
+    word = _splice_params(word, nested, glue) if nested else word
+    if not glue or m[1][:1] != "/":
+        return word
+    ref = "${" + m[0][2 : m.start(1) - m.start()] + "}"
+    return word + ref if m[1][:2] == "/#" else ref + word if m[1][:2] == "/%" else ref + word + ref
+
+
+def _blank_quoted_heredocs(cmd: str) -> str:
+    """`cmd` với thân heredoc dấu kết có nháy thay bằng khoảng trắng (giữ xuống dòng — vị trí không đổi)."""
+    lines = cmd.split("\n")
+    for _, m, a, b, _ in _here_scan(cmd):
+        if _heredoc_word(m)[1]:
+            lines[a:b] = [" " * len(x) for x in lines[a:b]]
+    return "\n".join(lines)
+
+
+# AUD-SEC-832: bản viết lại của AUD-SEC-803 không viết lại lần nữa ở cùng độ sâu — chỗ chưa thay của bản "từng chỗ"
+# đã có bản riêng; viết lại đệ quy nhân số lần quét theo tổ hợp (lệnh dài vài chỗ: hàng chục giây rồi BUDGET).
+PARAM_SPLICED: contextvars.ContextVar[int] = contextvars.ContextVar("PARAM_SPLICED", default=-1)
 
 
 def _scan_param_rewrites(
     cmd: str, root: str, cwd: Optional[str], depth: int, asks: List[str], budget: "ScanBudget", rw: int
 ) -> str:
+    if PARAM_SPLICED.get() == depth:
+        return ""
     variants = _param_rewrites(cmd)
     if variants is None:
         raise ScanTooComplex(PARAM_REWRITE_WHY)
-    return _scan_scripts(variants, root, cwd, depth, asks, 0, budget, rw)
+    token = PARAM_SPLICED.set(depth)
+    try:
+        return _scan_scripts(variants, root, cwd, depth, asks, 0, budget, rw)
+    finally:
+        PARAM_SPLICED.reset(token)
 
 
 def _glob_rewrites(cmd: str, tokens: List[str], heads: Dict[str, List[str]]) -> List[str]:

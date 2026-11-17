@@ -436,7 +436,7 @@ class ParamSliceTest(AuditOrangeCase):
                 "X=/home; rm -rf ${X%/x}": "WIPE_OUTSIDE",
                 "X=--hard; git reset ${X:N}": "BUDGET",
                 'X=a--hard; git reset ${X#"a"}': "BUDGET",
-                "X=--hard; git reset ${X#[ab]}": "BUDGET",
+                "X=--hard; git reset ${X#[ab]}": "RULE_DENY",  # T-3929 (AUD-SEC-835): lớp `[…]` tính được
             }
         )
 

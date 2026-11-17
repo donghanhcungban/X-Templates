@@ -145,7 +145,10 @@ class ParamOperatorTest(AuditRedCase):
         self.assertEqual(guard._param_rewrites("echo ${X:-a} ${X%b}"), [])
         self.assertEqual(guard._param_rewrites("echo '${X:+a}'"), [])
         self.assertEqual(guard._param_rewrites("a ${X:+b} c"), ["a b c"])
-        self.assertEqual(guard._param_rewrites("a ${X:+b} ${Y/p/c}"), ["a b c", "a b ${Y/p/c}", "a ${X:+b} c"])
+        # AUD-SEC-828 (T-3929): thêm bản ghép `${Y}c${Y}` — từ thay dính phần còn lại của Y (chặt hơn)
+        self.assertEqual(
+            guard._param_rewrites("a ${X:+b} ${Y/p/c}"), ["a b c", "a b ${Y/p/c}", "a ${X:+b} c", "a b ${Y}c${Y}"]
+        )
         self.assertIsNone(guard._param_rewrites(" ".join(["${X:+a}"] * (guard.PARAM_REWRITE_MAX + 1))))
 
     def test_too_many_param_operators_budget(self):

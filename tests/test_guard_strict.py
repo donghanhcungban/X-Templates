@@ -2509,11 +2509,15 @@ class GuardLiteralFormsT3663Test(unittest.TestCase):
                 "echo $HOME; ls ~",
                 'HOME=/tmp/h; echo "${HOME}"',
                 "[[ -v HOME ]] && echo $HOME",
-                'rm -rf "${HOME:?HOME unset}/.cache/x"',
             ),
             "AUD-SEC-414",
             guard._home_dyn_why,
         )
+        # T-3929 (D-502): `${HOME:?…}` đọc như `$HOME` — xoá ngoài dự án như `rm -rf ~/.cache/x` (trước: cho chạy); lớp
+        # AUD-SEC-414 vẫn không bắt
+        cmd = 'rm -rf "${HOME:?HOME unset}/.cache/x"'
+        self.assertEqual((decide(cmd)["decision"], decide(cmd).get("code")), ("deny", "WIPE_OUTSIDE"))
+        self.assertEqual(guard._home_dyn_why(cmd), "")
         for cmd in (
             'HOME="$(mktemp -d)"; cd ~ && rm -f settings.json',
             'export HOME="$PWD/.claude"; rm -f $HOME/s.json',

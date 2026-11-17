@@ -236,6 +236,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- AUD-SEC-820/821/822/823/828/829/830/832/835 (T-3929, D-502): guard đóng lớp "giá trị không tính chắc ở đối số/đích
+  của lệnh có luật" → BUDGET: `$_`/`$REPLY`/`$BASH_REMATCH`, `printf -v`, nameref, `${!x}`, biến gán từ chúng, toán tử
+  trên `$HOME`/`$PWD`/`$OLDPWD`/`$BASH`/`$SHELL`; `set` nhận theo từ lệnh (`'set'`, `-o x`, `-eo x`). Guard tính
+  `${X/mẫu[/từ]}`, cắt chuỗi của biến `for` chữ và `X=${X:2}`; vị trí bát phân/thập lục và `trap` gán biến ngoài
+  `EXIT` → BUDGET. Bản viết lại `${X:+…}` không đệ quy, bỏ heredoc nháy; mẫu có biến đã biết, `\#`, `[a-z]` tính được.
+  Dự án đích: chạy lại `install.py`.
+
 - AUD-HAR-422/423, AUD-TEST-112…116, AUD-DOC-298/299/300 (T-3932): `dev-task.sh format`/`format-file` chỉ bỏ qua thư
   mục user không đi xuyên được (thiếu `x`); thư mục còn `x` mất `r` (formatter theo `git ls-files` vẫn mở được GO-NO-GO
   trong đó) lại dừng formatter. `loop stop` khi vòng đã dừng mà `.autopilot` là symlink báo "đã tắt sẵn", không báo
