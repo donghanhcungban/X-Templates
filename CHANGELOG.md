@@ -229,6 +229,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Nợ review 🟢 (T-3921): `pack-npm-audit` vào required checks của `.github/rulesets/main.json` (AUD-DEP-023; ruleset
+  sống do chủ repo áp); `cooldown` Dependabot 7 ngày (AUD-DEP-025); test ghim job không nhận `if:` và chỉ xét đúng job
+  (AUD-DEP-027/029); bộ kiểm index migration của `web-api-ts` bỏ chú thích, chuẩn hoá tên, cấm builder `createIndex(`,
+  chỉ miễn bảng mới hẳn trong `up()`, ghim từng index của 0005 và kiểm trạng thái/hạn dòng sổ (AUD-DATA-014…018).
 - AUD-SEC-652/TEST-101/102, AUD-HAR-396/397/399 (T-3920): `install.py` từ chối có lý do (mã 2, không traceback) khi file
   thường chiếm `.claude`/`.github`, `legacy_refs` không đọc xuyên thư mục symlink, cảnh báo `bỏ qua symlink` nêu chính
   liên kết; `dev-task.sh` chụp và khôi phục cả symlink mang tên `GO-NO-GO*.md` (đích tên khác). Test mới
@@ -247,9 +251,15 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   shell và here-string vào `xargs sh -c` bị chặn như dạng trơn; `install.py` so thư mục hook theo đường đã giải
   (`core.hooksPath` qua tổ tiên symlink → bỏ qua) và thôi chặn oan khi `.git`/`.git/hooks` là symlink trong git dir;
   `.autopilot` là symlink: không ghi state/evidence qua liên kết, `hook-stop` giữ vòng (fail-closed).
+- AUD-SEC-629/630 (T-3909): ô Tên chỉ gồm ký tự vô hình/điều khiển không còn tính là người ký §5 (xt), và guard chặn
+  Write/MCP GO-NO-GO có NUL; neo `subject:` đọc như `release-check` (chỉ bỏ space/tab) nên hậu tố khoảng trắng Unicode
+  không chuyển được chữ ký sang ứng viên khác. AUD-HAR-385 chấp nhận có hạn (D-498, làm cùng T-3858).
 - AUD-HAR-394/395, AUD-SEC-649 (T-3914): `dev-task.sh format`/`format-file` bị ngắt (TERM/INT/HUP) giữa formatter vẫn
   khôi phục `GO-NO-GO*.md` và dọn bản chụp; mẫu `xt.yaml` hướng dẫn thêm `GO-NO-GO*.md` vào file ignore của formatter
   Markdown để cổng `format_check` không đỏ sau khi lập GO-NO-GO.
+- AUD-SEC-607/646/681/731/753/624 (T-3912): gán giá trị nhiều dòng trước lệnh không còn che lệnh sau; `git restore`/
+  `checkout --end-of-options .` bị chặn như `-- .`; autocorrect khi chuỗi đổi PATH/exec-path hay xoá `git-*` → BUDGET;
+  `set --` rồi đọc tham số vị trí ở chuỗi có lệnh không chỉ đọc → BUDGET; `--no-verif` viết tắt đặt cờ bỏ hook.
 - `scripts/check-links.py --external`: HEAD 404/410 không còn đủ kết luận link chết — xác nhận lại bằng GET (NIST nvlpubs và
   support.google.com trả HEAD 404 nhưng GET 200, làm đỏ workflow Links 2026-11-16). Cập nhật link OpenTelemetry logs và
   RFC 9457 sang URL đích sau chuyển hướng.

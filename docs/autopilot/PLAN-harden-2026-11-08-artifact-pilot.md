@@ -15,7 +15,7 @@
 
 ## Mẫu số
 
-Mốc dài hạn là ít nhất 18/20 loại bước có tự động hóa được kiểm và ít nhất 90% lượt bước đủ điều kiện đạt qua 10 chu kỳ thật ở hai repo. Năm nhóm bốn bước dùng để đo lần đầu.
+Mốc dài hạn là ít nhất 18/20 loại bước có tự động hóa được kiểm và ít nhất 90% lượt bước đủ điều kiện đạt qua 10 chu kỳ thật ở hai repo; đây là ngưỡng tự đặt khi lập PLAN, ADR-0068 và nghiên cứu dẫn ở trên không nêu số này. Năm nhóm bốn bước dùng để đo lần đầu.
 
 | Nhóm | Bốn bước được ghi |
 | ---- | ----------------- |
