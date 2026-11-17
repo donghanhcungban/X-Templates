@@ -11,6 +11,8 @@ build: ""
 format: ""
 setup: "" # cài phụ thuộc trước mỗi job CI (npm ci · pip install …); trống = bỏ qua
 format_check: "" # sàn M/L: kiểm format không ghi file, đỏ khi lệch
+# Formatter Markdown (prettier, markdownlint…): thêm `GO-NO-GO*.md` vào file ignore của nó (`.prettierignore`,
+# `.markdownlintignore`) — `dev-task.sh format` không ghi file này (dòng ký §5 của người), cổng kiểm sẽ đỏ (AUD-SEC-649).
 coverage: "" # sàn M/L: test có ngưỡng coverage; artefact ra mktemp, không `|| true`
 format_file: "" # format MỘT file (hook PostToolUse), `{}` = đường dẫn; trống = mẫu dựng sẵn của khung
 # commit_gate: hook trước `git commit` — fast = gate-fast · full = gate; diff đụng cấu hình cổng → mọi lớp test
