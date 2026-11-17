@@ -86,3 +86,9 @@
 - [x] `T-3937` 🔴 AUD-SEC-857…862, 🟠 AUD-SEC-863…867, 🟢 AUD-SEC-868, AUD-TEST-119 — Gate: `python3 -m unittest tests.test_guard_d503_invariant tests.test_guard_signoff4` (files: .claude/hooks/guard.py, tests/)
 - [x] `T-3939` GHSA-fc5q-39xc-vjpf (picomatch, chưa có bản vá, chỉ qua devDependency vitest) làm `pack-npm-audit` đỏ: ngoại lệ có hạn theo BASE-DEP-004 (D-504) — Gate: `python3 -m unittest tests.test_packs` (files: framework/templates/packs/web-api-ts/starter/, tests/)
 - [x] `T-3938` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3937; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 8 — sửa phát hiện cổng ký lần 5 (D-503)
+> Cổng ký lần 5 (ứng viên `702e006d`): hồi quy 🔴 của #648 (vòng `for` duyệt glob) và ba gốc lọt của fuzz mở rộng 201 179 tổ hợp (2 535 lọt: `sh -c` nháy kép, thư mục làm việc không xác định, xargs miễn theo nguồn), cùng chặn oan sed/`$(date)`.
+
+- [x] `T-3940` 🔴 AUD-SEC-869/870/871, 🟠 AUD-SEC-872/873, 🟢 AUD-SEC-874, AUD-DEP-031 — Gate: `python3 -m unittest tests.test_guard_signoff5 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/templates/packs/web-api-ts/)
+- [x] `T-3941` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3940; files: docs/ops/AUDIT-STATUS.md)
