@@ -2204,6 +2204,22 @@ class DevTaskTest(unittest.TestCase):
                 self.assertEqual(notes.read_bytes(), b"formatted\n")
                 self.assertEqual(release.read_bytes(), original)
 
+    def test_format_interrupted_still_restores_go_no_go(self):  # AUD-HAR-394
+        """Formatter bị ngắt (TERM tới dev-task.sh, như hook timeout) sau khi ghi GO-NO-GO: trap khôi phục, dọn bản chụp."""
+        release = self.tmp / "GO-NO-GO-fixture.md"
+        original = b"release document\n"
+        release.write_bytes(original)
+        (self.tmp / "xt.yaml").write_text(
+            "format: printf 'x\\n' >> GO-NO-GO-fixture.md; p=$PPID;"
+            " until ps -o args= -p $p | grep -q dev-task.sh; do p=$(ps -o ppid= -p $p | tr -d ' '); done; kill -TERM $p\n",
+            encoding="utf-8",
+        )
+        with mock.patch.dict(os.environ, TMPDIR=str(self.tmp)):
+            result = self.run_task("format")
+        self.assertEqual(result.returncode, 143, result.stderr)
+        self.assertEqual(release.read_bytes(), original)
+        self.assertEqual(list(self.tmp.glob("tmp.*")), [])
+
     def test_format_stops_if_signoff_snapshot_cannot_be_written(self):
         release = self.tmp / "GO-NO-GO-fixture.md"
         release.write_text("release document\n", encoding="utf-8")
