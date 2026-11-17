@@ -8051,7 +8051,6 @@ class GuardSignApproveTest(unittest.TestCase):
         self.assertEqual(self.g.edit_decision(str(ROOT / rel), str(ROOT), write)[0], "deny")
 
 
-
 class GuardRemoteRefWriteTest(unittest.TestCase):
     """AUD-SEC-554/623/626/544 (T-3907): push theo `HEAD` sau `switch`/`checkout` cùng lệnh, `gh repo sync --force`, graphql
     gỡ bảo vệ nhánh/ruleset/môi trường, `gh api` REST ghi thẳng nhánh chính."""
