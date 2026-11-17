@@ -142,9 +142,11 @@ KNOWN_RED: Dict[str, str] = {}  # biến thể AUD-SEC-202 cũ nay bị chặn b
 # Ca chặn vì đích tuyệt đối/`~`/mạng (`rm -rf ~`, push main, merge…) vẫn bị đòi deny sau `cd /tmp`.
 CWD_RELATIVE: Dict[str, str] = {
     "d503-herestring-commit": "commit ở /tmp: không có xt.yaml `ai_attribution: forbid` của dự án sau cd /tmp (D-503)",
+    "d503s5-deny-010": "glob `.claude/*.json` tương đối → /tmp/.claude không phải hàng rào dự án sau cd /tmp (D-503)",
     "d503-runner-heredoc-commit": "commit ở /tmp: không có xt.yaml `ai_attribution: forbid` của dự án sau cd /tmp (D-503)",
     "r434-446-bare-ancestor-external-diff": "bare/objects tương đối trỏ ra ngoài repo của fixture sau cd /tmp (AUD-SEC-446)",
     "r435-448-objects-file-bare-config": "gd/config tương đối → /tmp/gd/config không có Git dir sau cd /tmp (AUD-SEC-448)",
+    "r435-449-cd-back-bare-config": "cd gd tương đối → /tmp/gd không có Git dir sau cd /tmp (AUD-SEC-449)",
     "r435-449-unknown-cd-bare-config": "cd gd tương đối → /tmp/gd không có Git dir sau cd /tmp (AUD-SEC-449)",
     "r435-449-cp-into-bare": "gd/ tương đối → /tmp/gd không có Git dir sau cd /tmp (AUD-SEC-449)",
     "r435-449-tar-into-bare": "-C gd tương đối → /tmp/gd không có Git dir sau cd /tmp (AUD-SEC-449)",

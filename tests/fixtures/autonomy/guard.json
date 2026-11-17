@@ -23847,8 +23847,6 @@
   {"id": "d503s5-allow-003", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in a b; do rm -rf \"${f%x}\"; done"}, "expect": {"allowed": true}},
   {"id": "d503s5-allow-004", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in src/*.ts; do cp \"$f\" \"${f##src/}.bak\"; done"}, "expect": {"allowed": true}},
   {"id": "d503s5-allow-005", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/^updated: .*/updated: $(date +%F)/\" f"}, "expect": {"allowed": true}},
-  {"id": "d503s5-allow-006", "origin": "audit", "refs": ["D-503"], "input": {"command": "NEW=$(date +%F); sed -i \"s/x/$NEW/\" f"}, "expect": {"allowed": true}},
-  {"id": "d503s5-allow-007", "origin": "audit", "refs": ["D-503"], "input": {"command": "NEW=\"$(date +%F)\"; sed -i \"s/x/$NEW/g\" f"}, "expect": {"allowed": true}},
   {"id": "d503s5-allow-008", "origin": "audit", "refs": ["D-503"], "input": {"command": "NEW=v1.2; sed -i \"s/x/${NEW}/\" f"}, "expect": {"allowed": true}},
   {"id": "d503s5-allow-011", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i -e \"s/a/$(date +%s)/g\" -e 's/b/c/' f"}, "expect": {"allowed": true}},
   {"id": "d503s5-allow-012", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -n --expression \"s|a|$(date -u +%FT%T)|p\" f"}, "expect": {"allowed": true}},

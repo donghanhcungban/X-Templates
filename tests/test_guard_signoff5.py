@@ -169,6 +169,7 @@ ALLOW = (
     "cd @H+/docs && echo x > out.md; cd @H- && echo x > out.md",
     "cd @H+/docs && rm -rf out",
     "cd src && cd - && git status",
+    "cd @H- && git fetch origin",  # git/gh: luật riêng xét mọi thư mục ứng viên (D-347)
     'X=(a b); echo "${X[0]}"',
 )
 

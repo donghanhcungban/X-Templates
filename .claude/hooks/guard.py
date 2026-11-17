@@ -3060,7 +3060,7 @@ def _opaque_value_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> st
     for seg, words in steps:
         checked = sed.checked(words, _opaque_checked(seg, words))
         here = max(moved, MOVED_DIR if _env_dir_moved(seg, words) else MOVED_NONE)
-        if _moved_blocks(here, seg, checked):  # đích tương đối theo thư mục mờ
+        if _moved_blocks(here, seg, words, checked):  # đích tương đối theo thư mục mờ
             return OPAQUE_VALUE_WHY.format(clean_text(" ".join(words))[:80])
         for w, mode in checked:
             if mode != DD_NAMES and _dd_word_bad(w, weak if mode == DD_FULL else names, lit, mode):
@@ -3074,11 +3074,13 @@ def _opaque_value_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> st
 MOVED_NONE, MOVED_DIR, MOVED_OPAQUE = 0, 1, 2
 
 
-def _moved_blocks(level: int, seg: List[str], checked: List[Tuple[str, int]]) -> bool:
-    """`checked` (đích chuyển hướng ghi đứng trước — `_opaque_checked`) có từ ở mức `DD_FULL` mà thư mục mờ làm đổi."""
+def _moved_blocks(level: int, seg: List[str], words: List[str], checked: List[Tuple[str, int]]) -> bool:
+    """`checked` (đích chuyển hướng ghi đứng trước — `_opaque_checked`) có từ ở mức `DD_FULL` mà thư mục mờ làm đổi.
+    Thư mục không biết: chỉ đối số lệnh đích-đường (git/gh xét mọi thư mục ứng viên theo luật riêng — D-347)."""
     redirs = sum(1 for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a and b != PROCSUB_WORD)
-    pool = checked if level == MOVED_OPAQUE else checked[redirs:] if level == MOVED_DIR else []
-    return any(mode == DD_FULL for _, mode in pool)
+    name = posixpath.basename(_dequote(words[0])) if words else ""
+    pool = checked if level == MOVED_OPAQUE else checked[redirs:] if name not in ("git", "gh") else []
+    return level != MOVED_NONE and any(mode == DD_FULL for _, mode in pool)
 
 
 # T-3940 (cổng ký lần 5): kịch bản sed không phải đích ghi. Kịch bản có mở rộng chỉ qua khi là chuỗi lệnh `s` (địa chỉ
