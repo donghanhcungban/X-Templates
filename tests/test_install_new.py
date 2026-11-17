@@ -102,11 +102,13 @@ class InstallNewTest(unittest.TestCase):
         for destination in (actual, self.tmp / "missing"):
             with self.subTest(destination=destination):
                 self.target.symlink_to(destination, target_is_directory=True)
-                code, output = self.run_new()
-                self.assertEqual(code, 2, output)
-                self.assertTrue(self.target.is_symlink())
-                self.assertEqual(list(actual.iterdir()), [])
-                self.target.unlink()
+                try:
+                    code, output = self.run_new()
+                    self.assertEqual(code, 2, output)
+                    self.assertTrue(self.target.is_symlink())
+                    self.assertEqual(list(actual.iterdir()), [])
+                finally:
+                    self.target.unlink(missing_ok=True)
 
     def test_s203_malicious_multiline_idea_is_quoted_data_only(self) -> None:
         marker = self.tmp / "idea-executed"
