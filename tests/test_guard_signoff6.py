@@ -299,16 +299,16 @@ class SignOff6HelperTest(unittest.TestCase):
         self.assertEqual(guard._glob_loop_splices(many, guard._simple_cmds(many) or []), (set(), []))
 
     def test_shadow(self):
-        risk = guard._shadow_risk
-        self.assertTrue(risk("date(){ :; }"))
-        self.assertTrue(risk("hash -p /x date"))
-        self.assertTrue(risk("export -f date"))
-        self.assertTrue(risk("PATH=. date"))
-        self.assertTrue(risk("export 'x"))  # không tách chắc
-        self.assertTrue(risk("eval x <<E${IFS=/. /dev/stdin`"))  # heredoc lạ: ScanTooComplex
-        self.assertFalse(risk("export V=1; declare -x W=2; echo ."))
-        self.assertFalse(risk("date +%F"))
-        token = guard.SHADOW.set(True)
+        risk = guard._shadow_level  # T-3945: mức che (danh sách đóng, D-506) thay cờ đúng/sai
+        self.assertEqual(risk("date(){ :; }"), guard.SHADOW_ALL)
+        self.assertEqual(risk("hash -p /x date"), guard.SHADOW_ALL)
+        self.assertEqual(risk("export -f date"), guard.SHADOW_ALL)
+        self.assertEqual(risk("PATH=. date"), guard.SHADOW_EXT)
+        self.assertEqual(risk("export 'x"), guard.SHADOW_ALL)  # không tách chắc
+        self.assertEqual(risk("eval x <<E${IFS=/. /dev/stdin`"), guard.SHADOW_ALL)  # heredoc lạ: ScanTooComplex
+        self.assertEqual(risk("export V=1; declare -x W=2; echo ."), guard.SHADOW_NONE)
+        self.assertEqual(risk("date +%F"), guard.SHADOW_NONE)
+        token = guard.SHADOW.set(("date(){ :; }",))
         try:
             self.assertEqual(guard._trusted_call("date +%F"), [])
             self.assertNotIn("$PWD", guard.tokenize("echo $(pwd)"))  # tên `pwd` có thể bị che: không thay bằng `$PWD`

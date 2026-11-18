@@ -197,6 +197,8 @@ def _esc(body: str) -> str:
 def shadow_matrix() -> list[tuple[str, str]]:
     out = []
     for (u, (name, val, use)), (s, sdef), (w, wrap) in itertools.product(USES.items(), SHADOWS.items(), WRAPS.items()):
+        if name == "pwd" and s == "path":  # T-3945 (R5): `pwd` là builtin — PATH không che (cho qua: ShadowLevelTest)
+            continue
         body = sdef.format(N=name, O=val) + use
         out.append((f"{u}|{s}|{w}", wrap.format(B=body, E=_esc(body))))
     # hàm định nghĩa ở tầng ngoài, đưa vào shell con qua `export -f`/BASH_ENV
@@ -246,7 +248,7 @@ class ShadowMatrixTest(unittest.TestCase):
         self.assertEqual(sub('bash -c "rm $(pwd)/x"'), 'bash -c "rm $PWD/x"')  # tầng này mở rộng nháy kép
         self.assertEqual(sub("echo `pwd`"), "echo `pwd`")  # backtick: ngoài tập con (`_CodeView.why`)
         self.assertEqual(sub("echo x"), "echo x")
-        token = guard.SHADOW.set(True)
+        token = guard.SHADOW.set(("pwd(){ :; }",))
         try:
             self.assertEqual(sub("echo $(pwd)"), "echo $(pwd)")
         finally:

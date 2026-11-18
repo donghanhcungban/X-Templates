@@ -1527,6 +1527,7 @@ class ReasonCodeLockTest(unittest.TestCase):
     # Mã có nhiều dấu (review #407 R1: ≥ 3 dấu WIPE_OUTSIDE chưa khoá): mỗi DẤU một lệnh thật sinh đúng dấu đó.
     MARKER_EXAMPLES = (
         ("WIPE_OUTSIDE", "rm -r ."),  # xoá đệ quy gốc dự án
+        ("WIPE_OUTSIDE", "rm -f .git/HEAD"),  # xoá tệp bên trong .git (T-3945)
         ("WIPE_OUTSIDE", "find . -delete"),  # bắt đầu từ gốc dự án bị chặn
         ("WIPE_OUTSIDE", "ls | xargs rm -rf"),  # rm -rf không có đích
         ("WIPE_OUTSIDE", "find ~/x -delete"),  # find xoá file ngoài thư mục dự án
