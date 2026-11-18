@@ -3819,8 +3819,13 @@ def _parallel_why(cmd: str) -> str:
 def _source_on_path(name: str, cmd: str) -> bool:
     """`source NAME` nạp tệp từ PATH: NAME có trong một thư mục PATH của phiên, hay lệnh ghi PATH (`_shadow_text`) —
     không có thì bash đọc tệp ở thư mục hiện tại (`source .env`: luật tệp nguồn thường xét)."""
-    dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d]
-    return any(os.path.isfile(os.path.join(d, name)) for d in dirs) or _shadow_text(cmd, _CodeView(cmd)) != SHADOW_NONE
+    return _shadow_text(cmd, _CodeView(cmd)) != SHADOW_NONE or _path_has(name, os.environ.get("PATH", ""))
+
+
+@functools.lru_cache(maxsize=64)
+def _path_has(name: str, path: str) -> bool:
+    """`name` là tệp trong một thư mục của `path` (nhớ: thư mục PATH trên ổ chậm — WSL `/mnt/c` — tốn hàng chục ms)."""
+    return any(os.path.isfile(os.path.join(d, name)) for d in path.split(os.pathsep) if d)
 
 
 # T-3945 (R2, D-503 b): công cụ NGOÀI danh sách đóng đọc-dữ-liệu (`STDIN_DATA_OK`) đọc stdin như CHƯƠNG TRÌNH có thể chạy
@@ -3839,6 +3844,7 @@ SHELL_CLOSERS = frozenset(
 STDIN_SCRIPT_TOOLS = frozenset("sed awk gawk mawk make gmake bmake remake".split())  # `-f -`: chương trình từ stdin
 STDIN_FILE_FLAG_RE = re.compile(r"(-f|--file|--makefile)(?:=?(.*))?", re.S)
 INLINE_PROG_RE = re.compile(r"(-[eEc]|-ex|--eval|--command|--execute)(?:=(.*))?", re.S)
+STDIN_HINT_RE = re.compile(r"make|-[eEcf]|--(?:eval|command|execute|file|makefile)")  # đường nhanh của luật lệnh đơn
 STDIN_SPLIT_RE = re.compile(r"[\s;&|()!<>{}\[\],=:\"']+")
 STDIN_PROG_WHY = (
     "`{}` — công cụ đọc chương trình từ stdin/heredoc/cờ `-e` có thể chạy lệnh có luật guard không quét (T-3945,"
@@ -3847,20 +3853,23 @@ STDIN_PROG_WHY = (
 
 
 def _stdin_prog_why(cmd: str) -> str:
-    for _, words in _simple_cmds(cmd) or []:
+    for _, words in _simple_cmds(cmd) or [] if STDIN_HINT_RE.search(cmd) else []:
         plain = [_dequote(w) for w in _no_redirects(words)]
         if plain and (_stdin_script(plain) or _inline_prog(plain)):
             return STDIN_PROG_WHY.format(clean_text(" ".join(plain))[:80])
-    if "<<" not in cmd and "|" not in cmd:
-        return ""
-    if any(map(_stdin_body_runs, _heredoc_scripts(cmd, _stdin_prog))):
+    if "<<" in cmd and any(map(_stdin_body_runs, _heredoc_scripts(cmd, _stdin_prog))):
         return STDIN_PROG_WHY.format(clean_text(cmd)[:80])
-    bodies = _heredoc_scripts(cmd, lambda c: True)  # khâu trước đọc heredoc rồi đưa qua ống (`cat <<E | crontab -`)
+    if "|" not in cmd and "<<<" not in cmd:
+        return ""
     for pipe in pipelines(tokenize(cmd)):
-        for argv, feed, up in zip(pipe, [None, *_pipe_feeds(pipe)], [[], *pipe]):
-            fed = bodies if "<<" in up else feed or []
+        progs = [k for k, argv in enumerate(pipe) if _stdin_prog(argv)]
+        feeds = [None, *_pipe_feeds(pipe)] if progs else []
+        for k in progs:
+            argv, up = pipe[k], pipe[k - 1] if k else []
+            # khâu trước đọc heredoc rồi đưa qua ống (`cat <<E | crontab -`)
+            fed = _heredoc_scripts(cmd, lambda c: True) if "<<" in up else feeds[k] or []
             fed = fed + [argv[argv.index("<<<") + 1]] if "<<<" in argv[:-1] else fed
-            if _stdin_prog(argv) and any(map(_stdin_body_runs, fed)):
+            if any(map(_stdin_body_runs, fed)):
                 return STDIN_PROG_WHY.format(clean_text(" ".join(argv))[:80])
     return ""
 
