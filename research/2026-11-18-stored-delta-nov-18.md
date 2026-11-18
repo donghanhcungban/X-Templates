@@ -12,7 +12,7 @@ Bổ sung cho [đợt 11–16/11](2026-11-16-stored-delta-nov-11-16.md). File n�
 
 - Nguồn: `seeker19110/stored` từ `c607013` đến merge [`4de3197`](https://github.com/seeker19110/stored/commit/4de31978989dbdf4b85445477c5eb3d1e72d7bf5) ngày 2026-11-18 (PR #158…#166). Mục liên quan: 06 §7zf, 08 §6c, §6c.4, §6c.5 (lọc lại 694 repo của kho-repo, catalog 1113 → 1563).
 - Bàn giao máy đọc: [XT-H-132…139](https://github.com/seeker19110/stored/blob/4de31978989dbdf4b85445477c5eb3d1e72d7bf5/data/xt-handoff.json), [bảng phía stored](https://github.com/seeker19110/stored/blob/4de31978989dbdf4b85445477c5eb3d1e72d7bf5/X-TEMPLATES.md) (§4h, §4i, §5f, §5g).
-- Khung đối chiếu: `framework/` tại `3cd50cb` ngày 2026-11-18. Đã rà 131 bàn giao cũ để tránh trùng. Phân loại 6 **nông hơn**, 2 **sâu hơn**, 0 **chưa có**.
+- Khung đối chiếu: `framework/` tại `3cd50cb` ngày 2026-11-18. Đã rà 131 bàn giao cũ để tránh trùng. Phân loại 3 **nông hơn**, 5 **sâu hơn**, 0 **chưa có** (đã đính chính: bản đầu ghi XT-H-137…139 là nông hơn; đối chiếu lại tại `7cf743f` thấy `CMP-LIC-004`, `OPS-MAINT-008`, `AI-APP-021` đã phủ phần lớn).
 - Bằng chứng upstream là đọc README, LICENSE và cây thư mục ghi ngày và SHA, không chạy công cụ.
 
 ## 2. Bản đồ 8 đề xuất
@@ -24,9 +24,9 @@ Bổ sung cho [đợt 11–16/11](2026-11-16-stored-delta-nov-11-16.md). File n�
 | XT-H-134 | Giấy phép không phải OSI gặp nhiều ở skill và kit UI: Animate UI (MIT + Commons Clause, chép component vào repo được nhưng không bán lại component gốc), oh-my-openagent (Sustainable Use, chỉ nội bộ/phi thương mại), academic-research-skills (CC BY-NC cho skill), autoresearch (MIT chỉ ghi trong README, không có file LICENSE), Archify (MIT trước một commit mốc, Apache-2.0 sau đó). | `CMP-LIC-004`, `CMP-LIC-022` | sâu hơn |
 | XT-H-135 | OpenAI Symphony chạy tool tracker ở phía host bằng auth đã cấu hình và gỡ token tracker khỏi môi trường tiến trình Codex con; agent chỉ thấy kết quả tool, không thấy khóa. | `SEC-AI-007`, `LOOP-HARNESS-022` | nông hơn |
 | XT-H-136 | Công cụ nối agent vào trình duyệt thật đã đăng nhập: browser-harness điều khiển cả Chrome qua CDP sau khi bật remote debugging; Agent-Reach chép cookie một trang từ Chrome và khuyên dùng tài khoản phụ; last30days dùng cookie x.com trên trình duyệt. | `QA-E2E-030`, `SEC-AI-007` | nông hơn |
-| XT-H-137 | Repo open-core phổ biến để giấy phép khác nhau theo thư mục: Infisical, Onyx, Strapi, SigNoz, TabbyML, Amplication để mã ngoài ee/ theo MIT hoặc Apache-2.0 còn ee/ theo giấy phép thương mại; Docmost và Documenso thêm packages/ee; Dyad để src/pro theo FSL; Stirling-PDF có thư mục proprietary; Medusa ghi tính năng Enterprise trong ENTERPRISE-LICENSE.md. GitHub API và SPDX ở gốc chỉ thấy giấy phép mở. | `CMP-LIC-002`, `CMP-LIC-004` | nông hơn |
-| XT-H-138 | Repo chưa archive và vẫn có commit nhưng README tự nêu không còn phát triển: Rasa Open Source ghi đang ở Maintenance Mode và hướng sang sản phẩm khác; ageron/handson-ml ghi đã lỗi thời và thay bằng handson-ml3; ultralytics/yolov5 vẫn cập nhật nhưng đã có gói ultralytics mới hơn. Lọc chỉ bằng archived hoặc ngày release bỏ sót các trường hợp này. | `OPS-MAINT-008`, `FE-START-003` | nông hơn |
-| XT-H-139 | Một nhóm proxy LLM nhiều sao chuyên định tuyến agent lập trình qua tài khoản thuê bao cá nhân: CLIProxyAPI dùng đăng nhập OAuth của từng nhà cung cấp, 9router xoay vòng nhiều tài khoản và gói đăng ký, opencodex tự cảnh báo một số nhà cung cấp có thể khoá tài khoản khi đi qua proxy và gộp nhiều tài khoản ChatGPT không được bảo đảm. Kho không thêm các repo này. | `AI-APP-018`, `AI-OBS-009` | nông hơn |
+| XT-H-137 | Repo open-core phổ biến để giấy phép khác nhau theo thư mục: Infisical, Onyx, Strapi, SigNoz, TabbyML, Amplication để mã ngoài ee/ theo MIT hoặc Apache-2.0 còn ee/ theo giấy phép thương mại; Docmost và Documenso thêm packages/ee; Dyad để src/pro theo FSL; Stirling-PDF có thư mục proprietary; Medusa ghi tính năng Enterprise trong ENTERPRISE-LICENSE.md. GitHub API và SPDX ở gốc chỉ thấy giấy phép mở. | `CMP-LIC-004`, `CMP-LIC-002` | sâu hơn |
+| XT-H-138 | Repo chưa archive và vẫn có commit nhưng README tự nêu không còn phát triển: Rasa Open Source ghi đang ở Maintenance Mode và hướng sang sản phẩm khác; ageron/handson-ml ghi đã lỗi thời và thay bằng handson-ml3; ultralytics/yolov5 vẫn cập nhật nhưng đã có gói ultralytics mới hơn. Lọc chỉ bằng archived hoặc ngày release bỏ sót các trường hợp này. | `OPS-MAINT-008` | sâu hơn |
+| XT-H-139 | Một nhóm proxy LLM nhiều sao chuyên định tuyến agent lập trình qua tài khoản thuê bao cá nhân: CLIProxyAPI dùng đăng nhập OAuth của từng nhà cung cấp, 9router xoay vòng nhiều tài khoản và gói đăng ký, opencodex tự cảnh báo một số nhà cung cấp có thể khoá tài khoản khi đi qua proxy và gộp nhiều tài khoản ChatGPT không được bảo đảm. Kho không thêm các repo này. | `AI-APP-021`, `AI-OBS-009` | sâu hơn |
 
 ## 3. Delta và phép kiểm đề xuất
 
@@ -112,13 +112,13 @@ Bổ sung cho [đợt 11–16/11](2026-11-16-stored-delta-nov-11-16.md). File n�
 
 **Hồ sơ nguồn:** [08-awesome-lists-learning/README.md#6c5](https://github.com/seeker19110/stored/blob/4de31978989dbdf4b85445477c5eb3d1e72d7bf5/08-awesome-lists-learning/README.md#6c5-lọc-lại-toàn-bộ-kho-đọc-mã-437-repo-giữ-410-repo-18112026).
 
-**Khung đã có:** CMP-LIC-002 phân loại allow/deny/review theo SPDX id của gói; CMP-LIC-004 tách nhóm source-available.
+**Khung đã có:** CMP-LIC-004 đã đòi đọc LICENSE/NOTICE theo từng thư mục con cho skill/prompt pack và phân loại riêng source-available; CMP-LIC-002 có allow/deny/review theo SPDX.
 
-**Phần cần bổ sung:** Chính sách theo SPDX id của gói hoặc của LICENSE ở gốc không thấy giấy phép thương mại nằm trong thư mục con (ee/, pro/, proprietary/) của cùng repo khi dự án tự host, fork hoặc vendor mã.
+**Phần cần bổ sung:** Chỉ mở rộng chữ của CMP-LIC-004: việc đọc LICENSE theo thư mục con áp cả cho mã ứng dụng open-core khi tự host, fork hoặc vendor (ee/, pro/, proprietary/ như Infisical, Onyx, Strapi, SigNoz, Docmost, Documenso, Dyad, Stirling-PDF), không chỉ skill/prompt pack. Không cần ID mới.
 
-**Đề xuất SHOULD:** Khi tự host, fork hoặc vendor một repo open-core, SHOULD liệt kê mọi thư mục có LICENSE riêng (ee/, pro/, enterprise/, proprietary/) trong license-policy.yaml kèm giấy phép của từng thư mục, và build hoặc cấu hình bản dùng không kéo các thư mục chưa có giấy phép. Kiểm: script tìm file LICENSE lồng trong mã vendor hoặc image build; thư mục ee/ chưa được duyệt mà có trong artifact thì cổng đỏ.
+**Đề xuất:** chỉ sửa chữ hoặc thêm ví dụ vào ID hiện có, không cần ID mới (đính chính 18/11/2026).
 
-**Đối chiếu khung:** [CMP-LIC-002](https://github.com/seeker19110/X-Templates/blob/3cd50cb2e1b1c673ded8a2de6e45c7a093f9dd19/framework/16-compliance-privacy/licensing-and-ip.md#L50), [CMP-LIC-004](https://github.com/seeker19110/X-Templates/blob/3cd50cb2e1b1c673ded8a2de6e45c7a093f9dd19/framework/16-compliance-privacy/licensing-and-ip.md#L52).
+**Đối chiếu khung:** [CMP-LIC-004](https://github.com/seeker19110/X-Templates/blob/7cf743fcd5a70137d9bf8b1e355354985ae76697/framework/16-compliance-privacy/licensing-and-ip.md#L52), [CMP-LIC-002](https://github.com/seeker19110/X-Templates/blob/7cf743fcd5a70137d9bf8b1e355354985ae76697/framework/16-compliance-privacy/licensing-and-ip.md#L50).
 
 **Liên quan đợt trước:** XT-H-134; chỉ giữ phần delta nêu trên.
 
@@ -128,13 +128,13 @@ Bổ sung cho [đợt 11–16/11](2026-11-16-stored-delta-nov-11-16.md). File n�
 
 **Hồ sơ nguồn:** [08-awesome-lists-learning/README.md#6c5](https://github.com/seeker19110/stored/blob/4de31978989dbdf4b85445477c5eb3d1e72d7bf5/08-awesome-lists-learning/README.md#6c5-lọc-lại-toàn-bộ-kho-đọc-mã-437-repo-giữ-410-repo-18112026).
 
-**Khung đã có:** OPS-MAINT-008 phát hiện bằng máy dependency archive, không release > 18 tháng, CVE không vá > 90 ngày; FE-START-003 cấm mẫu đã ngừng cập nhật.
+**Khung đã có:** OPS-MAINT-008 đã lấy tín hiệu còn sống từ commit chạm mã, bắt đổi tên/chuyển org, đọc banner README và bảng hỗ trợ SECURITY.md.
 
-**Phần cần bổ sung:** Tiêu chí máy chỉ dựa vào archive, ngày release và CVE; chưa đọc tuyên bố của chính dự án (maintenance mode, deprecated, successor) trong README hoặc mô tả gói.
+**Phần cần bổ sung:** Chỉ thêm ví dụ và một tín hiệu máy: cờ deprecated trên registry (npm deprecate, PyPI classifier Inactive); ví dụ Rasa Open Source ghi Maintenance Mode, ageron/handson-ml ghi lỗi thời và chỉ sang handson-ml3, ultralytics/yolov5 có gói kế nhiệm. Không cần ID mới.
 
-**Đề xuất SHOULD:** Bộ phát hiện dependency không bảo trì SHOULD đọc thêm tín hiệu do dự án tự công bố: cờ deprecated trên registry (npm deprecate, PyPI yanked hoặc classifier Inactive), từ khoá maintenance mode, deprecated, no longer maintained, superseded by trong README; gặp thì đưa vào cùng hàng đợi thay thế với ghi chú repo kế nhiệm. Kiểm fixture: gói có README ghi Maintenance Mode nhưng release mới được báo.
+**Đề xuất:** chỉ sửa chữ hoặc thêm ví dụ vào ID hiện có, không cần ID mới (đính chính 18/11/2026).
 
-**Đối chiếu khung:** [OPS-MAINT-008](https://github.com/seeker19110/X-Templates/blob/3cd50cb2e1b1c673ded8a2de6e45c7a093f9dd19/framework/15-operations/maintenance-and-lifecycle.md#L45), [FE-START-003](https://github.com/seeker19110/X-Templates/blob/3cd50cb2e1b1c673ded8a2de6e45c7a093f9dd19/framework/07-frontend/starter-layouts.md#L43).
+**Đối chiếu khung:** [OPS-MAINT-008](https://github.com/seeker19110/X-Templates/blob/7cf743fcd5a70137d9bf8b1e355354985ae76697/framework/15-operations/maintenance-and-lifecycle.md#L45).
 
 **Nguồn triển khai upstream:** [nguồn 1](https://github.com/RasaHQ/rasa/tree/60a3cff9c08183760355b07bd60f5223d8916d6b) · [nguồn 2](https://github.com/ageron/handson-ml/tree/b7051594afbb1d835f5e031af8664c4363878050) · [nguồn 3](https://github.com/ultralytics/yolov5/tree/1e7cf74cb64d719b34f7315aa13eab9e32cde672).
 
@@ -142,26 +142,24 @@ Bổ sung cho [đợt 11–16/11](2026-11-16-stored-delta-nov-11-16.md). File n�
 
 **Hồ sơ nguồn:** [08-awesome-lists-learning/README.md#6c516](https://github.com/seeker19110/stored/blob/4de31978989dbdf4b85445477c5eb3d1e72d7bf5/08-awesome-lists-learning/README.md#6c516-nền-tảng-ai-rag--workflow).
 
-**Khung đã có:** AI-APP-018 cho phép fallback đa nhà cung cấp qua gateway; AI-OBS-009 giữ key nhà cung cấp ở gateway hoặc server, ứng dụng dùng key ảo.
+**Khung đã có:** AI-APP-021 cấm mã sản phẩm đọc, lưu hay trung chuyển token OAuth thuê bao Claude.ai, nêu Codex/Gemini CLI theo điều khoản từng nhà cung cấp, backend dùng khoá API/tài khoản tổ chức; AI-OBS-009 giữ key ở gateway.
 
-**Phần cần bổ sung:** Chưa nói nguồn quyền gọi model ở gateway phải là khoá API thương mại theo điều khoản nhà cung cấp; gateway dựng trên phiên đăng nhập thuê bao cá nhân hoặc xoay vòng nhiều tài khoản vẫn thỏa luật hiện có.
+**Phần cần bổ sung:** Chỉ thêm ví dụ và một vế vào AI-APP-021: không xoay vòng nhiều tài khoản thuê bao để vượt hạn mức, và luật áp cả gateway dùng cho CI hoặc agent tự động, không chỉ mã sản phẩm; ví dụ CLIProxyAPI, 9router, opencodex. Không cần ID mới.
 
-**Đề xuất SHOULD:** Gateway hoặc proxy LLM dùng cho sản phẩm, CI và agent tự động SHOULD chỉ dùng khoá API hoặc tài khoản dịch vụ theo điều khoản thương mại của nhà cung cấp; không định tuyến qua token OAuth của gói thuê bao cá nhân (app chat, CLI) và không xoay vòng nhiều tài khoản để vượt hạn mức. Kiểm: cấu hình gateway chỉ khai nguồn kiểu api_key hoặc service_account; nguồn oauth_subscription hoặc danh sách nhiều tài khoản cùng nhà cung cấp làm cổng đỏ.
+**Đề xuất:** chỉ sửa chữ hoặc thêm ví dụ vào ID hiện có, không cần ID mới (đính chính 18/11/2026).
 
-**Đối chiếu khung:** [AI-APP-018](https://github.com/seeker19110/X-Templates/blob/3cd50cb2e1b1c673ded8a2de6e45c7a093f9dd19/framework/13-ai-engineering/llm-app-foundations.md#L81), [AI-OBS-009](https://github.com/seeker19110/X-Templates/blob/3cd50cb2e1b1c673ded8a2de6e45c7a093f9dd19/framework/13-ai-engineering/observability-and-cost.md#L66).
+**Đối chiếu khung:** [AI-APP-021](https://github.com/seeker19110/X-Templates/blob/7cf743fcd5a70137d9bf8b1e355354985ae76697/framework/13-ai-engineering/llm-app-foundations.md#L84), [AI-OBS-009](https://github.com/seeker19110/X-Templates/blob/7cf743fcd5a70137d9bf8b1e355354985ae76697/framework/13-ai-engineering/observability-and-cost.md#L66).
 
 **Nguồn triển khai upstream:** [nguồn 1](https://github.com/router-for-me/CLIProxyAPI/tree/a5e8f69e56309e1ef6d6872e667da81fdfbce2ce) · [nguồn 2](https://github.com/decolua/9router/tree/1855aa44473e88feac9d3f131b9c0c5fc9706b68) · [nguồn 3](https://github.com/lidge-jun/opencodex/tree/04304da28a2a8c0349f01ad161a58c16dbe8d982).
 
 ## 4. Thứ tự gợi ý và giới hạn áp dụng
 
 1. **XT-H-135**: giữ khoá dịch vụ ngoài ở phía host, tiến trình agent con chỉ nhận biến theo allowlist; rủi ro cao, sửa rẻ. Nhà gần nhất `11-autonomous-loop` (`LOOP-HARNESS-022`) và `SEC-AI-007`.
-2. **XT-H-139**: gateway LLM chỉ dùng khoá API hoặc tài khoản dịch vụ, không đi qua OAuth thuê bao cá nhân hay xoay vòng nhiều tài khoản; nhà gần nhất `13-ai-engineering` (`AI-OBS-009`).
-3. **XT-H-136**: profile trình duyệt riêng khi công cụ agent nối vào trình duyệt đã đăng nhập.
-4. **XT-H-137**: giấy phép theo thư mục trong repo open-core (ee/, pro/, proprietary/); mở rộng `CMP-LIC-002`, có thể thành một bước của cổng license.
-5. **XT-H-133 + XT-H-138**: đối chiếu tên gói với kênh chính thức; đọc cờ deprecated và tuyên bố maintenance mode trong bộ phát hiện `OPS-MAINT-008`.
-6. **Chỉ ví dụ:** XT-H-132 (công tắc telemetry mới cho bảng `SEC-INFRA-027`), XT-H-134 (Sustainable Use, CC BY-NC, giấy phép chỉ trong README cho `CMP-LIC-004`).
+2. **XT-H-136**: profile trình duyệt riêng khi công cụ agent nối vào trình duyệt đã đăng nhập.
+3. **XT-H-133**: đối chiếu tên gói với kênh chính thức trước khi thêm phụ thuộc.
+4. **Chỉ ví dụ hoặc sửa chữ:** XT-H-139 (`AI-APP-021`: thêm vế không xoay vòng nhiều tài khoản thuê bao, áp cả gateway cho CI và agent tự động), XT-H-137 (`CMP-LIC-004`: đọc LICENSE theo thư mục con cả với mã ứng dụng open-core `ee/`), XT-H-138 (`OPS-MAINT-008`: cờ deprecated của registry), XT-H-132 (`SEC-INFRA-027`), XT-H-134 (`CMP-LIC-004`).
 
-**Áp lên dự án đích:** khi khung thêm ID, dự án chạy lại `install.py`, ghép lại blueprint bằng `xt.py compose`; mục SHOULD vào `BLUEPRINT-BACKLOG.md` và chỉ hiện ở hồ sơ có điều kiện tương ứng (135: dự án có bộ điều phối chạy agent con; 136: agent dùng trình duyệt đã đăng nhập; 137: tự host/vendor repo open-core; 139: có gateway hoặc proxy model). Phía stored có bảng chi tiết ở `X-TEMPLATES.md` §5f, §5g.
+**Áp lên dự án đích:** khi khung thêm ID, dự án chạy lại `install.py`, ghép lại blueprint bằng `xt.py compose`; mục SHOULD vào `BLUEPRINT-BACKLOG.md` và chỉ hiện ở hồ sơ có điều kiện tương ứng (135: dự án có bộ điều phối chạy agent con; 136: agent dùng trình duyệt đã đăng nhập). Phía stored có bảng chi tiết ở `X-TEMPLATES.md` §5f, §5g.
 
 Phiên triển khai tiếp theo tự quyết cách gộp vào ID hiện có hay cấp ID mới; cập nhật module/README/CHANGELOG và ADR khi quy tắc khung yêu cầu. Research note này không cài thêm stack, không sửa blueprint dự án đích và không tự bật auto-merge.
 
