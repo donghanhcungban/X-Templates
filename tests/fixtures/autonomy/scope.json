@@ -685,6 +685,12 @@
    "ids": [
     "AUD-SEC-911"
    ]
+  },
+  {
+   "reason": "Ghi đè `.git/**` cần cây thư mục thật (worktree liên kết với gitdir/commondir, repo con `sub/.git`) — corpus bench chạy ở gốc thường nên không mô phỏng được và fuzz bọc `cd /tmp` đổi nghĩa ca `.git` tương đối; đỡ bằng tests.test_guard_signoff10 và họ `T10|*` trong d503_invariant.jsonl",
+   "ids": [
+    "AUD-SEC-924"
+   ]
   }
  ]
 }

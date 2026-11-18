@@ -111,3 +111,9 @@
 
 - [x] `T-3947` 🔴 AUD-SEC-905…911/918, 🟠 AUD-SEC-914…917/918, 🟢 AUD-SEC-919, AUD-HAR-431 — Gate: `python3 -m unittest tests.test_guard_signoff9 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
 - [x] `T-3948` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3947; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 12 — sửa phát hiện cổng ký lần 9 (D-503, D-508)
+> Cổng ký lần 9 (ứng viên `e2f89c8b`): hồi quy AUD-SEC-917 (lối thoát qua stdin), chặn oan `$` ở here-string, `for PATH in`, `$(date)` qua biến, ghi đè `.git/**`, cụm cờ ngắn, chương trình qua lệnh ghép/`echo`/`/dev/fd/N`. Sửa theo lớp kèm bộ sinh biến thể; họ (c) còn lại chấp nhận có hạn (D-508).
+
+- [x] `T-3949` 🔴 AUD-SEC-921/925/927…929, 🟠 AUD-SEC-920/922…924/930, 🟢 AUD-SEC-926, AUD-TEST-120, AUD-HAR-432 — Gate: `python3 -m unittest tests.test_guard_signoff10 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [x] `T-3950` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3949; files: docs/ops/AUDIT-STATUS.md)
