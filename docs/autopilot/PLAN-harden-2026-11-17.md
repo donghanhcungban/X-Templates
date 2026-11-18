@@ -99,3 +99,9 @@
 - [x] `T-3942` 🔴 AUD-SEC-875/876/877/885/886, 🟠 AUD-SEC-878/880/881/882/884, 🟢 AUD-SEC-879/883, AUD-DEP-032, AUD-HAR-429 — Gate: `python3 -m unittest tests.test_guard_signoff6 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
 - [x] `T-3943` 🔴 AUD-SEC-890 (`$(pwd)` + hàm che ở lớp bọc `sh -c`), 🔴 AUD-SEC-887 `parallel`/`sem` chạy chuỗi lệnh từ `:::`/stdin → BUDGET (mặc định chặn); đo lại hạn giờ cho dạng sed/for ~50 KB (AUD-SEC-888) — Gate: `python3 -m unittest tests.test_guard_signoff7 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/)
 - [x] `T-3944` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3943; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 10 — sửa phát hiện cổng ký lần 7 (D-503, D-506)
+> Cổng ký lần 7 (ứng viên `b76d7af5`): lớp giá trị tính được vẫn rò (`BASH_CMDS`, đổi PATH qua `read`/`printf -v`, thân `trap`, HEAD tách rời), `parallel` qua argv của Python, chương trình lệnh qua stdin/`--eval` của công cụ ngoài, xoá nội tạng `.git`. Sửa theo danh sách đóng (D-506).
+
+- [x] `T-3945` 🔴 AUD-SEC-893…896/898…900, 🟠 AUD-SEC-897/901, 🟢 AUD-SEC-902…904, AUD-HAR-430 — Gate: `python3 -m unittest tests.test_guard_signoff8 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [x] `T-3946` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3945; files: docs/ops/AUDIT-STATUS.md)

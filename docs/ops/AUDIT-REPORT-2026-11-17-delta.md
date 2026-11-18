@@ -80,3 +80,14 @@ Hai lô reviewer-alt: fuzz họ mới (hàm che lệnh, CDPATH/`popd`, nguồn x
 Đợt 9 (T-3942, #652): bộ fuzz chỉ-guard `leaks6.fam` 665, bộ cổng ký 4 (829) và 5 (2 535) → 0 lọt; hạn giờ chung `DECISION_SECONDS` 15 s (D-505) đóng lỗ lệnh 256 KB chạy quá 1300 s. Còn mở sau #652: AUD-SEC-887 (`parallel`/`sem`) và AUD-SEC-890 (🔴 `$(pwd)` + hàm che trong thân `sh -c`, do fuzz tất định của CI bắt ở #653).
 
 Đợt 9 phần 2 (T-3943, #654): cả hai đóng — mọi `parallel`/`sem` → BUDGET; `_pwd_subst` (ma trận 2 220 tổ hợp: nền lọt 360 → 0); 888 (điểm kiểm hạn giờ, sed 50 KB → BUDGET sau 15,0 s) và 889 (heredoc dữ liệu thuần) cùng đóng. Nợ 🟢 mới: AUD-SEC-891 (`apt-get install parallel` BUDGET), AUD-SEC-892 (tên lệnh glob `gi[t]`), AUD-HAR-430 (câu `a[0]=1 cmd` ở `harness-files.md`). Sổ không còn 🔴/🟠 mở; cổng ký lần 7 chạy trên `b76d7af5`. Cổng ký lần 7 chạy sau T-3943, gồm cả các họ INCONCLUSIVE.
+
+## Cổng ký lần 7 (ứng viên `b76d7af5`, sau đợt 9)
+
+Hai lô reviewer-alt: fuzz các họ còn INCONCLUSIVE của cổng ký 6 cùng ma trận giá trị tính được, và hồi quy #652/#654. Oracle bash thật chạy với đường tuyệt đối, PATH chỉ có lệnh giả và canary; không có sự cố. Lô fuzz: 164 474 quyết định guard (~181 000 lần chạy bash thật); lõi × `while`/`case`/`coproc`/`time { }`/`sh -c` 2–3 tầng/`sh -c`→`bash -c` 134 190 tổ hợp 0 lọt; mọi dạng `parallel`/`sem` trần bị chặn; ma trận giá trị tính được 19 878 tổ hợp lọt 1 462 (178 hồi quy). Lô hồi quy: tốc độ 1,03×/0,98× nền, 1 311 test chạy chung một tiến trình OK, blueprint `--run` exit 0, bench false-green 0; 64/6 592 ca lành bị chặn oan (4 idiom gốc).
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| Fuzz | CÓ PHÁT HIỆN | 🔴 AUD-SEC-893 (hồi quy: `BASH_CMDS`), AUD-SEC-894 (đổi PATH qua `read`/`printf -v`…), AUD-SEC-895 (thân `trap`), AUD-SEC-896 (HEAD tách rời) · 🟠 AUD-SEC-897 (`env_parallel`) |
+| Hồi quy | CÓ PHÁT HIỆN | 🔴 AUD-SEC-898 (argv `parallel` của Python), AUD-SEC-899 (stdin/`--eval` của công cụ ngoài), AUD-SEC-900 (xoá nội tạng `.git`) · 🟠 AUD-SEC-901 (chặn oan `ready`/`readlink`) · 🟢 AUD-SEC-902…904, AUD-HAR-430 |
+
+Đợt 10 (T-3945, #656, D-506): danh sách đóng `_shadow_level`; bộ lọt `leaksS` 1 462 → 0, `leaks7` 2 410 → 28 (đều `niceload` trần, không chạy lệnh), bộ cổng ký 4–6 vẫn 0; 64 ca chặn oan → 0; tốc độ p50/p95 1,05×/1,06× nền. Còn mở: 🟢 AUD-SEC-905 (ghi đè `.git/HEAD` bằng `mv`/`truncate`/`>`). So bộ ca cũ sau khi đẩy #656 bắt thêm một hồi quy của chính nó (mô hình `pushd`/`popd` một tầng làm lọt 39 ca `DIRSTACK[1]=…; popd`), vá ở #658. Cổng ký lần 8 chạy trên ứng viên sau #658.
