@@ -3843,9 +3843,19 @@ SHELL_CLOSERS = frozenset(
 )  # `while read …; done <<E`: stdin của vòng (lệnh trong vòng xét riêng)
 STDIN_SCRIPT_TOOLS = frozenset("sed awk gawk mawk make gmake bmake remake".split())  # `-f -`: chương trình từ stdin
 STDIN_FILE_FLAG_RE = re.compile(r"(-f|--file|--makefile)(?:=?(.*))?", re.S)
-INLINE_PROG_RE = re.compile(r"(-[eEc]|-ex|--eval|--command|--execute)(?:=(.*))?", re.S)
-STDIN_HINT_RE = re.compile(r"make|-[eEcf]|--(?:eval|command|execute|file|makefile)")  # đường nhanh của luật lệnh đơn
-STDIN_SPLIT_RE = re.compile(r"[\s;&|()!<>{}\[\],=:\"']+")
+# T-3947 (D-507, cổng ký lần 8): cờ chương trình — tên dài viết tắt kiểu getopt (`--eva=`, `--comm=`), cờ ngắn dính giá
+# trị (`-e'…'`, `-c'…'`), `+cmd`/`-c`/`--cmd` của vi/ex/vim, đối số vị trí của sqlite3 (sau tên CSDL là lệnh)
+INLINE_LONG = ("--eval", "--command", "--execute", "--expression", "--eval-command", "--init-eval-command", "--cmd")
+INLINE_SHORT_RE = re.compile(r"-(?:[eEc]|ex|iex)")
+INLINE_ATTACHED_RE = re.compile(r"-[eEc](.+)", re.S)
+VI_NAMES = frozenset("ex vi vim nvim view vimdiff rvim rview gvim evim".split())
+STDIN_HINT_RE = re.compile(r"make|sqlite3|-[eEcf]|--|(?<!\S)\+")  # đường nhanh của luật lệnh đơn
+# lối thoát shell của công cụ đọc chương trình: ed/ex/vim/dc `!`, psql `\!`, sqlite3 `.shell`/`.system`, mysql
+# `system`, gdb `shell`, tcl/expect `exec`/`spawn`, lua `os.execute`/`io.popen`; `at`/`batch`/`crontab`: cả thân là lệnh
+PROG_ESCAPE_RE = re.compile(r"(?<!\w)\.?(?:shell|system|exec|spawn|popen|execute)(?!\w)|\\!|!(?!=)")
+STDIN_WHOLE_TOOLS = frozenset("at batch crontab".split())
+STDIN_ESC, STDIN_WHOLE, STDIN_WORDS = 0, 1, 2
+STDIN_SPLIT_RE = re.compile(r"[\s;&|()!<>{}\[\],=:]+")
 STDIN_PROG_WHY = (
     "`{}` — công cụ đọc chương trình từ stdin/heredoc/cờ `-e` có thể chạy lệnh có luật guard không quét (T-3945,"
     " D-503); viết lại: lệnh shell thẳng, hay ghi tệp bằng Write rồi chạy"
@@ -3857,10 +3867,10 @@ def _stdin_prog_why(cmd: str) -> str:
         plain = [_dequote(w) for w in _no_redirects(words)]
         if plain and (_stdin_script(plain) or _inline_prog(plain)):
             return STDIN_PROG_WHY.format(clean_text(" ".join(plain))[:80])
-    if "<<" in cmd and any(map(_stdin_body_runs, _heredoc_scripts(cmd, _stdin_prog))):
+    if "<<" in cmd and _heredoc_prog_runs(cmd):
         return STDIN_PROG_WHY.format(clean_text(cmd)[:80])
     if "|" not in cmd and "<<<" not in cmd:
-        return ""
+        return _prog_src_why(cmd)
     for pipe in pipelines(tokenize(cmd)):
         progs = [k for k, argv in enumerate(pipe) if _stdin_prog(argv)]
         feeds = [None, *_pipe_feeds(pipe)] if progs else []
@@ -3869,9 +3879,76 @@ def _stdin_prog_why(cmd: str) -> str:
             # khâu trước đọc heredoc rồi đưa qua ống (`cat <<E | crontab -`)
             fed = _heredoc_scripts(cmd, lambda c: True) if "<<" in up else feeds[k] or []
             fed = fed + [argv[argv.index("<<<") + 1]] if "<<<" in argv[:-1] else fed
-            if any(map(_stdin_body_runs, fed)):
+            mode = _stdin_mode(argv)
+            if any(_stdin_body_runs(body, mode, True) for body in fed):
                 return STDIN_PROG_WHY.format(clean_text(" ".join(argv))[:80])
-    return ""
+    return _prog_src_why(cmd)
+
+
+def _heredoc_prog_runs(cmd: str) -> bool:
+    """Thân heredoc vào công cụ đọc chương trình chạy lệnh; cách đọc chặt nhất của các lệnh đọc stdin trong `cmd`."""
+    progs = [c for c in split_commands(tokenize(cmd)) if _stdin_prog(c)]
+    mode = max(map(_stdin_mode, progs), default=STDIN_ESC)
+    return any(_stdin_body_runs(body, mode) for body in _heredoc_scripts(cmd, _stdin_prog))
+
+
+# T-3947 (D-507): chương trình từ nguồn KHÔNG phải chữ — thay tiến trình, fd khác 0 (`exec 3< <(…); sh <&3`), đường fd —
+# vào stdin hay làm tệp chương trình của shell/trình thông dịch/công cụ đọc chương trình (`PROG_READERS`), kể cả qua ống
+# từ khâu đọc nguồn đó (`cat <(…) | node`) và nhóm (`{ ed; } < <(…)`) → BUDGET: guard không thấy chữ chạy.
+PROG_READERS = frozenset("ed red dc gdb sqlite3 psql mysql mariadb tclsh wish expect".split()) | VI_NAMES
+# công cụ biết lối thoát (đọc thân theo dòng lối thoát): trên + client CSDL + công cụ đọc manifest/Dockerfile từ stdin
+STDIN_ESCAPE_TOOLS = PROG_READERS | frozenset(
+    "mongosh mongo redis-cli kubectl docker podman nerdctl buildah helm oc kustomize".split()
+)
+PROG_FD_RE = re.compile(r"/(?:dev|proc/(?:self|\d+))/fd/(?!0(?!\d))\d+")  # fd khác stdin (stdin: luật thân chữ xét)
+PROG_FD_REDIR_RE = re.compile(r"<\s*<\(|<&\s*[^\s0-]|<\s*/(?:dev|proc)/")
+
+
+def _prog_reader(argv: List[str]) -> bool:
+    """Lệnh đọc CHƯƠNG TRÌNH từ stdin hay từ tệp là thay tiến trình/đường fd."""
+    n = _interp_argv(argv)
+    files, stdin = _program(n) if n else (None, False)
+    if files is not None:
+        return stdin or _opaque_src(files) or any(_norm_path(f) in STDIN_SCRIPTS for f in files)
+    name = posixpath.basename(n[0]) if n else ""
+    return name in PROG_READERS or name in STDIN_WHOLE_TOOLS
+
+
+def _opaque_src(argv: List[str], procsub: bool = True) -> bool:
+    return any(a in (PROCSUB_WORD, "<(") and procsub or PROG_FD_RE.search(a) for a in argv)
+
+
+# thay tiến trình chỉ đọc nội dung đã lưu (`git cat-file`/`git show`/`cat tệp`) — như chạy tệp; dòng dự phòng chỉ thoát
+# (Gate `/optimize`: `python3 -I <(git cat-file blob …:xt.py || echo 'raise SystemExit(2)')`, D-370)
+PROCSUB_STORED_RE = re.compile(
+    r"\s*(?:git (?:cat-file|show) |cat )[\w./:@^~<>-]+(?: [\w./:@^~<>-]+)*\s*"
+    r"(?:\|\|\s*(?:echo|printf) (['\"]?)(?:raise SystemExit\(\d+\)|exit \d+)\1\s*)?"
+)
+
+
+def _procsub_opaque(cmd: str) -> bool:
+    """Có `<(…)` mà thân không phải đọc nội dung đã lưu (`PROCSUB_STORED_RE`)."""
+    i = cmd.find("<(")
+    while i >= 0:
+        end = _raw_group_end(cmd, i + 2, "(")
+        if not PROCSUB_STORED_RE.fullmatch(cmd, i + 2, max(i + 2, end - 1)):
+            return True
+        i = cmd.find("<(", i + 2)
+    return False
+
+
+def _prog_src_why(cmd: str) -> str:
+    if "<(" not in cmd and "<&" not in cmd and "/dev/" not in cmd and "/proc/" not in cmd:
+        return ""
+    segs = [[_dequote(w) for w in words] for _, words in _simple_cmds(cmd) or []]
+    readers = [k for k, argv in enumerate(segs) if argv and _prog_reader(argv)]
+    procsub = _procsub_opaque(cmd)
+    opaque = [k for k, argv in enumerate(segs) if _opaque_src(argv, procsub)]
+    dup = PROG_FD_REDIR_RE.search(cmd.replace("< <(", "") if not procsub else cmd)
+    hit = bool(readers) and (dup is not None or bool(set(readers) & set(opaque)))
+    # ống: khâu đọc nguồn mờ đứng trước (`cat <(…) | node`; `_simple_cmds` xếp theo thứ tự đọc)
+    hit = hit or "|" in cmd and bool(opaque) and max(readers, default=-1) > min(opaque)
+    return STDIN_PROG_WHY.format(clean_text(cmd)[:80]) if hit else ""
 
 
 def _stdin_prog(argv: List[str]) -> bool:
@@ -3895,35 +3972,72 @@ def _stdin_script(plain: List[str]) -> bool:
         return False
     for a, nxt in zip(plain[1:], [*plain[2:], ""]):
         m = STDIN_FILE_FLAG_RE.fullmatch(a)
-        if m and (m[2] if m[2] else nxt) in STDIN_PATHS or "make" in name and a.partition("=")[0] in ("--eval", "-E"):
+        if m and (m[2] if m[2] else nxt) in STDIN_PATHS or "make" in name and _make_eval(a):
             return True
     return False
+
+
+def _make_eval(a: str) -> bool:
+    """`-E…` (cả dính giá trị) hay `--eval` viết tắt kiểu getopt (`--ev`, `--eva=…`)."""
+    key = a.partition("=")[0]
+    return a.startswith("-E") or len(key) >= 4 and "--eval".startswith(key)
 
 
 def _inline_prog(plain: List[str]) -> bool:
     """Công cụ ngoài danh sách đóng (và không phải shell/trình thông dịch) có cờ chương trình dòng lệnh (`-e`,
-    `--eval`…; `-c`/`--command` chỉ ở client CSDL) mà giá trị có khoảng trắng chạy lệnh có luật (`Rscript -e
-    'system("rm …")'`, `psql -c '\\! rm …'`). Dừng ở tên lệnh có luật đầu tiên: phần sau là lệnh khác (`docker run img sh
-    -c '…'`) — luật hậu tố xét."""
+    `--eval`…; `-c`/`--command` chỉ ở client CSDL, vi/ex/vim, expect) mà giá trị có lối thoát shell chạy lệnh có luật
+    (`Rscript -e 'system("rm …")'`, `psql -c '\\! rm …'`). Dừng ở tên lệnh có luật đầu tiên: phần sau là lệnh khác
+    (`docker run img sh -c '…'`) — luật hậu tố xét."""
     name = posixpath.basename(plain[0])
-    if not _stdin_prog(plain[:1]) or name in RUNNERS or name == "find":
-        return False  # trình bọc đã biết (`capsh -- -c`, `find -exec … -c`): luật hậu tố/`-exec` riêng
+    if not _stdin_prog(plain[:1]) or name in RUNNERS and name not in PROG_READERS or name == "find":
+        return False  # trình bọc đã biết (`capsh -- -c`, `find -exec … -c`): luật hậu tố/`-exec` riêng; gdb thì xét
+    mode = _stdin_mode(plain[:1])
+    values = _inline_values(name, plain)
+    return any(_stdin_body_runs(v, mode) for v in values if mode != STDIN_WORDS or re.search(r"\s", v))
+
+
+def _inline_values(name: str, plain: List[str]) -> List[str]:
+    """Giá trị chương trình trên dòng lệnh (xem `INLINE_LONG`), tới tên lệnh có luật đầu tiên."""
+    out: List[str] = []
+    with_c = name in DB_CLIENTS or name in VI_NAMES or name == "expect"
     for a, nxt in zip(plain[1:], [*plain[2:], ""]):
         if _exec_trigger(a):
-            return False
-        m = INLINE_PROG_RE.fullmatch(a)
-        ok = m is not None and (m[1] not in ("-c", "--command") or name in DB_CLIENTS)
-        value = (nxt if m[2] is None else m[2]) if m and ok else ""
-        if re.search(r"\s", value) and _stdin_body_runs(value):
+            break
+        key, eq, val = a.partition("=")
+        attached = INLINE_ATTACHED_RE.fullmatch(a)
+        if key[:2] == "--" and len(key) >= 4 and any(o.startswith(key) for o in INLINE_LONG):
+            out.append(val if eq else nxt)
+        elif INLINE_SHORT_RE.fullmatch(a) and (a != "-c" or with_c):
+            out.append(nxt)
+        elif attached and (a[1] != "c" or with_c):
+            out.append(attached[1])
+        elif a[:1] == "+" and name in VI_NAMES or name == "sqlite3" and a[:1] != "-":
+            out.append(a.removeprefix("+"))
+    return out
+
+
+def _stdin_mode(argv: List[str]) -> int:
+    """Cách đọc thân (`STDIN_*`) theo công cụ nhận: `at`/`crontab` cả thân là lệnh; công cụ biết lối thoát
+    (`STDIN_ESCAPE_TOOLS`) chỉ dòng có lối thoát; công cụ khác — mọi từ (chặt, như trước T-3947)."""
+    n = _interp_argv(argv)
+    name = posixpath.basename(n[0]) if n else ""
+    return STDIN_WHOLE if name in STDIN_WHOLE_TOOLS else STDIN_ESC if name in STDIN_ESCAPE_TOOLS else STDIN_WORDS
+
+
+def _stdin_body_runs(body: str, mode: int = STDIN_ESC, fed: bool = False) -> bool:
+    """Thân chạy lệnh: thay lệnh, hay từ là tên lệnh có luật — so SAU khi bỏ nháy/`\\` kiểu shell (`!r""m`, `.shell
+    r''m`). `STDIN_ESC`: chỉ chữ sau lối thoát shell (`PROG_ESCAPE_RE`), có `$` cũng tính — SQL/manifest/Dockerfile
+    (`truncate table`, `at time zone`, `image: python:3.12`) là dữ liệu; `STDIN_WHOLE`: mọi dòng, có `$` cũng tính;
+    `STDIN_WORDS`: mọi từ. `fed`: thân là here-string/chữ qua ống — có `$` là giá trị lúc chạy (`<<< "$x"`) → chạy."""
+    if "$(" in body or "`" in body or fed and "$" in body:
+        return True
+    for line in re.sub(r"\\\n", "", body).split("\n"):
+        m = PROG_ESCAPE_RE.search(line) if mode == STDIN_ESC else None
+        text = line[m.end() :] if m else "" if mode == STDIN_ESC else line
+        words = [w for w in STDIN_SPLIT_RE.split(re.sub(r"['\"\\]", "", text)) if w]
+        if "$" in text and mode != STDIN_WORDS or any(map(_exec_trigger, words)):
             return True
     return False
-
-
-def _stdin_body_runs(body: str) -> bool:
-    """Thân có thay lệnh hay từ là tên lệnh có luật (so sau khi bỏ `\\`/nối dòng: `!r\\m`, `.shell rm`, `exec rm`)."""
-    if "$(" in body or "`" in body:
-        return True
-    return any(_exec_trigger(w) for w in STDIN_SPLIT_RE.split(re.sub(r"\\\n|\\", "", body)) if w)
 
 
 def _parallel_name(name: str) -> bool:
@@ -20210,6 +20324,8 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     SHELL_CLOSERS,
     PARALLEL_NAMES,  # `env_parallel`, `parset`
     STDIN_SCRIPT_TOOLS,  # `bmake`, `remake`: makefile từ stdin
+    STDIN_ESCAPE_TOOLS,  # T-3947: công cụ đọc chương trình/manifest từ stdin (`_stdin_mode`, `_prog_reader`)
+    STDIN_WHOLE_TOOLS,
 )
 GATE_NAMES: FrozenSet[str] = _GATE_BRANCHED - GATE_PASSIVE
 
