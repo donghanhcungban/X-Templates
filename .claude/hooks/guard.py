@@ -20533,7 +20533,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     # (`_alias_rule` khớp mẫu `_may_be_alias`). Từ khoá shell (`SHELL_KEYWORDS`: `if then else elif while until do !`)
     # không thuộc tập: `_strip_prefixes` bỏ chúng trước khi lấy tên nên cổng không bao giờ gặp chúng làm tên lệnh.
     + "m4 mkfs for alias mktemp".split()
-    + "doctl heroku http https xh xhs stripe twilio sendmail msmtp ssmtp swaks mail mailx mutt s-nail".split()  # T-3952
+    + "doctl heroku http https xh xhs stripe twilio sendmail msmtp ssmtp swaks mail mailx mutt s-nail man".split()  # T-3952
 ).union(
     IMPLICIT_TOOL_HEADS,  # công cụ nạp tệp ngầm: `just`, `pytest`, `mvn`… (`_implicit_tools`)
     HEREDOC_RUN_SAFE - {""},  # `:`, `tr` (`_heredoc_runner`)
