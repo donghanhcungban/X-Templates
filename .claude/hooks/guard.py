@@ -3516,7 +3516,7 @@ class _CdScope:
         assigned = {n for seg, _ in cmds for n in _seg_assigned(seg)}
         self.home_kept = not {"HOME", OPAQUE_ANY} & (assigned | weak)
         self.pushes: List[bool] = []  # T-3945 (R6): mỗi `pushd` có phải `pushd <chữ trơn>` (`_CwdUnion.popd`)
-        self.popped = bool(CD_REPEAT_RE.search(cmd))  # vòng lặp/hàm: không mô hình ngăn xếp
+        self.popped = bool(CD_REPEAT_RE.search(cmd)) or _stack_opaque(cmd)  # vòng lặp/hàm, ghi DIRSTACK: không mô hình
 
     def moves(self, words: List[str]) -> int:
         """Mức dời thư mục (`MOVED_*`) của lệnh `words`."""
@@ -7928,6 +7928,14 @@ CD_LOOP_HEADS = frozenset({"while", "until", "for", "select"})
 CD_CHAIN_SEPS = ("&&", "|", "|&")  # vế sau chỉ chạy khi `cd` của tiền tố thành công (`|` gắn chặt hơn `&&`)
 CD_MOVE_HEADS = frozenset({"cd", "pushd", "popd"})
 PUSHD_PLAIN_RE = re.compile(r"pushd (?![+-])[\w./@%+,:=~-]+")  # `pushd <chữ trơn>` (T-3945, R6): không `-n`/`+N`/biến
+
+
+def _stack_opaque(text: str) -> bool:
+    """Lệnh có thể sửa ngăn xếp thư mục ngoài `pushd`/`popd` (`DIRSTACK[1]=/etc`, `read 'DIRSTACK[1]'`, tên ghi động):
+    `popd` về đâu không biết (T-3945, fuzz `CX|ds*`)."""
+    return "DIRSTACK" in re.sub(r"['\"\\]", "", text) or DYN_NAME_SET_RE.search(text) is not None
+
+
 CD_REPEAT_RE = re.compile(r"(?<![\w.-])(?:for|while|until|select|function)(?![\w.-])|\(\s*\)")  # thân chạy lại
 # Thân `eval` có thể chứa lệnh đổi thư mục: nhắc tên lệnh, hay có nháy/`\`/`$`/backtick (`c''d`, `c\d` ghép lại sau đọc)
 CD_WORD_IN_EVAL_RE = re.compile(r"cd|pushd|popd|eval|[\"'\\$`]")
@@ -8188,7 +8196,7 @@ class _CwdUnion:
         self.traps: Set[int] = set()  # lệnh `trap`: thân chạy lúc thoát/nhận tín hiệu — tập cuối
         # T-3945 (R6): trạng thái (nhánh chính, tập) trước mỗi `pushd` (None: dạng không mô hình), `popd` đã dùng chưa
         self.pushed: List[Optional[Tuple[Optional[str], List[Optional[str]]]]] = []
-        self.popped = False
+        self.popped = _stack_opaque(" ".join(str(t) for argv, _ in cmds for t in argv))
 
     def popd(self, n: List[str], repeat: bool) -> Optional[Tuple[Optional[str], List[Optional[str]]]]:
         """`popd` trần về trạng thái trước `pushd <chữ trơn>` DUY NHẤT đứng trước nó (ngăn xếp một tầng: `pushd` thành
