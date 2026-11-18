@@ -294,6 +294,8 @@ CWD_RELATIVE: Dict[str, str] = {
             ("489-unzip-env-pipe-switch", ".claude/hooks", "AUD-SEC-489"),
         )
     },
+    "guard-t3945-r3-deny-01": ".git/objects tương đối → /tmp/.git không phải .git của dự án sau cd /tmp (T-3945)",
+    "guard-t3945-r3-deny-02": ".git/HEAD tương đối → /tmp/.git không phải .git của dự án sau cd /tmp (T-3945)",
 }
 
 

@@ -1193,7 +1193,8 @@ class GuardMatrixTest(unittest.TestCase):
         self.assertEqual(cdir("x=$(cd ../b; pwd) && git commit -m x"), "/w/a")
         self.assertEqual(cdir("(cd ../b && git commit -m x)"), "/w/b")
         self.assertEqual(cdir("pushd ../b && git commit -m x"), "/w/b")
-        self.assertEqual(cdir("pushd ../b; popd; git commit -m x"), "")
+        self.assertEqual(cdir("pushd ../b; popd; git commit -m x"), "/w/a")  # T-3945: ngăn xếp một tầng
+        self.assertEqual(cdir("pushd ../b; pushd ../c; popd; git commit -m x"), "")  # hai tầng: không biết
         self.assertEqual(cdir(") git commit -m x"), "")  # `)` lẻ: không biết thư mục
         self.assertEqual(self.g.bash_decision("ls", "/w/a")["commit_dir"], "")
 
@@ -12424,11 +12425,7 @@ GATE_HEAD_LEFTS = ("n[0]", "n[:1]", "n[:2]")
 # kết quả `_ifs_head`/`_heredoc_head`, `normalize(…)[:1]`, phương thức lớp) trên guard.py: đúng các tên dưới và `popd`.
 GATE_UNREAD = (
     ("IMPLICIT_TOOL_HEADS", "`_implicit_tools`: biến comprehension `h for h in heads`", "echo x > {F} && {N}"),
-    (
-        "HEREDOC_RUN_SAFE",
-        "`_heredoc_runner`: kết quả `_heredoc_head(argv)`",
-        "cat > s.sh <<'E'\necho hi\nE\n{N} a b; bash s.sh",
-    ),
+    # T-3945: `HEREDOC_RUN_SAFE` gỡ — bộ đọc thấy mọi tên của nó qua `_shadow_head`/`_stdin_prog`
     ("GLOB_COMMANDS", "`_array_arg_why`: biến vòng lặp trên cặp `_ifs_head`", '{N} "$@"'),
     (
         "IFS_TAINT_HEADS for",
@@ -12436,7 +12433,7 @@ GATE_UNREAD = (
         "{N} $X in a; do :; done",
     ),
     ("m4", "`_is_m4`: `normalize(argv)[:1]`", 'echo "syscmd(rm -rf .autopilot)" | {N}'),
-    ("alias", "`_alias_rule`: khớp mẫu `_may_be_alias(a[0])`, không so bảng", "{N} $X"),
+    # T-3945: `alias` gỡ — bộ đọc thấy qua `BASH_BUILTINS` (`_shadow_head`)
 )
 
 
@@ -12601,6 +12598,11 @@ class GuardGateNamesTest(unittest.TestCase):
         "kiểm đường dẫn, siêu dữ liệu, tổng kiểm": frozenset(
             {"ls", "test", "[", "[[", "basename", "dirname", "readlink", "realpath", "stat", "file", "du", "cksum"}
             | {"md5sum", "sha1sum", "sha224sum", "sha256sum", "sha384sum", "sha512sum", "b2sum"}
+        ),
+        # T-3945: builtin điều khiển job/luồng/giới hạn (không ghi tệp, không chạy lệnh từ đối số), từ khoá đóng khối
+        "builtin không ghi, từ khoá đóng": frozenset(
+            {"bg", "fg", "jobs", "disown", "dirs", "times", "help", "history", "caller", "break", "continue", "exit"}
+            | {"return", "shift", "suspend", "logout", "ulimit", "umask", "unalias", "done", "fi", "esac"}
         ),
     }
 

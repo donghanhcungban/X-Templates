@@ -1470,7 +1470,10 @@ class HeredocAllowlistTest(unittest.TestCase):
                 "x=(a|b) <<X\n{x}\nX",
             ),
         )
-        self.assert_all("", ("x=(a) <<X\nrm -rf ~\nX", "x=( $(echo) ) <<X\nrm -rf ~\nX", "arr=(1 2); echo ${arr[0]}"))
+        self.assert_all("", ("x=( $(echo) ) <<X\nrm -rf ~\nX", "arr=(1 2); echo ${arr[0]}"))
+        # T-3945 (R2): bộ tách thô đọc `a` là lệnh nhận heredoc có tên lệnh có luật → BUDGET (bash báo lỗi cú pháp, không
+        # chạy gì — chặt hơn, vô hại)
+        self.assert_all("deny", ("x=(a) <<X\nrm -rf ~\nX",))
 
     def test_unclosed_quote_fallback_splits_lines(self):
         """Nháy không đóng ở cuối (bash chạy các dòng trước rồi mới báo lỗi cú pháp): tách thô vẫn coi xuống dòng là ranh

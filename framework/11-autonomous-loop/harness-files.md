@@ -89,9 +89,14 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   (AUD-SEC-100) — cổng commit chạy ở gốc phiên thay vì repo `x`. `cd ~+/<đường>`/`cd $PWD/<đường>` là thư mục không
   biết (D-106) nên chỉ chặn tên file đã có hoặc tên được canh; lệnh chạy hộ ngoài danh sách (`mise exec --`,
   `pyenv exec`, `asdf exec`, `volta run`, `fnm exec`, `direnv exec`, `bundle exec`, `nix develop -c`, `pnpm exec`)
-  không được bóc để trích script; lồng hơn 8 lớp lệnh chạy hộ cũng không; đích `rm -rf` là thay thế lệnh khác `$(pwd)` (`$(dirname $PWD)`,
-  `$(realpath ..)`) là không rõ nên cho qua — D-051 (AUD-SEC-101); thay lệnh ghép chữ (`$(pwd -P)/..`) bị chặn BUDGET
-  (ADR-0076).
+  không được bóc để trích script; lồng hơn 8 lớp lệnh chạy hộ cũng không. Đích `rm -rf` là thay lệnh guard không tính
+  được (`$(dirname $PWD)`, `$(realpath ..)`) → BUDGET (D-503); `$(pwd -P)/..` → RULE_DENY (đích `..`). Giá trị tính được
+  (`$(date +FMT)`, `$(mktemp …)`, `$(cat TỆP)` trong sed) chỉ được tin khi cả lệnh, mọi tầng bọc, chỉ gồm cấu trúc trong
+  danh sách đóng (D-506, T-3945): gán/ghi biến `PATH`/`BASH_CMDS`/`IFS`/`LD_*`/`GIT_*`… dưới mọi dạng (`read`, `printf -v`,
+  `mapfile`, `declare`/`export` tên có nháy/thoát/brace/động, nameref, số học có tên biến), hàm/alias/`hash`/`enable`/
+  `eval`/`source`, trap khác EXIT có thân ngoài danh sách, tên lệnh động → mất ưu đãi (BUDGET); `$(pwd)` (builtin) chỉ mất
+  trước cấu trúc đổi được builtin (hàm, `BASH_FUNC_`, `BASH_ENV`, builtin lạ — `PATH=` thì không). Truy vấn nhánh hiện
+  tại (`$(git branch --show-current)`) chỉ tính ở refspec `git push` (HEAD tách rời → rỗng).
 - **Duyệt giai đoạn** (ADR-0058, AUD-SEC-155; ADR-0069: chỉ đúng MỘT lệnh đơn `python3 <xt.py của dự án> stage approve --sha … [--note …]` — không `env`/`unset`/gán biến/cờ trình thông dịch, không nối hay lồng lệnh, không token mờ — được cho qua khi xt.yaml ở cây **và** bản đã commit ở nhánh chính (`origin/main`, rồi `origin/master`) khai `stage_approval: agent`, `XT_GUARD_POLICY=strict` không nới): luật chữ (`xt.py … stage … approve`/`init … --adopt`) cộng luật token
   mờ: ở mọi vị trí script (`-m xt`/`-mxt`/`-m scripts.xt`, lồng trong `perf sample --`), bỏ chuyển hướng và fd
   (`2>/dev/null`, `{fd}>f`; đích bị cắt như `> >(cat)` là mờ), lệnh con, cờ/giá trị `--framework` (cả `=` rỗng) hay tuỳ
@@ -184,11 +189,20 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   `origin/main` chỉ chống nhầm lẫn — rào thật của vòng tối ưu là `perf trial` (ADR-0052 §7).
 - **Xoá ref remote / viết lại mọi ref** (AUD-SEC-551, D-407): `push --delete|-d`, `:<ref>`, `--prune`, `gh api -X DELETE …/git/refs/…`, graphql `deleteRef`/`updateRefs`/`updateRef` (đích không đọc → luôn chặn, AUD-SEC-622) với đích khác nhánh hiện tại (đọc như PUSH_MAIN; không biết → chặn; cụm cờ có chữ số `-4d`/`-4f` đọc như `-d`/`-f`, AUD-SEC-556/557), `gh pr close|merge --delete-branch|-d` (head của PR không biết → luôn chặn, AUD-SEC-558/565; mọi luật đọc lệnh `gh` — huỷ/xoá ref/merge/đối ngoại (xoá/thu hồi `repo deploy-key|ssh-key|gpg-key|run|label|issue|gist|codespace|project delete`, `cache delete --all`, `auth logout` → DESTROY, in token `auth token|status -t|git-credential`, `config get oauth_token` → chặn, AUD-SEC-580/589; tên lệnh/tên cờ có `$`/backtick hay glob — `gh pr merge$Z`, `--input$Z`, `gh pr merg?` — và ở lệnh có luật cờ token bash tách/bung thành cờ — `gh pr merge 5 $X`, `-d$Z`, `gh pr close 5 -*` — → BUDGET trừ khi luật khác đã deny, AUD-SEC-587/590; DELETE REST của các lệnh xoá đó cũng DESTROY, AUD-SEC-583), dấu review, alias/extension/lệnh lạ, ghi công AI/tiêu đề PR, gửi bí mật — đọc qua một điểm vào: nguyên văn, dạng bỏ chuyển hướng như bash đưa cho gh (`gh pr 2>/dev/null merge 5`; thêm cách giữ chữ số liền trước chuyển hướng — số PR) và dạng cobra chạy khi cờ đứng trước lệnh con, token đầu không cần bảng nhóm, `--version` gốc không ăn token kế — `gh -X DELETE api …`, `gh --help=false alias set …`, `gh --version zz`, `gh -R o/r pr create …`, AUD-SEC-571/575/577/578/579/581/582, D-409; cách đọc chặt hơn thắng) và `filter-branch --all|--branches|--tags|--remotes|--glob|--stdin`/nhiều ref, `filter-repo`, plumbing đẩy `send-pack`/`http-push`/remote helper `remote-<x>` (refspec từ stdin; cả `git-<tên>` chạy thẳng, tên so sau casefold; không qua luật push, không chạy pre-push — mọi dạng trừ in cách dùng `-h` đứng một mình, `send-pack --help`, AUD-SEC-621) → `REMOTE_DELETE`; `fetch --prune` qua. Còn lọt: `checkout`/`switch <nhánh người khác>` rồi xoá nó — nó thành nhánh hiện tại (cả trong cùng lệnh: `HEAD` đọc lúc guard xét, như PUSH_MAIN). `gh api` ghi `…/git/refs/…` với `force` khác `false` hay thân `--input` bị chặn như `push --force` (AUD-SEC-555). Mở rộng trong nháy kép đứng riêng (`gh pr close 5 "$X"`) hay sau chữ nguyên văn (`5$X`, `-F n=$N`) vẫn có thể thành cờ — chặn BUDGET (ADR-0076).
 - **Gán `TÊN+=v` và `parallel :::`** (AUD-SEC-125/121): `X+=1 cmd` xét `cmd`; giá trị nối thêm là không biết (khoá cấu
-  hình git nối thêm → `HOOK_BYPASS`). `parallel`/`sem` (GNU): mọi lệnh tên đó — sau gán/trình bọc/`env -S`, trong shell
-  lồng, tên có nháy/thoát/đường dẫn/glob — → BUDGET (AUD-SEC-887, D-503): lệnh đến từ `:::`/`::::`/stdin/tệp/đối số,
-  mẫu là shell/`eval`, tuỳ chọn từ `$PARALLEL`/`~/.parallel/config`/`-J`; không có dạng hẹp an toàn (cả `--version`).
-  Luật cũ (mỗi tổ hợp `:::` quét như shell lồng) chạy trước nên lệnh nguy hiểm giữ mã của nó. Còn lọt: gán phần tử
-  mảng đầu lệnh (`a[0]=1 cmd` — bash báo lỗi rồi vẫn chạy `cmd`), `x+=$(echo …)`.
+  hình git nối thêm → `HOOK_BYPASS`). `parallel`/`sem`/`env_parallel`/`parset` (GNU): lệnh đơn tên đó — sau gán/trình
+  bọc/`env -S`, trong shell lồng, tên có nháy/thoát/đường dẫn/glob, argv `["parallel", …]` của `subprocess`/`os.spawn*`
+  (T-3945) — bị chặn, mã BUDGET trừ khi luật cũ chặn trước (AUD-SEC-887, D-503): lệnh đến từ `:::`/`::::`/stdin/tệp/
+  đối số, mẫu là shell/`eval`, tuỳ chọn từ `$PARALLEL`/`~/.parallel/config`/`-J`; không có dạng hẹp an toàn (cả
+  `--version`). `source`/`.` tên không có `/` mà có trong PATH hay lệnh ghi PATH (`. env_parallel.bash`) →
+  BUDGET. Luật cũ (mỗi tổ hợp `:::` quét
+  như shell lồng) chạy trước nên lệnh nguy hiểm giữ mã của nó. Gán phần tử mảng đầu lệnh (`a[0]=1 cmd`) và
+  `x+=$(echo …)` dùng ở lệnh sau đều bị chặn (RULE_DENY/BUDGET, AUD-HAR-430). Công cụ ngoài danh sách đóng đọc-dữ-liệu
+  (`cat`/`grep`/`jq`/`git`/`gh`…) đọc chương trình từ stdin/heredoc/here-string/ống chữ hay cờ `-e`/`--eval` (`-c` ở client
+  CSDL; `make -f -`, ed/ex `!`, sqlite3 `.shell`, gdb `shell`, `at`, `crontab -`, tclsh, psql `\!`, `Rscript -e`) mà thân
+  có tên lệnh có luật hay thay lệnh → BUDGET; `make` đọc makefile từ stdin hay `--eval` → BUDGET (T-3945, D-503 b).
+  Xoá không đệ quy trong `.git` của dự án (`rm -f .git/HEAD`, `.git/objects/pack/*.pack`, `unlink`, `shred`) →
+  WIPE_OUTSIDE, trừ `*.lock`; `find` có gốc trong `.git` hay duyệt vào `.git` khớp tên mẫu (`-name '*.pack'`) vào xargs →
+  BUDGET.
 - **`merge-check` so giờ sổ review cục bộ với giờ GitHub** (AUD-XFEAT-019, D-104): review chặn chỉ có ở sổ cục bộ được
   tính khi ghi sau dấu đã đăng mới nhất ở cùng head; đồng hồ máy chậm hơn GitHub thì review chặn ghi ngay sau một dấu sạch
   bị coi là cũ hơn. Lớp đỡ: `pr reviewed` đăng ngay kết luận (dấu đã đăng là nguồn của `merge-check`/steward/guard).
@@ -217,7 +231,8 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   (`sys.path.insert(0, '.claude/hooks'); import guard`) hay heredoc python ghi tài liệu có nhắc `.env`/`.claude/hooks`
   (AUD-HAR-100 — dùng `python3 -m unittest`, Edit/Write). Sửa file canh thì dùng
   Edit/Write; đọc thì dùng `cat`/Read hoặc script chỉ đọc.
-- **Thư mục không biết** (D-106): sau `cd "$X"`, `cd -`, `pushd +N`, `popd`, `cd` khi có `CDPATH`, `cd`/`pushd` tới
+- **Thư mục không biết** (D-106): sau `cd "$X"`, `cd -`, `pushd +N`, `popd` (trừ `popd` trần sau đúng một `pushd <chữ
+  trơn>`, ngoài vòng lặp/hàm — về thư mục trước `pushd`, T-3945), `cd` khi có `CDPATH`, `cd`/`pushd` tới
   toán hạng có glob (`cd .cl*`), đích ghi tương đối được thử ở gốc và mọi thư mục canh (`.claude`, `.claude/hooks`,
   `.autopilot`, `.git`, `.git/hooks`) — chặn khi file đã có ở đó hoặc tên là tên được canh (chặn oan: `cd "$X" && echo
   x > config` dù `$X` không phải `.git`). `env -C DIR`/`--chdir=DIR` dời thư mục của lệnh sau `env` như `cd` (kèm chuyển
