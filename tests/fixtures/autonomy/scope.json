@@ -672,6 +672,13 @@
     "AUD-TEST-112",
     "AUD-TEST-117"
    ]
+  },
+  {
+   "reason": "Thời gian quyết định của guard (độ phức tạp `_SedCtx._cond_segs`, hạn giờ chung `DECISION_SECONDS`, D-505) — thuộc tính hiệu năng, không phải cho/chặn của một lệnh để mô phỏng bằng corpus; đỡ bằng tests.test_guard_signoff6 (test thời gian 100 KB < 20 s và BUDGET, sed không bậc hai)",
+   "ids": [
+    "AUD-SEC-884",
+    "AUD-SEC-885"
+   ]
   }
  ]
 }
