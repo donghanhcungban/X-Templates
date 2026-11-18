@@ -590,7 +590,7 @@ def _realpath_safe(p: str) -> str:
     """`os.path.realpath`; tên không mã hoá được (surrogate) hay lỗi hệ tệp → giữ nguyên (fail-open về luồng)."""
     try:
         return os.path.realpath(p)
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return p
 
 
@@ -738,7 +738,7 @@ def _hardlink_git_config(path: str, root: str) -> bool:
     """`path` có thật, `st_nlink > 1` và cùng inode với tệp Git được bảo vệ."""
     try:
         st = os.stat(os.path.expanduser(path))
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return False
     return stat.S_ISREG(st.st_mode) and st.st_nlink > 1 and (st.st_dev, st.st_ino) in _git_config_inodes(root)
 
@@ -996,7 +996,7 @@ def _go_read(full: str, limit: int = -1, strict: bool = False) -> Optional[str]:
             full, encoding="utf-8", errors="strict" if strict else "replace", newline="" if strict else None
         ) as f:
             text = f.read(limit + 1 if limit >= 0 else -1)
-    except OSError, ValueError:
+    except (OSError, ValueError):
         return None
     return None if 0 <= limit < len(text) else text
 
@@ -8722,7 +8722,7 @@ def _current_branch(cwd: Optional[str]) -> str:
             timeout=5,
             check=False,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""
 
@@ -9449,7 +9449,7 @@ def _configured_remotes(cwd: Optional[str]) -> FrozenSet[str]:
     """Remote đã cấu hình ở repo `cwd` (`git remote`); lỗi/quá hạn/không phải repo → rỗng."""
     try:
         r = subprocess.run(["git", "-C", cwd or ".", "remote"], capture_output=True, text=True, timeout=5, check=False)
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return frozenset()
     return frozenset(r.stdout.split()) if r.returncode == 0 else frozenset()
 
@@ -9731,7 +9731,7 @@ def _git_exec_path() -> str:
     env = {k: v for k, v in os.environ.items() if k != "GIT_EXEC_PATH"}
     try:
         r = subprocess.run(["git", "--exec-path"], capture_output=True, text=True, timeout=5, check=False, env=env)
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""
 
@@ -9780,7 +9780,7 @@ def _git_alias_table(
         try:
             r = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=left, check=False, env=env)
             clock.cache[key] = _alias_entries(r.stdout) if r.returncode == 0 else None
-        except OSError, ValueError, subprocess.SubprocessError:
+        except (OSError, ValueError, subprocess.SubprocessError):
             clock.cache[key] = None
     return clock.cache[key]
 
@@ -10090,7 +10090,7 @@ def merge_check(selector: List[str], root: str) -> Dict[str, object]:
         env = dict(os.environ, CLAUDE_PROJECT_DIR=root)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=MERGE_CHECK_TIMEOUT, env=env, check=False)
         data: Dict[str, object] = json.loads(r.stdout)
-    except OSError, subprocess.SubprocessError, ValueError:
+    except (OSError, subprocess.SubprocessError, ValueError):
         return {"verdict": "lỗi", "reasons": ["merge-check không chạy được"]}
     return data
 
@@ -10222,7 +10222,7 @@ def _own_worktrees(root: str, cwd: Optional[str]) -> Set[str]:
             timeout=5,
             check=False,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return set()
     paths = [os.path.realpath(x[9:]) for x in r.stdout.splitlines() if x.startswith("worktree ")]
     here = os.path.realpath(cwd or root)
@@ -10280,7 +10280,7 @@ def _committed_value(xt: str, pick: Callable[[str], str], refs: Tuple[str, ...] 
                 timeout=5,
                 check=False,
             )
-        except OSError, subprocess.SubprocessError:
+        except (OSError, subprocess.SubprocessError):
             return ""
         if r.returncode == 0:
             return pick(r.stdout)
@@ -10823,7 +10823,7 @@ def _git_dirs(root: str) -> Tuple[str, ...]:
         m = re.match(r"gitdir:\s*(\S.*?)\s*$", text)
         gitdir = os.path.realpath(os.path.join(os.path.dirname(own), m[1])) if m else ""
         common = _read_gitfile(os.path.join(gitdir, "commondir")).strip() if gitdir else ""
-    except OSError, UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError):
         return (own,)
     extra = [gitdir, os.path.realpath(os.path.join(gitdir, common)) if common else ""]
     return (own, *[g for g in extra if g])
@@ -12815,7 +12815,7 @@ def _origin_repo(cwd: Optional[str]) -> str:
             timeout=5,
             check=False,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return ""
     url = r.stdout.strip() if r.returncode == 0 else ""
     m = ORIGIN_SLUG_RE.search(url)
@@ -14925,7 +14925,7 @@ def _go_on_disk(root: str) -> bool:
             with os.scandir(os.path.join(root, d)) as it:
                 if any(_is_go_no_go(e.name) for e in it):
                     return True
-        except FileNotFoundError, NotADirectoryError:
+        except (FileNotFoundError, NotADirectoryError):
             continue
         except OSError:
             return True
@@ -16572,7 +16572,7 @@ def _git_config_read_ask(config: str) -> str:
             timeout=1,
             check=True,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return GIT_HOOK_WHY.format(f"{config} (AUD-SEC-446: không đọc được)")
     for item in os.fsdecode(result.stdout).split("\0"):
         key, _, value = item.partition("\n")
@@ -18539,7 +18539,7 @@ def _decode(name: str, data: str) -> Optional[str]:
             return base64.b64decode("".join(data.split()), validate=True).decode()
         if name == "xxd":
             return bytes.fromhex("".join(data.split())).decode()
-    except binascii.Error, ValueError, UnicodeDecodeError:
+    except (binascii.Error, ValueError, UnicodeDecodeError):
         return None
     if name == "rev":
         return "\n".join(line[::-1] for line in data.split("\n"))
@@ -18797,7 +18797,7 @@ def _wrapped_scripts(tokens: List[str]) -> Tuple[List[str], List[Tuple[str, List
         host += [script] if script else []
         if n[0] == "nix-shell":
             host += _flag_values(n[1:], ("--run", "--command"))
-        host += _npx_call_scripts(n)  # T-3952 F7: npx/npm x|exec/pnpm dlx|exec `-c`/`--call`
+        host += _npx_call_scripts(n) + _pager_cmd_scripts(n)  # T-3952 F7: npx -c/--call, `man -P`, `zip -TT`
     return host, ctr
 
 
@@ -21022,7 +21022,7 @@ def _push_lock_rule(argv: List[str], n: List[str], env: Dict[str, str]) -> Tuple
     explicit = any("$" not in r and "`" not in r for r in _push_refs(n[2:])[1:])
     pairs = [(k.strip(), v.strip()) for k, v in _git_oneshot_config(argv, env)]
     hit = next((k for k, v in pairs if _push_lock_key(k, v, explicit)), "")
-    return ("deny", PUSH_LOCK_WHY.format(hit)) if hit else ("", "")
+    return ("ask", f"{PUSH_ALL_WHY} — {PUSH_LOCK_WHY.format(hit)}") if hit else ("", "")
 
 
 # F3: `git push` không refspec đọc cấu hình HIỆU LỰC của repo (chỉ đọc, có hạn giờ): mirror → ép; `remote.*.push`/
@@ -21040,7 +21040,7 @@ def _push_cfg_effective(cwd: Optional[str]) -> Dict[str, str]:
             timeout=5,
             check=False,
         )
-    except OSError, subprocess.SubprocessError:
+    except (OSError, subprocess.SubprocessError):
         return {}
     pairs = (item.partition("\n") for item in r.stdout.split("\0"))
     return {k.lower(): v if sep else "true" for k, sep, v in pairs if k}
@@ -21070,9 +21070,21 @@ SECRET_VAR_RE = re.compile(r"\$\{?!?([A-Za-z_][A-Za-z0-9_]*)")
 SECRET_NAME_RE = re.compile(r"[A-Za-z0-9_]*(?:TOKEN|_KEY|SECRET|PASSWORD|PASSWD|_PAT)", re.I)
 HTTP_SENDERS = frozenset({"http", "https", "xh", "xhs"})
 T12_GIT_MSG_SUBS = frozenset({"commit", "tag", "notes", "commit-tree"})
-GIT_URL_PERSIST = frozenset({("clone",), ("remote", "add"), ("remote", "set-url"), ("submodule", "add")})
 BARE_HOST_RE = re.compile(r"([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?::\d+)?(?:/|$)")
 TOKEN_ROUTE_WHY = "token/bí mật `${}` gửi tới máy chủ ngoài GitHub hoặc ghi vào artefact (`{}`) — token chỉ đi tới host của nó (T-3952)"
+
+
+# Dịch vụ trút dữ liệu phổ biến (paste, webhook bắt request, đường hầm, OAST, webhook chat): bí mật bất kỳ tới đó → chặn.
+EXFIL_HOST_RE = re.compile(
+    r"(?:^|\.)(?:pastebin\.com|paste\.ee|0x0\.st|transfer\.sh|file\.io|webhook\.site|requestbin\.(?:com|net)"
+    r"|pipedream\.(?:net|com)|ngrok(?:-free)?\.(?:io|app|dev)|trycloudflare\.com|burpcollaborator\.net"
+    r"|oast\.(?:fun|me|pro|live|site|online)|interact\.sh|discord(?:app)?\.com|api\.telegram\.org|hooks\.slack\.com)$",
+    re.I,
+)
+
+
+def _exfil_hosts(hosts: List[str]) -> bool:
+    return any(EXFIL_HOST_RE.search(h.rstrip(".")) for h in hosts)
 
 
 def _secret_refs(text: str) -> List[str]:
@@ -21105,11 +21117,10 @@ def _userinfo_secret(args: List[str]) -> List[str]:
 def _git_token_bad(n: List[str], args: List[str], gh_tok: bool) -> bool:
     if n[1:2] and n[1] in T12_GIT_MSG_SUBS:
         return True
-    leaked = _userinfo_secret(args)
-    if leaked and (tuple(n[1:2]) in GIT_URL_PERSIST or tuple(n[1:3]) in GIT_URL_PERSIST):
+    if _userinfo_secret(args):  # bí mật trong URL: lưu vào `.git/config`, log, reflog
         return True
     hosts = _arg_hosts(args, False)
-    return any(not _github_host(h) for h in leaked) or gh_tok and any(not _github_host(h) for h in hosts)
+    return _exfil_hosts(hosts) or gh_tok and any(not _github_host(h) for h in hosts)
 
 
 def _gh_token_bad(n: List[str], args: List[str]) -> bool:
@@ -21131,6 +21142,7 @@ def _token_route_rule(argv: List[str], n: List[str]) -> Tuple[str, str]:
     if name in FETCHERS or name in HTTP_SENDERS:
         hosts = _arg_hosts(args, name in HTTP_SENDERS)
         bad = gh_tok and not (hosts and all(_github_host(h) for h in hosts))
+        bad = bad or _exfil_hosts(hosts) or bool(_userinfo_secret(args))
     elif name == "git":
         bad = _git_token_bad(n, args, gh_tok)
     else:
@@ -21235,6 +21247,15 @@ T12_TRIGGER_NAMES = frozenset(
 # `-yc X`) quét như thân `sh -c`.
 NPX_SUBS: Dict[str, Tuple[str, ...]] = {"npm": ("exec", "x"), "pnpm": ("exec", "dlx"), "yarn": ("dlx",)}
 NPX_CLUSTER_RE = re.compile(r"-[A-Za-z]*c")
+
+
+PAGER_CMD_FLAGS: Dict[str, Tuple[str, ...]] = {"man": ("-P", "--pager"), "zip": ("-TT", "--unzip-command")}
+
+
+def _pager_cmd_scripts(n: List[str]) -> List[str]:
+    """Lệnh shell trong giá trị cờ: `man -P '<lệnh>'` (pager chạy qua `sh -c`), `zip -TT '<lệnh>'` (lệnh kiểm tra)."""
+    flags = PAGER_CMD_FLAGS.get(posixpath.basename(n[0])) if n else None
+    return _flag_values(n[1:], flags) if flags else []
 
 
 def _npx_call_scripts(n: List[str]) -> List[str]:
@@ -21353,7 +21374,7 @@ def _rest_gh_scripts(cmd: str, tokens: List[str]) -> List[str]:
         method, urls, bodies = parse(n[1:]) if parse else ("", [], [])
         for path in (p for p in map(_github_api_path, urls) if p is not None):
             out.append(shlex.join(["gh", "api", "-X", method.upper(), path, *_gh_body_args(bodies)]))
-    for m in PY_REQUESTS_RE.finditer(cmd):
+    for m in PY_REQUESTS_RE.finditer(_nfkc(cmd)):  # Python chuẩn hoá định danh NFKC (`ｒequests.ｄelete`)
         py_path = _github_api_path(m[3])
         out += [shlex.join(["gh", "api", "-X", m[1].upper(), py_path, "--input", "-"])] if py_path is not None else []
     return out
@@ -21366,9 +21387,10 @@ ENV_VALUE_FLAGS = ("-u", "--unset", "-C", "--chdir")
 def _env_split_scripts(tokens: List[str]) -> List[str]:
     out: List[str] = []
     for c in split_commands(tokens):
-        words = list(itertools.dropwhile(lambda t: bool(ENV_ASSIGN_RE.fullmatch(t)), c))
-        if not words or posixpath.basename(words[0]) != "env":
+        at = next((i for i, t in enumerate(c) if posixpath.basename(t) == "env"), None)  # cả `command env -S …`
+        if at is None:
             continue
+        words = c[at:]
         vals = _flag_values(words[1:], ("-S", "--split-string"))
         k = 1 + next((i for i, a in enumerate(words[1:]) if any(a.startswith(f) for f in ("-S", "--split-s"))), 0)
         out += [f"{v} {_join_tokens(words[k + 1 :])}".strip() for v in vals]
@@ -21413,8 +21435,27 @@ def _remote_exec_scripts(tokens: List[str]) -> List[RemoteScript]:
             ]
         elif n:
             inner, fresh = _ctr_exec_inner(c, n)
-            out += [(_shell_c_script(inner) or _join_tokens(inner), CONTAINER_ROOT, not fresh)] if inner else []
+            root = REMOTE_EXEC_ROOT if n[:1] == ["kubectl"] else CONTAINER_ROOT  # cụm (có thể prod) như máy xa
+            out += [(_shell_c_script(inner) or _join_tokens(inner), root, not fresh)] if inner else []
     return out
+
+
+# Máy xa/cụm (`ssh`, `kubectl exec`): xoá đường dẫn TUYỆT ĐỐI chặn (dữ liệu, `/etc`, `/home`…), trừ thư mục tạm/cache
+# tái tạo được. Container cục bộ (`docker|podman exec|run`, lxc, lima) không xét đường dẫn — giới hạn chấp nhận (d).
+REMOTE_CACHE_PREFIXES = ("/tmp/", "/var/tmp/", "/var/cache/", "/var/lib/apt/lists/", "/root/.cache/", "~/.cache/")
+REMOTE_CACHE_PARTS = frozenset({"node_modules", "__pycache__", ".pytest_cache", "dist", "build", ".next"})
+
+
+def _cache_path(target: str) -> bool:
+    t = posixpath.normpath(target) if target.startswith("/") else target
+    return (t + "/").startswith(REMOTE_CACHE_PREFIXES) or bool(REMOTE_CACHE_PARTS & set(t.split("/")))
+
+
+def _cache_wipe(script: str) -> bool:
+    """Mọi đích `rm` của lệnh ở máy xa là thư mục tạm/cache (`rm -rf /var/lib/apt/lists/*`, `…/node_modules`)."""
+    rms = [normalize(c) for c in split_commands(tokenize(script))]
+    targets = [t for n in rms if n[:1] == ["rm"] for t in _positionals(n[1:])]
+    return bool(targets) and all(_cache_path(t) for t in targets)
 
 
 def _remote_data_destroy(script: str) -> str:
@@ -21436,7 +21477,7 @@ def _remote_exec_scan(tokens: List[str], depth: int, asks: List[str], budget: Sc
             break
         sub = bash_decision(script, root, None if root == REMOTE_EXEC_ROOT else root, depth + 1, budget)
         d = decide(sub)
-        local_wipe = root == CONTAINER_ROOT and d.code == "WIPE_OUTSIDE"
+        local_wipe = d.code == "WIPE_OUTSIDE" and (root == CONTAINER_ROOT or _cache_wipe(script))
         why = d.reason if policy_action(d) == "deny" and not local_wipe else ""
         why = why or (_remote_data_destroy(script) if remote_db else "")
         asks += [f"{REMOTE_EXEC_MARK} (T-3952): {why[:300]}"] if why else []

@@ -246,17 +246,22 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   GitHub qua curl/wget/httpie/xh/`requests` (host `api|uploads.github.com`, GHES `/api/v3`, `/api/graphql`) dựng lại
   thành `gh api` và qua cùng bảng luật; `POST …/merges`, `mergeBranch` là merge không qua PR. Biến token GitHub trong argv
   của trình mạng/git chỉ tới host GitHub; biến bí mật (`*TOKEN`, `*_KEY`, `*SECRET`, `*PASSWORD`, `*_PAT`) vào message
-  commit/tag, `gh` (trừ `secret`/`auth`, header `gh api`), URL userinfo của `clone`/`remote add|set-url` → chặn. Hậu tố
+  commit/tag, `gh` (trừ `secret`/`auth`, header `gh api`), URL userinfo (mọi host), hay gửi tới dịch vụ trút dữ liệu
+  (paste, `webhook.site`, requestbin, pipedream, ngrok, trycloudflare, OAST, webhook Discord/Telegram/Slack) → chặn;
+  bí mật khác tới API của chính nó (`$OPENAI_API_KEY` → `api.openai.com`) cho qua. Hậu tố
   trình chạy gói/tên lạ bóc thêm tại tên trình mạng/in/đọc tệp/CLI đám mây (`uv run curl -d @.env`, `valgrind printenv
   GH_TOKEN`); `env -S` quét như lệnh. Chuỗi `-c`/`--call` của `npx`, `npm exec|x`, `pnpm exec|dlx` quét như `sh -c`.
   Lệnh ở máy xa/container đang chạy (`ssh host …`, `docker|podman|nerdctl exec`, `kubectl exec`, `lxc|incus exec`,
-  `limactl shell`) quét đủ luật với gốc giả (mọi đường dẫn là ngoài dự án; CSDL không nêu host là máy chủ không cục
-  bộ); `docker run` giữ gốc `/` (xoá đường dẫn trong container mới không chặn). CLI đám mây/PaaS huỷ hạ tầng (`aws …
+  `limactl shell`) quét đủ luật (vi phạm → mã REMOTE_EXEC; CSDL không nêu host là máy chủ không cục bộ). `ssh`/`kubectl
+  exec` (máy xa/cụm): xoá đường dẫn tuyệt đối chặn trừ thư mục tạm/cache (`/tmp`, `/var/tmp`, `/var/cache`,
+  `/var/lib/apt/lists`, `~/.cache`, `node_modules`, `__pycache__`, `.pytest_cache`, `dist`, `build`, `.next`). Container
+  cục bộ (`docker|podman|nerdctl exec|run`, lxc, lima) giữ gốc `/`: xoá đường dẫn trong đó không chặn — **giới hạn chấp
+  nhận (d)** (T-3952, hạn xét lại 2027-01-21 cùng (a)–(c)): `docker exec app rm -rf /data` còn qua. CLI đám mây/PaaS huỷ hạ tầng (`aws …
   delete-*|terminate-*|s3 rb|rm|sync --delete`, `gcloud|gsutil|az|helm|doctl|heroku|fly|vercel|netlify|wrangler` xoá) →
   DESTROY; thanh toán/thư/SMS (`stripe` ghi, `sendmail`, `mail <người nhận>`, `twilio …:create`, `aws ses|sns` gửi) →
   chặn. In tệp chứa token (`~/.config/gh/hosts.yml`, `.git-credentials`, `.netrc`) → chặn như `gh auth token`. Tên lệnh
   glob xét ở mọi thư mục không glob (`/usr/lib/git-core/gi[t]`; ngoài thư mục bin chỉ mẫu độ dài cố định), tên trần
-  (`gi[t]`) theo tệp ở thư mục đang đứng. Còn để ngỏ: bí mật không phải của GitHub gửi tới host bất kỳ qua trình mạng.
+  (`gi[t]`) theo tệp ở thư mục đang đứng.
 - **`merge-check` so giờ sổ review cục bộ với giờ GitHub** (AUD-XFEAT-019, D-104): review chặn chỉ có ở sổ cục bộ được
   tính khi ghi sau dấu đã đăng mới nhất ở cùng head; đồng hồ máy chậm hơn GitHub thì review chặn ghi ngay sau một dấu sạch
   bị coi là cũ hơn. Lớp đỡ: `pr reviewed` đăng ngay kết luận (dấu đã đăng là nguồn của `merge-check`/steward/guard).
