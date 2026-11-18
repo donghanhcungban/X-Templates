@@ -43,15 +43,14 @@ class D503InvariantTest(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 300)
 
     def test_no_dangerous_combination_allowed(self):
-        # T-3951: thời gian CPU của tiến trình — không giòn khi máy chạy song song nhiều module (đồng hồ tường đo cả chờ)
-        start = time.process_time()
+        start = time.monotonic()
         leaked = []
         for line in FIXTURE.read_text(encoding="utf-8").splitlines():
             row = json.loads(line)
             if decide(row["cmd"])["decision"] not in ("deny", "ask"):
                 leaked.append(row["id"])
         self.assertEqual(leaked, [])
-        self.assertLess(time.process_time() - start, 60)
+        self.assertLess(time.monotonic() - start, 60)
 
 
 if __name__ == "__main__":

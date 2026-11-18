@@ -21105,7 +21105,7 @@ def _arg_hosts(args: List[str], bare: bool) -> List[str]:
 
 
 def _userinfo_secret(args: List[str]) -> List[str]:
-    """Host của URL có bí mật ở phần userinfo (`https://x:$TOKEN@host/r`)."""
+    """Host của URL có bí mật ở phần userinfo (`https://a:$TOKEN@host/r`)."""
     out: List[str] = []
     for url in (u for a in args for u in URL_RE.findall(a)):
         netloc = url.split("://", 1)[1].split("/", 1)[0]
