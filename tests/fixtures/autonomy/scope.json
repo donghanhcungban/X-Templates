@@ -679,6 +679,12 @@
     "AUD-SEC-884",
     "AUD-SEC-885"
    ]
+  },
+  {
+   "reason": "Cần cây thư mục có worktree liên kết thật (`.git` là tệp gitdir + `commondir`) — corpus bench chạy ở một gốc thường nên không mô phỏng được; đỡ bằng tests.test_guard_signoff9 (test_linked_worktree_common_git, dựng repo chính và worktree tạm)",
+   "ids": [
+    "AUD-SEC-911"
+   ]
   }
  ]
 }

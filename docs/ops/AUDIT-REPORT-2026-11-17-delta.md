@@ -91,3 +91,16 @@ Hai lô reviewer-alt: fuzz các họ còn INCONCLUSIVE của cổng ký 6 cùng 
 | Hồi quy | CÓ PHÁT HIỆN | 🔴 AUD-SEC-898 (argv `parallel` của Python), AUD-SEC-899 (stdin/`--eval` của công cụ ngoài), AUD-SEC-900 (xoá nội tạng `.git`) · 🟠 AUD-SEC-901 (chặn oan `ready`/`readlink`) · 🟢 AUD-SEC-902…904, AUD-HAR-430 |
 
 Đợt 10 (T-3945, #656, D-506): danh sách đóng `_shadow_level`; bộ lọt `leaksS` 1 462 → 0, `leaks7` 2 410 → 28 (đều `niceload` trần, không chạy lệnh), bộ cổng ký 4–6 vẫn 0; 64 ca chặn oan → 0; tốc độ p50/p95 1,05×/1,06× nền. Còn mở: 🟢 AUD-SEC-905 (ghi đè `.git/HEAD` bằng `mv`/`truncate`/`>`). So bộ ca cũ sau khi đẩy #656 bắt thêm một hồi quy của chính nó (mô hình `pushd`/`popd` một tầng làm lọt 39 ca `DIRSTACK[1]=…; popd`), vá ở #658. Cổng ký lần 8 chạy trên ứng viên sau #658.
+
+## Cổng ký lần 8 (ứng viên `7b1ebc84`, sau đợt 10)
+
+Hai lô reviewer-alt: fuzz danh sách đóng (D-506) và hồi quy #656/#658. Oracle bash thật chạy với đường tuyệt đối, PATH chỉ có lệnh giả và canary; không có sự cố. Lô fuzz: ma trận giá trị tính được 21 241 tổ hợp 0 lọt (`leaksS` 1 462 → 0), ca cũ cổng ký 4–7 (4 839) 0 lọt, tốc độ 0,99× nền; ma trận mới 26 225 tổ hợp lọt ở 8 họ (đều có từ trước). Lô hồi quy: 4 cổng máy xanh (1 332 test một tiến trình), tốc độ 1,02× nền, 18 chặn oan lệnh lành (O2–O4 và `$(branch)`).
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| Fuzz | CÓ PHÁT HIỆN | 🔴 AUD-SEC-906 (nguồn không phải chữ), AUD-SEC-907 (thân bị che), AUD-SEC-908 (cờ chương trình), AUD-SEC-909 (`.git` qua glob), AUD-SEC-910 (giá trị tính được thoát ra) · 🟠 AUD-SEC-911 (`.git` chung của worktree), AUD-SEC-912 (trồng PATH nhiều bước), AUD-SEC-913 (argv `parallel` dựng chuỗi) |
+| Hồi quy | CÓ PHÁT HIỆN | 🟠 AUD-SEC-914 (push `src:dst`), AUD-SEC-915…917 (chặn oan `git pull`, `[ -eq ]`, SQL/manifest), AUD-SEC-918 (`$(date)` vào thư mục có sẵn) · 🟢 AUD-SEC-919, AUD-HAR-431 |
+
+D-507: sửa mọi lỗ có thể do lỡ tay và mọi chặn oan phổ biến; chấp nhận có chủ và hạn 2027-01-21 hai họ cần nhiều bước hoặc dựng chuỗi động (AUD-SEC-912, AUD-SEC-913; giới hạn ghi ở `harness-files.md`; hàng rào thật là sandbox, ADR-0072).
+
+Đợt 11 (T-3947, #661): bộ tái hiện 34 ca sai 31 → 0; fz8 `leaks8` 2 150 → 13 (đều họ AUD-SEC-912 đã chấp nhận); fz7/fz6/fz-110f0807 0; 28 901 ca cũ: 32 ca chặn → qua đều là 16 lệnh lành × 2; chặn oan corpus lành 175 → 171; tốc độ p50/p95 8,1 → 7,0 / 19,1 → 15,7 ms. AUD-SEC-905 cùng đóng. Cổng ký lần 9 chạy sau #661.
