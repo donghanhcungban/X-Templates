@@ -52,7 +52,7 @@ class LateAssignFormsTest(AuditRedCase):
                 'b=feat; f() { git push origin "$b"; }; for b in main; do f; done': "BUDGET",
                 'd=/tmp/x; f() { rm -rf "$d"; }; select d in ~; do f; done': "BUDGET",
                 'd=/tmp/x; f() { rm -rf "$d"; }; getopts ab d; f': "BUDGET",
-                'd=/tmp/x; f() { rm -rf "$d/"; }; unset d; f': "BUDGET",
+                'd=/tmp/x; f() { rm -rf "$d/"; }; unset d; f': "WIPE_OUTSIDE",  # T-3951 A2: bản rỗng `/` là gốc hệ thống
                 "f() { echo ~; }; for HOME in /; do f; done": "BUDGET",
                 # đối chứng đã chặn trước bản sửa: gán `d=` và `${d=…}`
                 'd=/tmp/x; f() { rm -rf "$d"; }; d=~; f': "BUDGET",

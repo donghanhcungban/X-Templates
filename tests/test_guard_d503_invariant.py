@@ -4,6 +4,8 @@ trong hộp cát) không được cho qua.
 `tests/fixtures/autonomy/d503_invariant.jsonl`: tập con cố định của bộ sinh có hướng (lệnh có luật × dạng mở rộng ở vị
 trí tên/cờ/lệnh con/đích × gốc lọt): một nửa số ca lọt của MỖI gốc (thứ tự id, chỉ số chẵn) — biến gán ngoài mô hình,
 tham số vị trí `sh -c`, hậu tố/tên lệnh động sau trình chạy, `cd` vào thay lệnh, xargs, lệnh ghi — cộng mọi dạng trơn.
+Gốc `budget:t3949` (T-3951 C2): BUDGET có chủ — ca vô hại về thực tế (`for P''ATH` không phải tên hợp lệ, `local` ngoài
+hàm lỗi, `make -f <(printf …)` lành) mà guard giữ chặn vì không mô hình; không phải ca nguy hiểm. Họ `t3951:*`: cổng ký 10.
 Họ `fnw:*` (AUD-SEC-890) và `par:887` (T-3943) lấy từ ca lọt ở `1b462999` của ma trận `test_guard_signoff7`, chưa chạy
 bash thật: chỉ dạng che chắc đổi lệnh (định nghĩa hàm) và lệnh nguy hiểm nguyên văn."""
 
@@ -12,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
 import unittest
 import unittest.mock as mock
 from pathlib import Path
@@ -43,14 +44,14 @@ class D503InvariantTest(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 300)
 
     def test_no_dangerous_combination_allowed(self):
-        start = time.monotonic()
+        # Không đo thời gian ở đây (BASE-GATE-005: ngưỡng CPU cứng bị cấm; hiệu năng guard do tests/test_perf và
+        # các test cpu_budget giữ) — test này chỉ khẳng định không tổ hợp nguy hiểm nào được cho qua.
         leaked = []
         for line in FIXTURE.read_text(encoding="utf-8").splitlines():
             row = json.loads(line)
             if decide(row["cmd"])["decision"] not in ("deny", "ask"):
                 leaked.append(row["id"])
         self.assertEqual(leaked, [])
-        self.assertLess(time.monotonic() - start, 60)
 
 
 if __name__ == "__main__":
