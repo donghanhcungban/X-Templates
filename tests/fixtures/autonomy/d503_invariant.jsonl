@@ -988,3 +988,21 @@
 {"id": "T11|a7|1", "root": "t3951:a7", "cmd": "git checkout main && git push origin \"$(git branch --show-current)\""}
 {"id": "T11|a7|2", "root": "t3951:a7", "cmd": "git switch main && B=$(git branch --show-current) && git push origin \"$B\""}
 {"id": "T11|a7|3", "root": "t3951:a7", "cmd": "git merge --ff-only feat/x && git push origin \"$(git branch --show-current)\""}
+{"id": "T11|a6|1", "root": "t3951:a6", "cmd": "Rscript - < <(echo 'system(\"rm -rf ~\")')"}
+{"id": "T11|a6|2", "root": "t3951:a6", "cmd": "{ Rscript -; } <<< 'system(\"rm -rf ~\")'"}
+{"id": "T11|a6|3", "root": "t3951:a6", "cmd": "Rscript - <&3"}
+{"id": "T11|a9|1", "root": "t3951:a9", "cmd": "vim -es -c '%d|wq' .claude/settings.json"}
+{"id": "T11|a9|2", "root": "t3951:a9", "cmd": "printf x | sponge .claude/hooks/guard.py"}
+{"id": "T11|a9|3", "root": "t3951:a9", "cmd": "gzip .claude/settings.json"}
+{"id": "T11|a9|4", "root": "t3951:a9", "cmd": "bzip2 .autopilot/state.json"}
+{"id": "T11|a9|5", "root": "t3951:a9", "cmd": "gsed -i d .git/config"}
+{"id": "T11|a9|6", "root": "t3951:a9", "cmd": "zstd --rm .git/config"}
+{"id": "T11|a9|7", "root": "t3951:a9", "cmd": "ruby -pi -e 1 .git/HEAD"}
+{"id": "T11|a11|1", "root": "t3951:a11", "cmd": "echo x > ~/.ssh/authorized_keys"}
+{"id": "T11|a11|2", "root": "t3951:a11", "cmd": "rm -f ~/.ssh/*"}
+{"id": "T11|a11|3", "root": "t3951:a11", "cmd": "echo 127.0.0.1 x > /etc/hosts"}
+{"id": "T11|a11|4", "root": "t3951:a11", "cmd": "echo 'export X=1' > ~/.bashrc"}
+{"id": "T11|a11|5", "root": "t3951:a11", "cmd": "echo x | tee ~/.aws/credentials"}
+{"id": "T11|a12|1", "root": "t3951:a12", "cmd": "echo 'set f [open \"|rm -rf ~\"]' | tclsh"}
+{"id": "T11|b1|1", "root": "t3951:b1", "cmd": "psql -c '\\! rm -rf ~'"}
+{"id": "T11|b1|2", "root": "t3951:b1", "cmd": "mysql -e 'system rm -rf ~'"}

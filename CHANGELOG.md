@@ -243,7 +243,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `tee "$X/"*`) và tiền tố ngoài gốc trước mở rộng (`rm -rf "/home/$USER/x"`); tuỳ chọn đổi thư mục của trình chạy (`uv
   run --directory ~`, `pnpm -C`, `yarn --cwd`, `npm --prefix`, `poetry -C`, `pdm -p`); chuỗi template JS trong
   `execSync`/`spawnSync`; Python gọi `subprocess`/`os` qua bí danh/`from … import`; `git push` theo nhánh hiện tại sau
-  `checkout`/`switch`/`merge` cùng lệnh. Hết chặn oan `d=$(mktemp -d "${TMPDIR:-/tmp}/b.XXXXXX"); rm -rf "$d"`. Fixture:
+  `checkout`/`switch`/`merge` cùng lệnh; glob qua symlink thư mục trỏ ra ngoài (`rm -rf lnk_*/`); công cụ ngoài bảng
+  ghi nhắm hàng rào (`gsed -i`, `vim -es`, `sponge`, `gzip`, `zstd --rm`); ghi/xoá `~/.ssh/**`, `~/.aws/**`, `/etc/**`…
+  và `>` vào `~/.bashrc` (AUD-SEC-060); stdin từ `< <(…)`/`<&3`/nhóm vào `Rscript`/`julia`; tcl `open "|…"`;
+  `Deno.Command`/`Deno.run`. Hết chặn oan `d=$(mktemp -d "${TMPDIR:-/tmp}/b.XXXXXX"); rm -rf "$d"`, `grep -rl x src/ |
+  xargs sed -i …`, chữ SQL `pipe`/`program`/`pager` ở psql/mysql, `for PATH` trong thông điệp commit, `cp` vào lá ngày
+  qua biến, `>> .git/info/sparse-checkout`, `redis-cli -x`; `ls *.json | xargs sh -c …` hết gắn mã bằng chứng. Fixture:
   ca `guard-t3951-*`, họ `T11|*` của bất biến D-503; ba ca `T10` vô hại chuyển nhóm BUDGET có chủ; ca trùng
   `guard-t3949-b4-allow-01` đổi sang ca crontab khác (nhóm `{ }`).
 

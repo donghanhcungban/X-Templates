@@ -245,7 +245,21 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   `--working-directory`…) đứng trước lệnh có luật là `cd` (`uv run --directory ~ rm -rf x`). Chuỗi template JS là chuỗi
   chữ (`${…}` đọc như thay lệnh); Python nhập mô-đun chạy lệnh qua bí danh/`from … import`/`__import__` → mọi chuỗi chữ
   quét như lệnh. `git push` đọc nhánh hiện tại (viết thẳng hay qua biến) sau `checkout`/`switch`/`merge`/`reset`/
-  `rebase`/`pull` cùng lệnh → BUDGET. Họ (c) thêm: `` `r${"m"} -rf ~` `` trong template JS.
+  `rebase`/`pull` cùng lệnh → BUDGET. Glob (`rm -rf lnk_*/`, `*/.config`, `rsync --delete e/ l*/`, biến vòng `for d in
+  lnk_*`) mở ra từng phần tử rồi realpath (có `/` cuối: cả đường; không: thư mục cha + tên; không khớp gì: thư mục cha
+  glob). Lệnh ngoài danh sách chỉ đọc (như GO-NO-GO; trừ công cụ kiểm không cờ sửa, `python -m json.tool`…) có đối số
+  giải vào `.claude/**`, `.autopilot/**`, bên trong thư mục git → chặn với mã của đích (`gsed -i`, `vim -es`, `sponge`,
+  `gzip`/`zstd --rm`, `tar --remove-files`; trình thông dịch chỉ khi `-i` hay có lời gọi ghi). Ghi/xoá `~/.ssh/**`,
+  `~/.gnupg/**`, `~/.aws/**`, `~/.kube/**`, `~/.netrc`, `~/.npmrc`, `/etc/**` và `>` vào tệp khởi động shell (`~/.bashrc`…)
+  → WIPE_OUTSIDE; nối thêm `>>`/`tee -a` vào rc cho chạy (AUD-SEC-060). Nguồn xargs `grep -rl`/`rg -l`/`git grep -l`/`ag
+  -l` với đường chữ dưới gốc, không phải gốc/hàng rào, không chứa `.git` → như `find src`. Stdin từ `< <(…)`/`<&N`/nhóm
+  vào lệnh ngoài `STDIN_DATA_OK` (`Rscript -`, `julia`) → BUDGET. Lối thoát theo từng công cụ: `!` (ed/ex/vim/dc), `\!`
+  (psql/mysql), `pager`/`system` đầu câu (mysql), `pipe`/`shell` (gdb), `to program` (psql), `exec`/`spawn`/`open "|…"`
+  (tcl/expect); `Deno.Command`/`Deno.run` là lời gọi chạy lệnh. Giữ BUDGET có chủ (D-503): `sed -n "$(grep -n …)…"`,
+  `cd "$T" && … && cd - && rm -rf "$T"`, `rm -rf "$(git rev-parse --show-toplevel)/dist"`, `rm -f "$(basename "$f"
+  .c).o"`. Họ (c) mở rộng (hạn xét lại 2027-01-21): payload che bằng biến/`getattr(os, "system")`/`` `r${"m"} -rf ~` ``
+  trong template JS. Họ `trap 'cd ~' DEBUG` là 🟢 cố ý. Fuzz cổng ký sau dùng gốc ngoài /tmp (fz6–fz9 từng dùng gốc
+  dưới /tmp nên `..` của gốc bị coi là thư mục tạm, che vài ca — C3).
 - **`merge-check` so giờ sổ review cục bộ với giờ GitHub** (AUD-XFEAT-019, D-104): review chặn chỉ có ở sổ cục bộ được
   tính khi ghi sau dấu đã đăng mới nhất ở cùng head; đồng hồ máy chậm hơn GitHub thì review chặn ghi ngay sau một dấu sạch
   bị coi là cũ hơn. Lớp đỡ: `pr reviewed` đăng ngay kết luận (dấu đã đăng là nguồn của `merge-check`/steward/guard).

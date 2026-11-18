@@ -12592,6 +12592,10 @@ class GuardGateNamesTest(unittest.TestCase):
         "in chữ, không ghi": frozenset({"echo", "true", "false", ":", "date"}),
         # D-503: tạo tệp/thư mục tạm tên ngẫu nhiên — `$(mktemp …)` là đường mới (`_subst_computed`)
         "tạo đường tạm mới": frozenset({"mktemp"}),
+        # T-3951: công cụ kiểm chỉ đọc (`FENCE_CHECKERS`), lọc dữ liệu đọc fd (`FD_DATA_OK`)
+        "kiểm mã chỉ đọc, lọc cột/dòng": frozenset(
+            "actionlint bandit codespell flake8 pylint pyright yamllint column comm fmt fold nl paste".split()
+        ),
         "thông tin hệ thống, tiến trình, tên lệnh": frozenset(
             {"nproc", "pwd", "whoami", "hostname", "uname", "id", "ps", "pgrep", "printenv", "type", "which"}
         ),

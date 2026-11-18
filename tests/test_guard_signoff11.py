@@ -6,7 +6,15 @@
 - A3 (🔴): tuỳ chọn đặt thư mục của trình chạy (`uv run --directory ~`, `pnpm -C`, `yarn --cwd`, `npm --prefix`…).
 - A4 (🔴): chuỗi template JS (`` execSync(`…`) ``, `String.raw`).
 - A5 (🔴): Python gọi mô-đun chạy lệnh qua bí danh/`from … import`.
-- B5 (🟢 chặn oan): `d=$(mktemp -d "${TMPDIR:-/tmp}/b.XXXXXX"); rm -rf "$d"`.
+- A6 (🟠): stdin từ `< <(…)`/`<&3`/nhóm vào lệnh ngoài `STDIN_DATA_OK` (`Rscript -`, `julia`).
+- A7 (🟠): `git push` theo nhánh hiện tại sau `checkout`/`switch`/`merge` cùng lệnh.
+- A8 (🟠): glob đi qua symlink thư mục trỏ ra ngoài (`rm -rf lnk_*/`, `*/.config`, `for d in lnk_*`).
+- A9 (🟠): công cụ ngoài bảng ghi nhắm hàng rào (`gsed -i`, `vim -es`, `sponge`, `gzip`, `zstd --rm`).
+- A10 (🟢 chặn oan): `grep -rl x src/ | xargs sed -i …`.
+- A11 (🔴, AUD-SEC-060): ghi đè/xoá `~/.ssh/**`, `~/.aws/**`, `/etc/**`…; `>` vào rc (chỉ `>>` qua).
+- A12/B1: lối thoát theo từng công cụ (`pipe`/`program`/`pager` là chữ SQL; tcl `open "|…"`); Deno.Command/Deno.run.
+- B2–B6 (🟢 chặn oan): chữ trong nháy không phải ghi PATH, `cp` vào lá ngày qua biến, `info/sparse-checkout`,
+  `d=$(mktemp -d "${TMPDIR:-/tmp}/b.XXXXXX"); rm -rf "$d"`, `redis-cli -x`.
 
 DENY: dạng lọt ở `a20ba307` (đã xác nhận bằng bash thật ở lô cổng ký 10) và biến thể sinh quanh nó. ALLOW: đối chứng lành."""
 
@@ -16,7 +24,9 @@ import concurrent.futures
 import contextlib
 import itertools
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 import unittest.mock as mock
 from pathlib import Path
@@ -292,6 +302,232 @@ B5_ALLOW = (
 class B5MktempTmpdirTest(Base):
     def test_allow(self):
         self.assert_allow(B5_ALLOW)
+
+
+A9_TOOLS = ("gsed -i d", "vim -es -c '%d|wq'", "ex -sc '%d|x'", "ruby -pi -e 1", "perl -pi -e 1", "gzip", "xz")
+A9_TOOLS += ("bzip2", "zstd --rm", "sponge", "python3 -c 'import sys; open(sys.argv[1], \"w\")'")
+A9_FENCES = (".git/config", ".git/HEAD", ".claude/settings.json", ".claude/hooks/guard.py", ".autopilot/state.json")
+A9_ALLOW = (
+    "cat .claude/settings.json",
+    "jq . .claude/settings.json",
+    "python3 -m json.tool .claude/settings.json",
+    "ruff check .claude/hooks",
+    "python3 -m py_compile .claude/hooks/guard.py",
+    "ar t .claude/hooks/x.a",
+    "perl -ne 'print if /unlink/' .autopilot/state.json",
+    "(cd .claude && ls); python3 -c \"open('settings.local.json','w').write('{}')\"",
+    "eval eval . <(cat f)",
+)
+
+
+class A9FenceArgvTest(Base):
+    def test_deny(self):
+        cmds = [f"{t} {f}" for t, f in itertools.product(A9_TOOLS, A9_FENCES)]
+        cmds += ["tar --remove-files -cf z.tar .claude", "ed -s .git/index <<< w", "printf x | sponge .git/HEAD"]
+        self.assert_deny(cmds + wraps(f"gsed -i d {A9_FENCES[0]}"))
+
+    def test_allow(self):
+        self.assert_allow(A9_ALLOW[:7])
+
+    def test_scan_needed(self):
+        self.assertFalse(guard._fence_scan_needed(["tar", "-tf", "x"]))
+        self.assertTrue(guard._fence_scan_needed(["zip", "-m", "x"]))
+        self.assertFalse(guard._fence_scan_needed(["sed", "-n", "p"]))
+        self.assertFalse(guard._fence_scan_needed(["cd", "x"]))
+        self.assertFalse(guard._fence_reader(["ruff", "check", "--fix", "x"]))
+
+
+class A8GlobSymlinkTest(Base):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(dir=str(Path.home())))  # gốc ngoài /tmp: `..` của gốc dưới /tmp là thư mục tạm
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.root = self.tmp / "proj"
+        (self.root / "build" / "a").mkdir(parents=True)
+        (self.root / "e").mkdir()
+        outside = self.tmp / "outside"
+        (outside / ".config").mkdir(parents=True)
+        (self.root / "lnk_home").symlink_to(outside)
+        (self.root / "lnk_cfg").symlink_to(outside / ".config")
+
+    def test_deny(self):
+        cmds = (f"{R} -rf lnk_*/", f"{R} -rf l*/*", f"{R} -rf */.config", "rsync -a --delete e/ l*/")
+        cmds += (f'for d in lnk_*; do {R} -rf "$d"/; done', f"bash -c '{R} -rf lnk_*/'", f"{{ {R} -rf l*/*; }}")
+        self.assert_deny(cmds, self.root)
+
+    def test_allow(self):
+        cmds = (
+            f"{R} -rf lnk_*",
+            f"{R} -rf build/*",
+            f"{R} -rf b*/",
+            f"{R} -rf */a",
+            f'for d in build e; do {R} -rf "$d"/; done',
+        )
+        self.assert_allow(cmds, self.root)
+
+
+A11_DENY = (
+    "echo 'export X=1' > ~/.bashrc",
+    "echo x > ~/.ssh/authorized_keys",
+    "echo x >> ~/.ssh/authorized_keys",
+    f"{R} -f ~/.ssh/*",
+    f'{R} -f "$HOME"/.ssh/id_ed25519',
+    "shred ~/.ssh/id_ed25519",
+    "echo 127.0.0.1 x > /etc/hosts",
+    "cp x ~/.npmrc",
+    "mv x ~/.netrc",
+    "echo x | tee ~/.aws/credentials",
+    "echo x | tee ~/.zshrc",
+    "sed -i s/a/b/ ~/.kube/config",
+    "truncate -s0 ~/.profile",
+    ": > ~/.gnupg/pubring.kbx",
+)
+A11_ALLOW = (
+    "echo 'export X=1' >> ~/.bashrc",
+    "echo x | tee -a ~/.zshrc",
+    "cat ~/.ssh/id_ed25519.pub",
+    "cat /etc/hosts",
+    "cp ~/.ssh/config /tmp/x",
+    "echo x > ~/notes.txt",
+    "cp /etc/hosts /tmp/hosts.bak",
+)
+
+
+class A11HomeSecretTest(Base):
+    def test_deny(self):
+        self.assert_deny(list(A11_DENY) + wraps(A11_DENY[1]))
+
+    def test_allow(self):
+        self.assert_allow(A11_ALLOW)
+
+    def test_kinds(self):
+        self.assertEqual(guard._home_secret("relative"), "")
+        self.assertEqual(guard._home_secret("/etc"), "etc")
+        self.assertEqual(guard._home_secret("~/.bashrc"), "rc")
+
+
+A10_ALLOW = (
+    "grep -rl 'oldName' src/ | xargs sed -i 's/oldName/newName/g'",
+    "grep -rl oldName src | xargs sed -i 's/oldName/newName/g'",
+    "rg -l oldName src/ | xargs sed -i 's/oldName/newName/g'",
+    "git grep -l oldName -- src | xargs sed -i 's/oldName/newName/g'",
+    "grep -rl -e oldName -m 3 src | xargs sed -i 's/a/b/'",
+)
+A10_DENY = (
+    "grep -rl oldName . | xargs sed -i 's/oldName/newName/g'",
+    "grep -rl oldName .claude | xargs sed -i 's/oldName/newName/g'",
+    "grep -rl oldName | xargs sed -i 's/a/b/'",
+    "grep -rl oldName .. | xargs sed -i 's/a/b/'",
+    "grep -rl oldName $D | xargs sed -i 's/a/b/'",
+)
+
+
+class A10GrepXargsTest(Base):
+    def test_allow(self):
+        self.assert_allow(A10_ALLOW)
+
+    def test_deny(self):
+        self.assert_deny(A10_DENY)
+
+
+A6_DENY = (
+    f"Rscript - < <(echo 'system(\"{WIPE}\")')",
+    "Rscript - <&3",
+    f"{{ Rscript -; }} <<< 'system(\"{WIPE}\")'",
+    f"( julia ) <<< 'run(`{WIPE}`)'",
+    f"julia < <(echo 'run(`{WIPE}`)')",
+    f"Rscript - <(echo 'system(\"{WIPE}\")')",
+    f"tclsh <<'E'\nset f [open \"|{WIPE}\"]\nE",
+    f"{{ tclsh; }} <<< 'set f [open \"|{WIPE}\"]'",
+    f"{{ python3; }} <<< 'import os; os.system(f\"{WIPE}\")'",
+    f"( python3 ) <<< 'import os; os.system(rb\"{WIPE}\")'",
+)
+A6_ALLOW = (
+    "grep x < <(ls)",
+    "mapfile -t a < <(ls)",
+    "sort < <(echo b a)",
+    "diff <(ls a) <(ls b)",
+    '{ grep x; } <<< "$y"',
+    "{ cat; echo; } <<< 'hello world'",
+    'while read -r l; do echo "$l"; done < <(git ls-files)',
+    "comm -12 <(sort a) <(sort b)",
+    "paste <(cut -f1 a) <(cut -f2 b)",
+    "jq -s . <(echo 1) <(echo 2)",
+    "python3 tool.py <(echo x)",
+)
+
+
+class A6ProgReaderTest(Base):
+    def test_deny(self):
+        self.assert_deny(A6_DENY)
+
+    def test_allow(self):
+        self.assert_allow(A6_ALLOW)
+
+
+B1_ALLOW = (
+    "psql -At -c \"select count(*) from jobs where status = 'pipe' and id > $N\"",
+    'mysql -e "select program from t where id=$ID"',
+    "psql -c \"select * from t where kind = 'program' and id = $ID\"",
+    'mysql -Be "select pager, system from cfg where id=$ID"',
+)
+B1_DENY = (  # đối chứng: lối thoát thật của từng công cụ, có `$`/lệnh có luật
+    f"psql -c '\\! {WIPE}'",
+    f"psql -c \"copy t to program '{WIPE}'\"",
+    f"mysql -e 'system {WIPE}'",
+    f"mysql -e '\\! {WIPE}'",
+    f"echo '.shell {WIPE}' | sqlite3 x.db",
+    f"echo '!{WIPE}' | ed",
+    f"echo 'set f [open \"|{WIPE}\"]' | tclsh",
+    f"gdb -batch -ex 'shell {WIPE}'",
+    f"echo 'pipe info | {WIPE}' | gdb -batch",
+    'echo "$x" | psql',
+)
+DENO_DENY = (
+    f'deno eval \'new Deno.Command("sh", {{args: ["-c", "{WIPE}"]}}).outputSync()\'',
+    f'deno eval \'Deno.run({{cmd: ["sh", "-c", "{WIPE}"]}})\'',
+    f'deno eval \'new Deno.Command("sh",{{args:["-c",`{WIPE}`]}}).outputSync()\'',
+)
+DENO_ALLOW = ('deno eval \'new Deno.Command("ls", {args: ["-la"]}).outputSync()\'', "deno eval 'Deno.cwd()'")
+
+
+class B1EscapeTest(Base):
+    def test_allow(self):
+        self.assert_allow(B1_ALLOW + DENO_ALLOW)
+
+    def test_deny(self):
+        self.assert_deny(B1_DENY + DENO_DENY)
+
+    def test_escape_re(self):
+        self.assertIs(guard._escape_re(""), guard.PROG_ESCAPE_RE)
+        self.assertIs(guard._escape_re("/usr/bin/tclsh8.6"), guard.TCL_ESCAPE_RE)
+
+
+B_ALLOW = (
+    'git commit -m "docs: explain for PATH in loops" && git push -u origin "$(git branch --show-current)"',
+    'git commit -m "fix: guard for IFS handling" && cp a "/tmp/a-$(date +%F)"',
+    "echo 'note: for PATH in list' && cp a \"/tmp/a-$(date +%F)\"",
+    'ts=$(date +%F); cp -r data ~/bk/"$ts"',
+    "echo 'src/' >> .git/info/sparse-checkout",
+    'echo "$payload" | redis-cli -x set config',
+)
+B_DENY = (  # đối chứng
+    f'for PATH in /x; do {R} -rf "$(date +%F)/x"; done',
+    f'PATH=/x; {R} -rf "$(date +%F)/x"',
+    f'ts=$(date +%F); {R} -rf ~/bk/"$ts"',
+    "echo x >> .git/info/attributes",
+    'echo "$x" | redis-cli',
+    "ls *.json | xargs -I{} sh -c 'jq . {} > /dev/null'",
+)
+
+
+class BRegressionTest(Base):
+    def test_allow(self):
+        self.assert_allow(B_ALLOW)
+
+    def test_deny(self):
+        self.assert_deny(B_DENY)
+        d = decide(B_DENY[-1])
+        self.assertNotIn("EVIDENCE", str(d.get("code")))
 
 
 class ConcurrentTest(unittest.TestCase):
