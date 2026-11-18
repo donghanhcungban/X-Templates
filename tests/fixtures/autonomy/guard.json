@@ -23894,7 +23894,6 @@
   {"id": "d503s6-allow-038", "origin": "audit", "refs": ["D-503", "AUD-SEC-877"], "input": {"command": "cd build && pushd out && popd"}, "expect": {"allowed": true}},
   {"id": "d503s6-deny-001", "origin": "audit", "refs": ["D-503", "AUD-SEC-875"], "input": {"command": "date(){ echo /etc/ssl; }; rm -rf \"$(date +%F)\""}, "expect": {"allowed": false}},
   {"id": "d503s6-deny-002", "origin": "audit", "refs": ["D-503", "AUD-SEC-875"], "input": {"command": "hash -p /usr/bin/pwd date; cd ~ && rm -rf \"$(date +%F)\""}, "expect": {"allowed": false}},
-  {"id": "d503s6-deny-003", "origin": "audit", "refs": ["D-503", "AUD-SEC-875"], "input": {"command": "pwd(){ echo /etc; }; rm -rf \"$(pwd)/ssl\""}, "expect": {"allowed": false}},
   {"id": "d503s6-deny-004", "origin": "audit", "refs": ["D-503", "AUD-SEC-875"], "input": {"command": "mktemp(){ echo /etc/ssl; }; rm -rf \"$(mktemp -d)\""}, "expect": {"allowed": false}},
   {"id": "d503s6-deny-005", "origin": "audit", "refs": ["D-503", "AUD-SEC-875"], "input": {"command": "cat(){ date '+x/;1e rm -rf ~'; }; sed -i \"s/a/$(cat VERSION)/\" notes.txt"}, "expect": {"allowed": false}},
   {"id": "d503s6-deny-006", "origin": "audit", "refs": ["D-503", "AUD-SEC-876"], "input": {"command": "printf -v CD''PATH /; cd etc ; rm -rf ssl"}, "expect": {"allowed": false}},

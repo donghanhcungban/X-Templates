@@ -77,4 +77,4 @@ Hai lô reviewer-alt: fuzz họ mới (hàm che lệnh, CDPATH/`popd`, nguồn x
 | Fuzz họ mới | CÓ PHÁT HIỆN | 🔴 AUD-SEC-875 (hồi quy #650), AUD-SEC-876, AUD-SEC-877 · 🟠 AUD-SEC-878 · 🟢 AUD-SEC-879 |
 | Hồi quy #650/#648 | CÓ PHÁT HIỆN | 🟠 AUD-SEC-880…882, AUD-SEC-884 · 🟢 AUD-SEC-883, AUD-DEP-032, AUD-HAR-429 · có từ trước: 🔴 AUD-SEC-885 (không có hạn giờ chung), AUD-SEC-886, AUD-SEC-887 · 🟢 AUD-SEC-888, AUD-SEC-889 |
 
-Đợt 9 (T-3942, #652): bộ fuzz chỉ-guard `leaks6.fam` 665, bộ cổng ký 4 (829) và 5 (2 535) → 0 lọt; hạn giờ chung `DECISION_SECONDS` 15 s (D-505) đóng lỗ lệnh 256 KB chạy quá 1300 s. Còn mở: AUD-SEC-887 (`parallel`/`sem`, T-3943). Cổng ký lần 7 chạy sau T-3943, gồm cả các họ INCONCLUSIVE.
+Đợt 9 (T-3942, #652): bộ fuzz chỉ-guard `leaks6.fam` 665, bộ cổng ký 4 (829) và 5 (2 535) → 0 lọt; hạn giờ chung `DECISION_SECONDS` 15 s (D-505) đóng lỗ lệnh 256 KB chạy quá 1300 s. Còn mở: AUD-SEC-887 (`parallel`/`sem`) và AUD-SEC-890 (🔴 `$(pwd)` + hàm che trong thân `sh -c`, do fuzz tất định của CI bắt ở #653), cả hai ở T-3943. Cổng ký lần 7 chạy sau T-3943, gồm cả các họ INCONCLUSIVE.
