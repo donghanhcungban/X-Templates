@@ -129,7 +129,7 @@ F4_DENY = (
     f"curl -d 'base=main&head=f' {API}/merges",
     "gh api -X POST repos/o/r/merges -f base=main -f head=f",
     'gh api graphql -f query=\'mutation{mergeBranch(input:{repositoryId:"x",base:"main",head:"f"}){x}}\'',
-    f"curl -X DELETE https://ghe.example.com/api/v3/repos/o/r",
+    "curl -X DELETE https://ghe.example.com/api/v3/repos/o/r",
     f"python3 -c \"import requests; requests.delete('{API}')\"",
     f"curl -T body.json {API}/pulls/5/merge",
 )
@@ -164,7 +164,7 @@ F5_ALLOW = (
     f'gh api -H "Authorization: token {TOK}" repos/o/r',
     f'echo "{TOK}" | gh auth login --with-token',
     f"{G} fetch https://x-access-token:{TOK}@github.com/o/r",
-    f'curl -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models',
+    'curl -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models',
     f'{G} -c http.extraHeader="Authorization: Bearer {TOK}" fetch origin',
     f'{G} commit -m "rotate tokens"',
 )
