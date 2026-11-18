@@ -105,3 +105,9 @@
 
 - [x] `T-3945` 🔴 AUD-SEC-893…896/898…900, 🟠 AUD-SEC-897/901, 🟢 AUD-SEC-902…904, AUD-HAR-430 — Gate: `python3 -m unittest tests.test_guard_signoff8 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
 - [x] `T-3946` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3945; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 11 — sửa phát hiện cổng ký lần 8 (D-503, D-507)
+> Cổng ký lần 8 (ứng viên `7b1ebc84`): ma trận giá trị tính được 0 lọt; còn lỗ ở `.git` qua glob/worktree, chương trình qua stdin/cờ, giá trị tính được thoát ra ngoài; và chặn oan lệnh phổ biến (`git pull` với `$(git branch --show-current)`, `[ -eq ]`, SQL/manifest). Sửa theo lớp; hai họ cần nhiều bước/dựng chuỗi động chấp nhận có hạn (D-507).
+
+- [x] `T-3947` 🔴 AUD-SEC-905…911/918, 🟠 AUD-SEC-914…917/918, 🟢 AUD-SEC-919, AUD-HAR-431 — Gate: `python3 -m unittest tests.test_guard_signoff9 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [x] `T-3948` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3947; files: docs/ops/AUDIT-STATUS.md)
