@@ -333,6 +333,7 @@ class SignOff6HelperTest(unittest.TestCase):
         c = ctx('cd docs && cd .. && sed "s/x/$(cat VERSION)/" f')
         self.assertEqual(c._cat_dir("VERSION", 2), str(ROOT))
         self.assertIsNone(ctx('cd "$D" && sed "s/x/$(cat VERSION)/" f')._cat_dir("VERSION", 1))
+        self.assertIsNone(ctx('cd - && sed "s/x/$(cat VERSION)/" f')._cat_dir("VERSION", 1))  # đích không giải
         self.assertIsNone(ctx('ls * && sed "s/x/$(cat VERSION)/" f')._cat_dir("VERSION", 1))
         self.assertIsNone(ctx('git pull && sed "s/x/$(cat VERSION)/" f')._cat_dir("VERSION", 1))
         self.assertIsNone(ctx('X=$(cp a VERSION); sed "s/x/$(cat VERSION)/" f')._cat_dir("VERSION", 1))
