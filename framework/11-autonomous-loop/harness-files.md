@@ -93,10 +93,15 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   được (`$(dirname $PWD)`, `$(realpath ..)`) → BUDGET (D-503); `$(pwd -P)/..` → RULE_DENY (đích `..`). Giá trị tính được
   (`$(date +FMT)`, `$(mktemp …)`, `$(cat TỆP)` trong sed) chỉ được tin khi cả lệnh, mọi tầng bọc, chỉ gồm cấu trúc trong
   danh sách đóng (D-506, T-3945): gán/ghi biến `PATH`/`BASH_CMDS`/`IFS`/`LD_*`/`GIT_*`… dưới mọi dạng (`read`, `printf -v`,
-  `mapfile`, `declare`/`export` tên có nháy/thoát/brace/động, nameref, số học có tên biến), hàm/alias/`hash`/`enable`/
+  `mapfile`, `declare`/`export` tên có nháy/thoát/brace/động, nameref, số học có tên biến — `[[ -eq ]]`, không `[ -eq ]`;
+  nhắc chữ như `echo "PATH is set"` thì không), hàm/alias/`hash`/`enable`/
   `eval`/`source`, trap khác EXIT có thân ngoài danh sách, tên lệnh động → mất ưu đãi (BUDGET); `$(pwd)` (builtin) chỉ mất
-  trước cấu trúc đổi được builtin (hàm, `BASH_FUNC_`, `BASH_ENV`, builtin lạ — `PATH=` thì không). Truy vấn nhánh hiện
-  tại (`$(git branch --show-current)`) chỉ tính ở refspec `git push` (HEAD tách rời → rỗng).
+  trước cấu trúc đổi được builtin (hàm, `BASH_FUNC_`, `BASH_ENV`, builtin lạ — `PATH=` thì không). T-3947: giá trị tính
+  được chỉ là thành phần lá — `..` theo sau (cả `cd` vào nó rồi `cd ..`/đường `../`) → BUDGET; `$(mktemp)` có `-p`/
+  `--tmpdir`/mẫu có `/`/TMPDIR gán trong lệnh mất ưu đãi; `$(date)` chỉ ưu đãi khi thư mục đích dưới gốc dự án (tiền tố
+  tương đối, `cd` vào thư mục con chữ trơn). Truy vấn nhánh hiện tại (`$(git branch --show-current)`, HEAD tách rời →
+  rỗng) chỉ tính ở vị trí tên-ref vô hại: refspec `git push` chiếm trọn (`src:dst` thì không — rỗng thành xoá nhánh
+  remote), đối số `pull`/`fetch`/`rebase`/`merge`/`checkout`/`switch`, `--set-upstream-to=`/`-u`, `gh pr create`.
 - **Duyệt giai đoạn** (ADR-0058, AUD-SEC-155; ADR-0069: chỉ đúng MỘT lệnh đơn `python3 <xt.py của dự án> stage approve --sha … [--note …]` — không `env`/`unset`/gán biến/cờ trình thông dịch, không nối hay lồng lệnh, không token mờ — được cho qua khi xt.yaml ở cây **và** bản đã commit ở nhánh chính (`origin/main`, rồi `origin/master`) khai `stage_approval: agent`, `XT_GUARD_POLICY=strict` không nới): luật chữ (`xt.py … stage … approve`/`init … --adopt`) cộng luật token
   mờ: ở mọi vị trí script (`-m xt`/`-mxt`/`-m scripts.xt`, lồng trong `perf sample --`), bỏ chuyển hướng và fd
   (`2>/dev/null`, `{fd}>f`; đích bị cắt như `> >(cat)` là mờ), lệnh con, cờ/giá trị `--framework` (cả `=` rỗng) hay tuỳ
@@ -197,12 +202,22 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   BUDGET. Luật cũ (mỗi tổ hợp `:::` quét
   như shell lồng) chạy trước nên lệnh nguy hiểm giữ mã của nó. Gán phần tử mảng đầu lệnh (`a[0]=1 cmd`) và
   `x+=$(echo …)` dùng ở lệnh sau đều bị chặn (RULE_DENY/BUDGET, AUD-HAR-430). Công cụ ngoài danh sách đóng đọc-dữ-liệu
-  (`cat`/`grep`/`jq`/`git`/`gh`…) đọc chương trình từ stdin/heredoc/here-string/ống chữ hay cờ `-e`/`--eval` (`-c` ở client
-  CSDL; `make -f -`, ed/ex `!`, sqlite3 `.shell`, gdb `shell`, `at`, `crontab -`, tclsh, psql `\!`, `Rscript -e`) mà thân
-  có tên lệnh có luật hay thay lệnh → BUDGET; `make` đọc makefile từ stdin hay `--eval` → BUDGET (T-3945, D-503 b).
-  Xoá không đệ quy trong `.git` của dự án (`rm -f .git/HEAD`, `.git/objects/pack/*.pack`, `unlink`, `shred`) →
-  WIPE_OUTSIDE, trừ `*.lock`; `find` có gốc trong `.git` hay duyệt vào `.git` khớp tên mẫu (`-name '*.pack'`) vào xargs →
-  BUDGET.
+  (`cat`/`grep`/`jq`/`git`/`gh`…) đọc chương trình từ stdin/heredoc/here-string/ống chữ hay cờ chương trình (`-e`/`--eval`
+  cả viết tắt `--eva=`, dính giá trị `-e'…'`; `-c`/`--cmd`/`+cmd` ở client CSDL, vi/ex/vim, expect; đối số vị trí sqlite3)
+  mà thân, so sau khi bỏ nháy kiểu shell, chạy lệnh có luật → BUDGET: công cụ biết lối thoát (ed/ex/vim/dc `!`, psql
+  `\!`, sqlite3 `.shell`/`.system`, mysql `system`, gdb `shell`, tcl/expect `exec`) chỉ xét chữ sau lối thoát (có `$`
+  cũng tính) — SQL/manifest/Dockerfile là dữ liệu; `at`/`crontab` xét cả thân; công cụ khác xét mọi từ; here-string/ống
+  có `$` là giá trị lúc chạy → BUDGET. Nguồn không phải chữ (`<(…)`, fd khác 0 `<&3`, `/dev/fd/N`, ống từ khâu đọc
+  chúng) vào shell/trình thông dịch/công cụ đọc chương trình → BUDGET, trừ `<(…)` chỉ đọc nội dung đã lưu (`git
+  cat-file`/`git show`/`cat tệp`, dự phòng chỉ thoát — Gate `/optimize`). `make` đọc makefile từ stdin hay `--eval`/`-E`
+  → BUDGET (T-3945, T-3947, D-503 b, D-507). Xoá không đệ quy bên trong `.git` của dự án (`rm -f .git/HEAD`, `.git/*`,
+  `cd .git && rm -f *`, `unlink`, `shred`; lệnh bật `dotglob`/`GLOBIGNORE` thì `*/index` cũng tính; biến vòng `for f in
+  …` xét theo mẫu; gốc là worktree liên kết thì cả gitdir riêng và `.git` chung của repo chính) → WIPE_OUTSIDE, trừ
+  `*.lock`; ghi đè `.git/HEAD`/`.git/index`/`.git/config` (cả repo con) bằng `mv`/`truncate`/`>`/`cp`/`tee`/`sed -i`/
+  `ln`/`install` → HOOK_BYPASS; `find` có gốc trong `.git` hay duyệt vào `.git` khớp tên mẫu vào xargs → BUDGET.
+  **Giới hạn chấp nhận** (D-507, hạn xét lại 2027-01-21 cùng mốc sandbox ADR-0072): (a) trồng lệnh vào thư mục PATH qua
+  nhiều lệnh rồi `$(date)`/`$(mktemp)`; (b) argv `parallel` dựng bằng nối chuỗi/biến/`exec {"parallel"}` của perl,
+  `pcntl_exec`/`proc_open` của php — cần chủ ý nhiều bước/chuỗi động, hàng rào là sandbox.
 - **`merge-check` so giờ sổ review cục bộ với giờ GitHub** (AUD-XFEAT-019, D-104): review chặn chỉ có ở sổ cục bộ được
   tính khi ghi sau dấu đã đăng mới nhất ở cùng head; đồng hồ máy chậm hơn GitHub thì review chặn ghi ngay sau một dấu sạch
   bị coi là cũ hơn. Lớp đỡ: `pr reviewed` đăng ngay kết luận (dấu đã đăng là nguồn của `merge-check`/steward/guard).
@@ -232,7 +247,8 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   (AUD-HAR-100 — dùng `python3 -m unittest`, Edit/Write). Sửa file canh thì dùng
   Edit/Write; đọc thì dùng `cat`/Read hoặc script chỉ đọc.
 - **Thư mục không biết** (D-106): sau `cd "$X"`, `cd -`, `pushd +N`, `popd` (trừ `popd` trần sau đúng một `pushd <chữ
-  trơn>`, ngoài vòng lặp/hàm — về thư mục trước `pushd`, T-3945), `cd` khi có `CDPATH`, `cd`/`pushd` tới
+  trơn>`, ngoài vòng lặp/hàm — guard xét cả thư mục trước và sau `pushd` (tập thư mục, không mô hình ngăn xếp), T-3945),
+  `cd` khi có `CDPATH`, `cd`/`pushd` tới
   toán hạng có glob (`cd .cl*`), đích ghi tương đối được thử ở gốc và mọi thư mục canh (`.claude`, `.claude/hooks`,
   `.autopilot`, `.git`, `.git/hooks`) — chặn khi file đã có ở đó hoặc tên là tên được canh (chặn oan: `cd "$X" && echo
   x > config` dù `$X` không phải `.git`). `env -C DIR`/`--chdir=DIR` dời thư mục của lệnh sau `env` như `cd` (kèm chuyển

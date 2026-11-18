@@ -367,9 +367,17 @@ GIT_HOOK_PATTERNS = (
     ".git/packed-refs",
     ".git/refs/remotes",
     ".git/refs/remotes/*",
+    # T-3947 (AUD-SEC-905): ghi đè trạng thái git (`mv`/`truncate`/`>`/`cp`/`tee`/`sed -i`/`ln -sf`/`install` vào
+    # `.git/HEAD`, `.git/index`) cả của repo con — hỏng nhánh/chỉ mục; `*.lock` không thuộc mẫu
+    ".git/HEAD",
+    ".git/index",
+    "*/.git/HEAD",
+    "*/.git/index",
+    "*/.git/config",
 )
 GIT_HOOK_WHY = (
-    "ghi {} — git hook/cấu hình git/ref theo dõi remote không vào commit, sửa là bỏ qua hook của dự án; người làm tay"
+    "ghi {} — git hook/cấu hình git/ref theo dõi remote/trạng thái git (HEAD, index) không vào commit, sửa là bỏ qua hook"
+    " của dự án hay hỏng nhánh; dùng lệnh git, hay người làm tay"
 )
 # AUD-SEC-424: cấu hình git toàn cục/hệ thống mang cùng khoá chạy lệnh/hooksPath như `.git/config` (`diff.external`,
 # `core.hooksPath`, `alias.x = !…`, `core.fsmonitor`) — git đọc `$HOME/.gitconfig`, `$XDG_CONFIG_HOME/git/config`
@@ -2831,10 +2839,40 @@ def _subst_computed(word: str, i: int, ref: bool = False) -> bool:
     n = _trusted_call(word[i + 2 : end - 1], SHADOW_EXT) if end > 0 else []
     if n == ["pwd"]:
         return True
-    if not n or _shadow() != SHADOW_NONE:
-        return False
+    if not n or _shadow() != SHADOW_NONE or DOTDOT_RE.search(re.sub(r"['\"]", "", word[end:])):
+        return False  # T-3947: chỉ ưu đãi như thành phần lá — `"$(mktemp -d)/../Documents"` ra ngoài
     branch = ref and tuple(n) in CURRENT_BRANCH_QUERIES
-    return branch or n[0] == "mktemp" and "$(" not in word[i + 2 : end] or _date_fmt_ok(n)
+    return branch or _mktemp_ok(n) and "$(" not in word[i + 2 : end] or _date_fmt_ok(n) and _date_rooted(word[:i])
+
+
+# T-3947 (D-507): `$(mktemp …)` là tên mới dưới thư mục tạm chỉ khi không đổi thư mục cha (`-p`, `--tmpdir`, mẫu có
+# `/`, TMPDIR gán trong lệnh); `$(date …)` là tên có thể đã có — chỉ ưu đãi khi thư mục đích ở dưới gốc dự án (tiền tố
+# tương đối không `..`, mọi `cd` trong lệnh vào thư mục con chữ trơn, thư mục phiên dưới gốc — `SUBST_ROOTED`).
+DOTDOT_RE = re.compile(r"(?:^|/)\.\.(?:/|$)")
+SUBST_ROOTED: contextvars.ContextVar[bool] = contextvars.ContextVar("SUBST_ROOTED", default=True)
+
+
+def _mktemp_ok(n: List[str]) -> bool:
+    """Thư mục cha của `mktemp` (`-p`, `--tmpdir`, mẫu có `/`, TMPDIR) không trỏ về home/lên trên: đối số có `~`/`$HOME`/
+    `..`, hay TMPDIR gán trong lệnh → không ưu đãi. Thư mục khác (`"$OUT/ran.XXXXXX"`, test_ci) giữ — tên vẫn mới; ra
+    ngoài chỉ qua `..` sau giá trị (`DOTDOT_RE`, `_dyn_dotdot`, `_CdScope.computed`)."""
+    if n[0] != "mktemp" or any("TMPDIR" in layer for layer in SHADOW.get()):
+        return False
+    return not any(MKTEMP_HOME_RE.search(a) for a in n[1:])
+
+
+MKTEMP_HOME_RE = re.compile(r"~|\$\{?HOME\b|(?:^|[/=])\.\.(?:/|$)")
+
+
+def _date_rooted(prefix: str) -> bool:
+    """Tiền tố trước `$(date …)`: tương đối khi thư mục hiện tại dưới gốc, hay tuyệt đối dưới thư mục tạm (`/tmp/x-…`)."""
+    flat = re.sub(r"['\"]", "", prefix)
+    if DOTDOT_RE.search(flat) or flat[:1] in ("~", "$"):
+        return False
+    return DATE_TMP_RE.match(flat) is not None if flat[:1] == "/" else SUBST_ROOTED.get()
+
+
+DATE_TMP_RE = re.compile(r"/(?:var/)?tmp/")
 
 
 def _trusted_call(text: str, worst: int = 0) -> List[str]:
@@ -2884,8 +2922,17 @@ SHADOW_READ_RE = re.compile(rf"\$\{{?[#!]?(?:{SHADOW_ALL_NAMES}|{SHADOW_EXT_NAME
 SHADOW_CODE_RE = re.compile(r"\(\s*\)|(?<![\w-])function(?![\w-])")  # định nghĩa hàm ở tầng mã (không trong chữ nháy)
 # số học (`$((…))`, `((…))`, `$[…]`, chỉ số mảng, cắt chuỗi `${x:n}`, so sánh số của `[[`) có tên biến; thân chỉ chữ số
 # và toán tử thì không (`SHADOW_ARITH_OK_RE` bỏ trước)
+# T-3947: `-eq…` chỉ số học trong `[[ ]]` (toán hạng đánh giá như biểu thức); `[`/`test` so số nguyên, không gán
 SHADOW_ARITH_RE = re.compile(
-    r"\(\(|\$\[|\w\[[^\]]*[A-Za-z_$]|\$\{[#!]?\w+:(?![-=?+])[^}]*[A-Za-z_$]|-(?:eq|ne|lt|le|gt|ge)(?![\w-])"
+    r"\(\(|\$\[|\w\[[^\]]*[A-Za-z_$]|\$\{[#!]?\w+:(?![-=?+])[^}]*[A-Za-z_$]"
+    r"|\[\[(?:(?!\]\]).)*-(?:eq|ne|lt|le|gt|ge)(?![\w-])",
+    re.S,
+)
+# T-3947: tên nhạy ở vị trí GHI — gán (`X=`, `X+=`, `X[i]=`, `${X:=…}`), giá trị gán là tên (`declare -n Z=PATH`,
+# `n=PATH` rồi dùng gián tiếp); nhắc chữ (`echo "PATH is set"`, `grep -c IFS`) thì không. Builtin ghi theo tên
+# (`read PATH`, `printf -v`, `export`…) do `_shadow_seg` xét.
+SHADOW_EXT_WRITE_RE = re.compile(
+    rf"(?<!\w)(?:{SHADOW_EXT_NAMES})(?:\[[^\]]*\])?(?:\+?=|:=)|(?<==)(?:{SHADOW_EXT_NAMES})(?!\w)"
 )
 SHADOW_ARITH_OK_RE = re.compile(r"\$?\(\([\d\s+*/%<>=!&|^~?:,-]*\)\)")
 SHADOW_SAFE = frozenset(
@@ -2930,7 +2977,7 @@ def _shadow_text(cmd: str, view: "_CodeView") -> int:
     if SHADOW_ALL_RE.search(flat):
         return SHADOW_ALL
     live = SHADOW_ARITH_OK_RE.sub(" ", "".join(c if kind != "q" else " " for c, kind in zip(cmd, view.kind)))
-    return SHADOW_EXT if SHADOW_EXT_RE.search(flat) or SHADOW_ARITH_RE.search(live) else SHADOW_NONE
+    return SHADOW_EXT if SHADOW_EXT_WRITE_RE.search(flat) or SHADOW_ARITH_RE.search(live) else SHADOW_NONE
 
 
 def _shadow_seg(raw: List[str]) -> int:
@@ -2990,7 +3037,9 @@ def _shadow_names(name: str, argv: List[str]) -> int:
         bad = bool(re.search(r"[ni]", flags))
     else:
         rx, slots, bad = SHADOW_NAME_RE, _shadow_slots(name, argv), False
-    return SHADOW_EXT if bad or not all(rx.fullmatch(s) for s in slots) else SHADOW_NONE
+    # T-3947: tên nhạy nguyên văn ở vị trí tên đích (`read PATH`, `unset IFS`) — `_shadow_text` chỉ bắt dạng gán
+    sensitive = any(SHADOW_EXT_RE.fullmatch(re.split(r"[\[+=]", _dequote(s), maxsplit=1)[0]) for s in slots)
+    return SHADOW_EXT if bad or sensitive or not all(rx.fullmatch(s) for s in slots) else SHADOW_NONE
 
 
 def _shadow_slots(name: str, argv: List[str]) -> List[str]:
@@ -3012,11 +3061,27 @@ def _dd_word_bad(word: str, names: Set[str], lit: Set[str], mode: int, ref: bool
 
 
 def _push_ref_ids(words: List[str]) -> Set[int]:
-    """`id` các từ refspec của `git push` (sau remote) — không gồm giá trị `-C`/`--git-dir` trước lệnh con."""
+    """`id` các từ ở vị trí tên-ref mà chuỗi rỗng (HEAD tách rời) vô hại — truy vấn nhánh hiện tại tính được ở đó: refspec
+    `git push` CHIẾM TRỌN bởi một mở rộng (`src:dst` → rỗng thành `:dst` xoá nhánh remote — T-3947), đối số `git
+    pull/fetch/rebase/merge/checkout/switch`, `--set-upstream-to=`/`-u` của `git branch`, đối số `gh pr create`.
+    Không gồm giá trị `-C`/`--git-dir` trước lệnh con."""
     name = posixpath.basename(_dequote(words[0])) if words else ""
     plain = [_dequote(a) for a in words[1:]]
+    if name == "gh":
+        return {id(w) for w in words[3:]} if plain[:2] == ["pr", "create"] else set()
     k = _git_sub_at(plain)
-    return {id(w) for w in words[k + 2 :]} if name == "git" and plain[k : k + 1] == ["push"] else set()
+    sub, rest = plain[k : k + 1], words[k + 2 :]
+    if name != "git" or not sub:
+        return set()
+    if sub[0] == "push":
+        return {id(w) for w in rest if REF_WHOLE_RE.fullmatch(w)}
+    if sub[0] == "branch":
+        return {id(w) for w, p in zip(rest, ["", *plain[k + 1 :]]) if p == "-u" or w.startswith("--set-upstream-to=")}
+    return {id(w) for w in rest} if sub[0] in REF_SUBS else set()
+
+
+REF_SUBS = frozenset("pull fetch rebase merge checkout switch".split())
+REF_WHOLE_RE = re.compile(r'("?)(?:\$\((?:[^()"]|"[^"$`]*")*\)|\$\{?[A-Za-z_]\w*\}?)\1')
 
 
 def _weak_seeds(seg: List[str], ref: bool = False) -> Set[str]:
@@ -3217,6 +3282,31 @@ def _opaque_value_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> st
     cmds = _simple_cmds(cmd) if DD_SUBST_RE.search(cmd) or "$" in cmd or CD_WORD_RE.search(cmd) else None
     if not cmds:
         return ""
+    token = SUBST_ROOTED.set(_cwd_rooted(cmds, root, cwd))
+    try:
+        return _opaque_value_scan(cmd, cmds, root, cwd)
+    finally:
+        SUBST_ROOTED.reset(token)
+
+
+def _cwd_rooted(cmds: List[Tuple[List[str], List[str]]], root: str, cwd: Optional[str]) -> bool:
+    """Thư mục hiện tại ở dưới gốc dự án suốt lệnh: thư mục phiên dưới gốc, mọi `cd`/`pushd` vào đường chữ trơn không
+    `..`/`~`/`-` (tuyệt đối thì dưới gốc), không `popd`."""
+    if not root or not _inside_root(cwd or root, root, None):
+        return False
+    for _, words in cmds:
+        name = posixpath.basename(_dequote(words[0])) if words else ""
+        args = [_dequote(a) for a in _no_redirects(words[1:])]
+        if name == "popd" or name in ("cd", "pushd") and not args:
+            return False
+        for a in args if name in ("cd", "pushd") else []:
+            bad = re.search(r"[$`*?\[]", a) or a[:1] in ("~", "-") or DOTDOT_RE.search(a)
+            if bad or a[:1] == "/" and not _inside_root(a, root, None):
+                return False
+    return True
+
+
+def _opaque_value_scan(cmd: str, cmds: List[Tuple[List[str], List[str]]], root: str, cwd: Optional[str]) -> str:
     names, weak = _opaque_names(cmds), _opaque_names(cmds, True)
     # T-3945: biến gán từ truy vấn nhánh (`B=$(git branch --show-current)`) chỉ tính được ở refspec `git push`
     push = any(_push_ref_ids(w) for _, w in cmds)
@@ -3240,10 +3330,20 @@ def _opaque_value_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> st
         refs = _push_ref_ids(words)
         for w, mode in checked:
             pool = (ref_weak if id(w) in refs else weak) if mode == DD_FULL else names
-            if mode != DD_NAMES and _dd_word_bad(w, pool, lit, mode, id(w) in refs):
+            bad = mode != DD_NAMES and _dd_word_bad(w, pool, lit, mode, id(w) in refs)
+            if bad or mode == DD_FULL and _dyn_dotdot(w, lit, cd.computed):
                 return OPAQUE_VALUE_WHY.format(clean_text(w)[:80])
         moved = max(moved, cd.moves(words))
     return ""
+
+
+def _dyn_dotdot(word: str, lit: Set[str], computed: bool) -> bool:
+    """T-3947: `..` sau giá trị guard không biết (`"$d/../x"`, biến không gán chữ), hay đường tương đối có `..` sau khi
+    `cd` vào thư mục tính được (`cd "$(mktemp -d)" && rm -rf ../../home`)."""
+    flat = re.sub(r"['\"]", "", word)
+    i = flat.find("$")
+    dyn = i >= 0 and DOTDOT_RE.search(flat[i:]) is not None and not set(_var_refs(word)) <= lit
+    return dyn or computed and flat[:1] not in ("/", "~") and DOTDOT_RE.search(flat) is not None
 
 
 # Mức dời thư mục: thư mục mờ (`cd "$(…)"` — mọi đích ghi tương đối sau đó, cả chuyển hướng) · thư mục không biết
@@ -3517,6 +3617,7 @@ class _CdScope:
         self.home_kept = not {"HOME", OPAQUE_ANY} & (assigned | weak)
         self.pushes: List[bool] = []  # T-3945 (R6): mỗi `pushd` có phải `pushd <chữ trơn>` (`_CwdUnion.popd`)
         self.popped = bool(CD_REPEAT_RE.search(cmd)) or _stack_opaque(cmd)  # vòng lặp/hàm, ghi DIRSTACK: không mô hình
+        self.computed = False  # T-3947: đã `cd` vào thư mục tính được (`"$(mktemp -d)"`) — `..` sau đó ra ngoài
 
     def moves(self, words: List[str]) -> int:
         """Mức dời thư mục (`MOVED_*`) của lệnh `words`."""
@@ -3536,7 +3637,10 @@ class _CdScope:
         dyn = [a for a in args if re.search(r"[$`]", a)]
         if dyn:
             opaque = any(_cd_moved(w, self.weak, self.lit) and not self._home_inside(w) for w in dyn)
+            self.computed = self.computed or any(DD_SUBST_RE.search(w) for w in dyn)
             return MOVED_OPAQUE if opaque else MOVED_NONE
+        if self.computed and any(DOTDOT_RE.search(p) for p in plain):  # T-3947: lên khỏi thư mục tính được
+            return MOVED_OPAQUE
         # `~+/x` (= `$PWD/x`) không có `..`: thư mục con của thư mục hiện tại
         plain = ["." + p[2:] if p[:2] == "~+" and ".." not in p.split("/") else p for p in plain]
         if len(_cd_operands(plain)[0]) > 1:  # `cd a b`: bash báo lỗi, không đổi thư mục
@@ -3824,8 +3928,13 @@ def _source_on_path(name: str, cmd: str) -> bool:
 
 @functools.lru_cache(maxsize=64)
 def _path_has(name: str, path: str) -> bool:
-    """`name` là tệp trong một thư mục của `path` (nhớ: thư mục PATH trên ổ chậm — WSL `/mnt/c` — tốn hàng chục ms)."""
-    return any(os.path.isfile(os.path.join(d, name)) for d in path.split(os.pathsep) if d)
+    """`name` là tệp trong một thư mục của `path` — T-3947: chỉ thư mục dưới `/usr`, `/opt`, `/bin`, `/sbin`, `$HOME`
+    (thư mục PATH trên ổ chậm — WSL `/mnt/c` — tốn ~140 ms/lệnh; tệp trồng vào PATH qua nhiều lệnh là giới hạn chấp nhận
+    (a) của D-507)."""
+    home = os.path.expanduser("~").rstrip("/")
+    roots = ("/usr/", "/opt/", "/bin/", "/sbin/", home + "/")
+    dirs = [d for d in path.split(os.pathsep) if (d.rstrip("/") + "/").startswith(roots)]
+    return any(os.path.isfile(os.path.join(d, name)) for d in dirs)
 
 
 # T-3945 (R2, D-503 b): công cụ NGOÀI danh sách đóng đọc-dữ-liệu (`STDIN_DATA_OK`) đọc stdin như CHƯƠNG TRÌNH có thể chạy
@@ -10560,14 +10669,54 @@ def _git_inner(target: str, root: str, cwd: Optional[str]) -> bool:
     if not root or target.endswith(".lock") or OLDPWD_REF_RE.match(target):
         return False
     t = _resolve_target(HOME_REF_RE.sub("~", target), root, cwd)
-    if "$" in t or "`" in t:
-        return False
+    if "$" in t or "`" in t:  # biến vòng `for f in */index` (T-3947): xét từng mẫu chữ của danh sách
+        return any(_git_inner(p, root, cwd) for p in _loop_globs(target))
     parts = t.split("/")
     k = next((i for i, c in enumerate(parts) if GLOB_RE.search(c)), len(parts))
     base = _real_target("/".join(parts[:k]) or ("/" if t.startswith("/") else "."), root, cwd)
-    r = os.path.realpath(root)
-    deeper = k < len(parts) - 1 and parts[k][:1] == "." and fnmatch.fnmatchcase(".git", parts[k])
-    return base.startswith(r + "/.git/") or base == r and deeper
+    # T-3947: glob ngay sau `.git` (`.git/*`, `cd .git && rm -f *`) là bên trong; lệnh bật dotglob/GLOBIGNORE → glob ở
+    # thư mục cha khớp `.git` không cần dấu chấm đầu (`*/index`, `?git/index`)
+    dot = any(DOTGLOB_RE.search(re.sub(r"['\"\\]", "", layer)) for layer in SHADOW.get())
+    deeper = k < len(parts) - 1 and (parts[k][:1] == "." or dot) and fnmatch.fnmatchcase(".git", parts[k])
+    return any(base.startswith(g + "/") or base == g and k < len(parts) for g in _git_dirs(root)) or (
+        base == os.path.realpath(root) and deeper
+    )
+
+
+DOTGLOB_RE = re.compile(r"dotglob|GLOBIGNORE")
+LOOP_LIST_RE = re.compile(r"(?<![\w-])for\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
+
+
+def _loop_globs(target: str) -> List[str]:
+    """`target` (`"$f"`, `${f}/x`) với biến vòng `for` của các tầng đang đọc thay bằng từng từ chữ trong danh sách."""
+    out: List[str] = []
+    for layer in SHADOW.get():
+        for m in LOOP_LIST_RE.finditer(layer):
+            ref = re.compile(rf"\$(?:{m[1]}(?!\w)|\{{{m[1]}\}})")
+            words = [_dequote(w) for w in m[2].split()]
+            out += [ref.sub(w, _dequote(target)) for w in words if "$" not in w and ref.search(target)]
+    return out
+
+
+@functools.lru_cache(maxsize=16)
+def _git_dirs(root: str) -> Tuple[str, ...]:
+    """Thư mục git là hàng rào: `gốc/.git`; gốc là worktree liên kết (`.git` là TỆP `gitdir: …`) → cả gitdir riêng và
+    `.git` chung của repo chính (`commondir`) — T-3947. Đọc lỗi → chỉ `gốc/.git`."""
+    own = os.path.realpath(root) + "/.git"
+    try:
+        text = _read_gitfile(own) if os.path.isfile(own) else ""
+        m = re.match(r"gitdir:\s*(\S.*?)\s*$", text)
+        gitdir = os.path.realpath(os.path.join(os.path.dirname(own), m[1])) if m else ""
+        common = _read_gitfile(os.path.join(gitdir, "commondir")).strip() if gitdir else ""
+    except (OSError, UnicodeDecodeError):
+        return (own,)
+    extra = [gitdir, os.path.realpath(os.path.join(gitdir, common)) if common else ""]
+    return (own, *[g for g in extra if g])
+
+
+def _read_gitfile(path: str) -> str:
+    with open(path, encoding="utf-8") as f:
+        return f.read(4096)
 
 
 DD_SAFE_OUT = {"of=/dev/null", "of=/dev/stdout", "of=/dev/stderr"}
