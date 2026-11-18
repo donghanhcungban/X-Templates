@@ -489,6 +489,9 @@ FALSE_BLOCK_DENY = (
     "for d in a b; do popd; pushd web; done; rm -rf dist",
     "pushd web && popd +1 && rm -rf dist",
     "cd ~ && pushd web; popd; rm -rf .ssh",
+    "pushd . >/dev/null; DIRSTACK[1]=/etc; popd >/dev/null; rm -rf ssl",  # ngăn xếp bị sửa: popd về đâu không biết
+    "pushd . >/dev/null; read 'DIRSTACK[1]' <<< /etc; popd >/dev/null; rm -rf ssl",
+    'pushd web; printf -v "$n" %s /etc; popd; rm -rf ssl',
     'for n in 10 3x; do sed -n "${n}p" f; done',
     'for n in 1 2; do n=x; sed -n "${n}p" f; done',
     'for n in "1;e id" 2; do sed -n "${n}p" f; done',
