@@ -43,8 +43,7 @@ class D503InvariantTest(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 300)
 
     def test_no_dangerous_combination_allowed(self):
-        # Thời gian CPU của tiến trình test (không phải giờ tường): hạn 60 s không giòn khi máy chạy song song nhiều test
-        # (T-3952: 44 s chạy riêng, 114 s giờ tường dưới tải -P 6 với cùng số dòng).
+        # T-3951: thời gian CPU của tiến trình — không giòn khi máy chạy song song nhiều module (đồng hồ tường đo cả chờ)
         start = time.process_time()
         leaked = []
         for line in FIXTURE.read_text(encoding="utf-8").splitlines():
