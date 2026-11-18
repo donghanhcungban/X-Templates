@@ -10906,9 +10906,9 @@ def _delete_reading(name: str, args: List[str], root: str, cwd: Optional[str]) -
     verdict = _delete_verdict(name, args, root, cwd)
     if verdict[0] or name not in GO_DELETERS - {"rmdir"}:
         return verdict
-    secret = next((t for t in _positionals(args) if _home_secret(HOME_REF_RE.sub("~", t))), "")  # T-3951 A11
-    if secret and root != "/":  # gốc giả `/` của container: đường là của container
-        return "deny", HOME_SECRET_WHY.format(secret)
+    dotfile = next((t for t in _positionals(args) if _home_dotfile(HOME_REF_RE.sub("~", t))), "")  # T-3951 A11
+    if dotfile and root != "/":  # gốc giả `/` của container: đường là của container
+        return "deny", HOME_DOTFILE_WHY.format(dotfile)
     hit = next((t for t in _positionals(args) if _git_inner(t, root, cwd)), "")
     return ("deny", GIT_INNER_WHY.format(hit)) if hit else verdict
 
@@ -14894,7 +14894,7 @@ def _write_asks(
     asks += _ledger_asks(n, argv, root, cwd) + _go_sign_asks(n, argv, targets, root, cwd)
     asks += _prod_decided_asks(n, argv, targets, root, cwd)  # AUD-SEC-804
     asks += [a for a in _fence_argv_asks(n, argv, root, cwd) if a not in asks]  # T-3951 A9
-    asks += _home_secret_asks(n, argv, targets, root, cwd)  # T-3951 A11
+    asks += _home_dotfile_asks(n, argv, targets, root, cwd)  # T-3951 A11
     return asks + [EVIDENCE_WHY.format(f"git {n[1]} {t}") for t, k in restored if k == "evidence"]
 
 
@@ -15008,15 +15008,15 @@ def _go_reader(n: List[str], argv: List[str]) -> bool:
 # T-3951 A11 (AUD-SEC-060): ghi đè/xoá khoá và cấu hình ở home hay `/etc` không đảo ngược được, dễ lỡ tay (`echo … >
 # ~/.bashrc` thay `>>`, `> ~/.ssh/authorized_keys`, `rm -f ~/.ssh/*`, `> /etc/hosts`) → chặn; chỉ NỐI THÊM (`>>`,
 # `tee -a`) vào tệp khởi động shell (`HOME_RC`) cho chạy. Cùng cách giải đích/realpath như hàng rào.
-HOME_SECRET_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".kube"})
-HOME_SECRET_FILES = frozenset({".netrc", ".gitconfig", ".npmrc"})
+HOME_DOTFILE_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".kube"})
+HOME_DOTFILE_FILES = frozenset({".netrc", ".gitconfig", ".npmrc"})
 HOME_RC = frozenset({".bashrc", ".zshrc", ".profile", ".bash_profile", ".zprofile"})
-HOME_SECRET_WHY = (
+HOME_DOTFILE_WHY = (
     "ghi đè/xoá khoá hay cấu hình hệ thống/home qua Bash ({}) — không đảo ngược được; chỉ nối thêm `>>` vào rc"
 )
 
 
-def _home_secret(x: str) -> str:
+def _home_dotfile(x: str) -> str:
     """Loại đích `x`: 'secret' (`~/.ssh/**`, `~/.gnupg/**`, `~/.aws/**`, `~/.kube/**`, `~/.netrc`, `~/.npmrc`,
     `~/.gitconfig`), 'etc' (`/etc/**`), 'rc' (tệp khởi động shell ở home); khác → ''."""
     p = posixpath.normpath(os.path.expanduser(x)) if x[:1] in ("/", "~") else ""
@@ -15025,7 +15025,7 @@ def _home_secret(x: str) -> str:
     home = posixpath.normpath(os.path.expanduser("~"))
     rel = p[len(home) + 1 :] if p.startswith(home + "/") else ""
     first = rel.split("/", 1)[0]
-    if first in HOME_SECRET_DIRS or rel in HOME_SECRET_FILES:
+    if first in HOME_DOTFILE_DIRS or rel in HOME_DOTFILE_FILES:
         return "secret"
     return "rc" if rel in HOME_RC else ""
 
@@ -15039,7 +15039,7 @@ def _appends(t: str, n: List[str], argv: List[str]) -> bool:
     return n[:1] == ["tee"] and any(a in ("-a", "--append") or re.fullmatch(r"-\w*a\w*", a) for a in n[1:])
 
 
-def _home_secret_asks(n: List[str], argv: List[str], targets: List[str], root: str, cwd: Optional[str]) -> List[str]:
+def _home_dotfile_asks(n: List[str], argv: List[str], targets: List[str], root: str, cwd: Optional[str]) -> List[str]:
     out: List[str] = []
     if root == "/":  # trong container (gốc giả `/`): `/etc` là của container, không phải máy (`_container_asks`)
         return out
@@ -15047,9 +15047,9 @@ def _home_secret_asks(n: List[str], argv: List[str], targets: List[str], root: s
         xs = [t, *_where(t, root, cwd), *_real_targets(t, root, cwd)]
         if any(map(_global_git_config, xs)):  # cấu hình git toàn cục: luật AUD-SEC-424 (HOOK_BYPASS) xét
             continue
-        kinds = {_home_secret(x) for x in xs} - {""}
+        kinds = {_home_dotfile(x) for x in xs} - {""}
         if kinds - {"rc"} or kinds and not _appends(t, n, argv):
-            out.append(HOME_SECRET_WHY.format(t))
+            out.append(HOME_DOTFILE_WHY.format(t))
     return out
 
 

@@ -400,9 +400,9 @@ class A11HomeSecretTest(Base):
         self.assert_allow(A11_ALLOW)
 
     def test_kinds(self):
-        self.assertEqual(guard._home_secret("relative"), "")
-        self.assertEqual(guard._home_secret("/etc"), "etc")
-        self.assertEqual(guard._home_secret("~/.bashrc"), "rc")
+        self.assertEqual(guard._home_dotfile("relative"), "")
+        self.assertEqual(guard._home_dotfile("/etc"), "etc")
+        self.assertEqual(guard._home_dotfile("~/.bashrc"), "rc")
 
 
 A10_ALLOW = (
