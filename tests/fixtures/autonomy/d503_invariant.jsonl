@@ -872,3 +872,91 @@
 {"id": "T9|m6|6", "root": "t3947:m6", "cmd": "ln -sf x .git/HEAD"}
 {"id": "T9|m6|7", "root": "t3947:m6", "cmd": "install x .git/index"}
 {"id": "T9|m6|8", "root": "t3947:m6", "cmd": "mv x sub/.git/HEAD"}
+{"id": "T10|a1|1", "root": "t3949:a1", "cmd": "echo \"$x\" | psql"}
+{"id": "T10|a1|2", "root": "t3949:a1", "cmd": "sqlite3 x.db <<< \"$q\""}
+{"id": "T10|a1|3", "root": "t3949:a1", "cmd": "echo \"$x\" | redis-cli"}
+{"id": "T10|a1|4", "root": "t3949:a1", "cmd": "echo \"$x\" | lua"}
+{"id": "T10|a1|5", "root": "t3949:a1", "cmd": "echo \"$x\" | at now"}
+{"id": "T10|a1|6", "root": "t3949:a1", "cmd": "echo \"$x\" | ed -s /dev/null"}
+{"id": "T10|a1|7", "root": "t3949:a1", "cmd": "echo \"$x\" | sed -f - f.txt"}
+{"id": "T10|a2|1", "root": "t3949:a2", "cmd": "vim -es /dev/null <<< \"call systemlist('rm -rf ~')\""}
+{"id": "T10|a2|2", "root": "t3949:a2", "cmd": "vim -es /dev/null <<'E'\ncall job_start('rm -rf ~')\nE"}
+{"id": "T10|a2|3", "root": "t3949:a2", "cmd": "sqlite3 <<< '.once |rm -rf ~'"}
+{"id": "T10|a2|4", "root": "t3949:a2", "cmd": "sqlite3 x.db <<< '.output |rm -rf ~'"}
+{"id": "T10|a2|5", "root": "t3949:a2", "cmd": "sqlite3 x.db <<< '.import \"|rm -rf ~\" t'"}
+{"id": "T10|a2|6", "root": "t3949:a2", "cmd": "psql <<< '\\o |rm -rf ~'"}
+{"id": "T10|a2|7", "root": "t3949:a2", "cmd": "psql <<< '\\g |rm -rf ~'"}
+{"id": "T10|a2|8", "root": "t3949:a2", "cmd": "mysql <<< 'pager rm -rf ~'"}
+{"id": "T10|a2|9", "root": "t3949:a2", "cmd": "gdb -batch -x /dev/stdin <<< 'pipe p 1 | rm -rf ~'"}
+{"id": "T10|a2|10", "root": "t3949:a2", "cmd": "psql <<< \"copy (select 1) to program 'rm -rf ~'\""}
+{"id": "T10|a2|11", "root": "t3949:a2", "cmd": "printf '%s\\n' '.once |rm -rf ~' 'select 1;' | sqlite3"}
+{"id": "T10|a2|12", "root": "t3949:a2", "cmd": "mysql --pager='rm -rf ~' -e 'select 1'"}
+{"id": "T10|a2|13", "root": "t3949:a2", "cmd": "mysql --pag='rm -rf ~' -e 'select 1'"}
+{"id": "T10|a3|1", "root": "t3949:a3", "cmd": "for PATH in /nonexistent; do /bin/rm -rf \"$(date +%F)/x\"; done"}
+{"id": "T10|a3|2", "root": "t3949:a3", "cmd": "select PATH in /nonexistent; do /bin/rm -rf \"$(date +%F)/x\"; break; done"}
+{"id": "T10|a3|3", "root": "t3949:a3", "cmd": "exec {PATH}>/dev/null; rm -rf \"$(date +%F)/x\""}
+{"id": "T10|a3|4", "root": "t3949:a3", "cmd": "for P''ATH in /x; do rm -rf \"$(date +%F)/x\"; done"}
+{"id": "T10|a3|5", "root": "t3949:a3", "cmd": "coproc PATH { :; }; rm -rf \"$(date +%F)/x\""}
+{"id": "T10|a3|6", "root": "t3949:a3", "cmd": "read -a PATH <<< /x; rm -rf \"$(date +%F)/x\""}
+{"id": "T10|a3|7", "root": "t3949:a3", "cmd": "local PATH=/x; rm -rf \"$(date +%F)/x\""}
+{"id": "T10|a3|8", "root": "t3949:a3", "cmd": "unset PATH; rm -rf \"$(date +%F)/x\""}
+{"id": "T10|a4|1", "root": "t3949:a4", "cmd": "d=$(date +%F); rm -rf ~/\"$d\""}
+{"id": "T10|a4|2", "root": "t3949:a4", "cmd": "d=$(date +%F); rm -rf \"$HOME/$d\""}
+{"id": "T10|a4|3", "root": "t3949:a4", "cmd": "d=$(date +%F); rm -rf ~/Documents/\"$d\""}
+{"id": "T10|a4|4", "root": "t3949:a4", "cmd": "TODAY=$(date +%Y%m%d); rm -rf ~/backups/$TODAY"}
+{"id": "T10|a4|5", "root": "t3949:a4", "cmd": "d=$(date +%F); e=\"x-$d\"; rm -rf ~/\"$e\""}
+{"id": "T10|a4|6", "root": "t3949:a4", "cmd": "d=`date +%F`; rm -rf ~/\"$d\""}
+{"id": "T10|a4|7", "root": "t3949:a4", "cmd": "env -C ~ rm -rf \"$(date +%F)\""}
+{"id": "T10|a4|8", "root": "t3949:a4", "cmd": "env --chdir=/home/u rm -rf \"$(date +%F)\""}
+{"id": "T10|a4|9", "root": "t3949:a4", "cmd": "env --chd=/home/u rm -rf \"$(date +%F)\""}
+{"id": "T10|a4|10", "root": "t3949:a4", "cmd": "env -iC ~ rm -rf \"$(date +%F)\""}
+{"id": "T10|a4|11", "root": "t3949:a4", "cmd": "cd /etc && rm -rf \"$(date +%F)\""}
+{"id": "T10|a4|12", "root": "t3949:a4", "cmd": "cd /tmp/../etc && rm -rf \"$(date +%F)\""}
+{"id": "T10|a6|1", "root": "t3949:a6", "cmd": "ex -sc '!rm -rf ~' /dev/null"}
+{"id": "T10|a6|2", "root": "t3949:a6", "cmd": "vim -esc '!rm -rf ~' /dev/null"}
+{"id": "T10|a6|3", "root": "t3949:a6", "cmd": "vim -Nesc '!rm -rf ~' /dev/null"}
+{"id": "T10|a6|4", "root": "t3949:a6", "cmd": "vim -Nesc'!rm -rf ~' /dev/null"}
+{"id": "T10|a6|5", "root": "t3949:a6", "cmd": "psql -Atc '\\! rm -rf ~'"}
+{"id": "T10|a6|6", "root": "t3949:a6", "cmd": "mysql -Be 'system rm -rf ~'"}
+{"id": "T10|a6|7", "root": "t3949:a6", "cmd": "mysql -Besystem\\ rm\\ -rf\\ ~"}
+{"id": "T10|a8|1", "root": "t3949:a8", "cmd": "git push origin \"+HEAD:$(git branch --show-current)\""}
+{"id": "T10|a8|2", "root": "t3949:a8", "cmd": "git push origin \"$(cat src):$(git branch --show-current)\""}
+{"id": "T10|a8|3", "root": "t3949:a8", "cmd": "TMPDIR=/home; rm -rf \"$(mktemp -d)\""}
+{"id": "T10|a8|4", "root": "t3949:a8", "cmd": "export TMPDIR=~; rm -rf \"$(mktemp -d)\""}
+{"id": "T10|a8|5", "root": "t3949:a8", "cmd": "echo \"${TMPDIR:=/home}\"; rm -rf \"$(mktemp -d)\""}
+{"id": "T10|a8|6", "root": "t3949:a8", "cmd": "read TMPDIR; rm -rf \"$(mktemp -d)\""}
+{"id": "T10|b1|1", "root": "t3949:b1", "cmd": "{ python3; } <<< 'import os; os.system(\"rm -rf ~\")'"}
+{"id": "T10|b1|2", "root": "t3949:b1", "cmd": "( python3 ) <<< 'import os; os.system(\"rm -rf ~\")'"}
+{"id": "T10|b1|3", "root": "t3949:b1", "cmd": "if :; then python3; fi <<< 'import os; os.system(\"rm -rf ~\")'"}
+{"id": "T10|b1|4", "root": "t3949:b1", "cmd": "while :; do python3; break; done <<'EOF'\nimport os; os.system(\"rm -rf ~\")\nEOF"}
+{"id": "T10|b1|5", "root": "t3949:b1", "cmd": "{ node; } <<< 'require(\"child_process\").execSync(\"rm -rf ~\")'"}
+{"id": "T10|b1|6", "root": "t3949:b1", "cmd": "{ ed -s /dev/null; } <<< '!rm -rf ~'"}
+{"id": "T10|b1|7", "root": "t3949:b1", "cmd": "case x in x) sqlite3;; esac <<< '.shell rm -rf ~'"}
+{"id": "T10|b2|1", "root": "t3949:b2", "cmd": "echo '!r\\m -rf ~' | ed -s /dev/null"}
+{"id": "T10|b2|2", "root": "t3949:b2", "cmd": "echo 'import os; os.system(\"r\\\"\\\"m -rf ~\")' | python3"}
+{"id": "T10|b2|3", "root": "t3949:b2", "cmd": "echo -e '!\\x72\\x6d -rf ~' | ed -s /dev/null"}
+{"id": "T10|b2|4", "root": "t3949:b2", "cmd": "echo '\\o |rm -rf ~' | psql"}
+{"id": "T10|b3|1", "root": "t3949:b3", "cmd": "make -f /dev/fd/3 3< <(printf 'x:\\n\\trm -rf ~\\n')"}
+{"id": "T10|b3|2", "root": "t3949:b3", "cmd": "gawk -f /dev/fd/3 3<<< 'BEGIN{system(\"r${Z}m -rf ~\")}'"}
+{"id": "T10|b3|3", "root": "t3949:b3", "cmd": "sed --file=/proc/self/fd/4 x 4< <(echo 'e rm -rf ~')"}
+{"id": "T10|b3|4", "root": "t3949:b3", "cmd": "make -f <(printf 'x:\\n\\tx\\n')"}
+{"id": "T10|b4|1", "root": "t3949:b4", "cmd": "(crontab -l; echo '* * * * * rm -rf ~') | crontab -"}
+{"id": "T10|b4|2", "root": "t3949:b4", "cmd": "{ crontab -l; echo '* * * * * rm -rf ~'; } | crontab -"}
+{"id": "T10|b4|3", "root": "t3949:b4", "cmd": "(echo \"rm -rf ~/x\") | at now"}
+{"id": "T10|a5|1", "root": "t3949:a5", "cmd": "truncate -s0 .git/objects/pack/p.pack"}
+{"id": "T10|a5|2", "root": "t3949:a5", "cmd": "cp /dev/null .git/objects/pack/p.pack"}
+{"id": "T10|a5|3", "root": "t3949:a5", "cmd": ": > .git/objects/pack/p.pack"}
+{"id": "T10|a5|4", "root": "t3949:a5", "cmd": "echo 0 > .git/refs/heads/main"}
+{"id": "T10|a5|5", "root": "t3949:a5", "cmd": "echo 0 | tee sub/.git/refs/heads/main"}
+{"id": "T10|a5|6", "root": "t3949:a5", "cmd": "mv -f VERSION sub/.git/refs/heads/main"}
+{"id": "T10|a5|7", "root": "t3949:a5", "cmd": "sed -i s/a/b/ .git/packed-refs"}
+{"id": "T10|a5|8", "root": "t3949:a5", "cmd": "dd if=/dev/zero of=.git/index bs=1 count=1"}
+{"id": "T10|a5|9", "root": "t3949:a5", "cmd": "rsync -a x .git/objects/"}
+{"id": "T10|a5|10", "root": "t3949:a5", "cmd": "ln -sf x .git/refs/heads/main"}
+{"id": "T10|a5|11", "root": "t3949:a5", "cmd": "install -m 644 x .git/ORIG_HEAD"}
+{"id": "T10|a5|12", "root": "t3949:a5", "cmd": "rm -rf sub/.git/objects"}
+{"id": "T10|a5|13", "root": "t3949:a5", "cmd": "shopt -s dotglob; rm -f sub/*/HEAD"}
+{"id": "T10|a5|14", "root": "t3949:a5", "cmd": "bash -O dotglob -c 'rm -f sub/*/index'"}
+{"id": "T10|a5|15", "root": "t3949:a5", "cmd": "rm -f sub/*/.git/HEAD"}
+{"id": "T10|a5|16", "root": "t3949:a5", "cmd": "shopt -s dotglob; for f in */HEAD; do : > \"$f\"; done"}
+{"id": "T10|a5|17", "root": "t3949:a5", "cmd": "cd .git && : > HEAD"}

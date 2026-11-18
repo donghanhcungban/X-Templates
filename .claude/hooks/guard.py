@@ -2856,12 +2856,19 @@ def _mktemp_ok(n: List[str]) -> bool:
     """Thư mục cha của `mktemp` (`-p`, `--tmpdir`, mẫu có `/`, TMPDIR) không trỏ về home/lên trên: đối số có `~`/`$HOME`/
     `..`, hay TMPDIR gán trong lệnh → không ưu đãi. Thư mục khác (`"$OUT/ran.XXXXXX"`, test_ci) giữ — tên vẫn mới; ra
     ngoài chỉ qua `..` sau giá trị (`DOTDOT_RE`, `_dyn_dotdot`, `_CdScope.computed`)."""
-    if n[0] != "mktemp" or any("TMPDIR" in layer for layer in SHADOW.get()):
+    if n[0] != "mktemp" or any(map(_tmpdir_written, SHADOW.get())):
         return False
     return not any(MKTEMP_HOME_RE.search(a) for a in n[1:])
 
 
 MKTEMP_HOME_RE = re.compile(r"~|\$\{?HOME\b|(?:^|[/=])\.\.(?:/|$)")
+TMPDIR_READ_RE = re.compile(r"\$\{?[#!]?TMPDIR(?!\w)(?!:?=)")
+
+
+def _tmpdir_written(layer: str) -> bool:
+    """T-3949 (A8): TMPDIR ở chỗ KHÔNG phải đọc `$TMPDIR`/`${TMPDIR:-…}` (gán, `read`/`for`/`export TMPDIR`…) — chỉ
+    nhắc/đọc (`ls "$TMPDIR"`, `mktemp -p "$TMPDIR"` = thư mục mặc định của mktemp) giữ ưu đãi."""
+    return "TMPDIR" in TMPDIR_READ_RE.sub("", re.sub(r"\\\n|['\"\\]", "", layer)) if "TMPDIR" in layer else False
 
 
 def _date_rooted(prefix: str) -> bool:
@@ -2931,8 +2938,10 @@ SHADOW_ARITH_RE = re.compile(
 # T-3947: tên nhạy ở vị trí GHI — gán (`X=`, `X+=`, `X[i]=`, `${X:=…}`), giá trị gán là tên (`declare -n Z=PATH`,
 # `n=PATH` rồi dùng gián tiếp); nhắc chữ (`echo "PATH is set"`, `grep -c IFS`) thì không. Builtin ghi theo tên
 # (`read PATH`, `printf -v`, `export`…) do `_shadow_seg` xét.
+# T-3949 (A3): biến vòng `for`/`select` (`for PATH in /x; do …`), mảng `coproc PATH { …; }`, fd `exec {PATH}>f`
 SHADOW_EXT_WRITE_RE = re.compile(
     rf"(?<!\w)(?:{SHADOW_EXT_NAMES})(?:\[[^\]]*\])?(?:\+?=|:=)|(?<==)(?:{SHADOW_EXT_NAMES})(?!\w)"
+    rf"|(?<![\w-])(?:for|select|coproc)\s+(?:{SHADOW_EXT_NAMES})(?!\w)|\{{(?:{SHADOW_EXT_NAMES})\}}\s*[<>]"
 )
 SHADOW_ARITH_OK_RE = re.compile(r"\$?\(\([\d\s+*/%<>=!&|^~?:,-]*\)\)")
 SHADOW_SAFE = frozenset(
@@ -3074,14 +3083,20 @@ def _push_ref_ids(words: List[str]) -> Set[int]:
     if name != "git" or not sub:
         return set()
     if sub[0] == "push":
-        return {id(w) for w in rest if REF_WHOLE_RE.fullmatch(w)}
+        return {id(w) for w in rest if REF_WHOLE_RE.fullmatch(w) or REF_DST_RE.fullmatch(w)}
     if sub[0] == "branch":
         return {id(w) for w, p in zip(rest, ["", *plain[k + 1 :]]) if p == "-u" or w.startswith("--set-upstream-to=")}
     return {id(w) for w in rest} if sub[0] in REF_SUBS else set()
 
 
 REF_SUBS = frozenset("pull fetch rebase merge checkout switch".split())
-REF_WHOLE_RE = re.compile(r'("?)(?:\$\((?:[^()"]|"[^"$`]*")*\)|\$\{?[A-Za-z_]\w*\}?)\1')
+REF_EXP = r'\$\((?:[^()"]|"[^"$`]*")*\)|\$\{?[A-Za-z_]\w*\}?'
+REF_WHOLE_RE = re.compile(rf'("?)(?:{REF_EXP})\1')
+# T-3949 (A8): `SRC:<mở rộng>`/`SRC:refs/heads/<mở rộng>` — rỗng thành đích rỗng/`refs/heads/` (git từ chối); nguồn chữ
+# không `+`/`:` (`HEAD:"$(git branch --show-current)"`, `"HEAD:refs/heads/$(…)"`)
+REF_DST_RE = re.compile(
+    rf'[\w./@^~-]*\w:("?)(?:refs/heads/)?(?:{REF_EXP})\1|"[\w./@^~-]*\w:(?:refs/heads/)?(?:{REF_EXP})"'
+)
 
 
 def _weak_seeds(seg: List[str], ref: bool = False) -> Set[str]:
@@ -3290,20 +3305,32 @@ def _opaque_value_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> st
 
 
 def _cwd_rooted(cmds: List[Tuple[List[str], List[str]]], root: str, cwd: Optional[str]) -> bool:
-    """Thư mục hiện tại ở dưới gốc dự án suốt lệnh: thư mục phiên dưới gốc, mọi `cd`/`pushd` vào đường chữ trơn không
-    `..`/`~`/`-` (tuyệt đối thì dưới gốc), không `popd`."""
+    """Thư mục hiện tại ở dưới gốc dự án (hay thư mục tạm) suốt lệnh: thư mục phiên dưới gốc, mọi `cd`/`pushd` vào
+    đường chữ trơn không `..`/`~`/`-` (tuyệt đối thì dưới gốc hay `/tmp`, `/var/tmp` — T-3949 A8), không `popd`,
+    không `env -C`/`--chdir` (T-3949 A4: `env -C ~ rm -rf "$(date +%F)"`)."""
     if not root or not _inside_root(cwd or root, root, None):
         return False
-    for _, words in cmds:
+    for seg, words in cmds:
         name = posixpath.basename(_dequote(words[0])) if words else ""
         args = [_dequote(a) for a in _no_redirects(words[1:])]
-        if name == "popd" or name in ("cd", "pushd") and not args:
+        if name == "popd" or name in ("cd", "pushd") and not args or _env_chdir(seg[: len(seg) - len(words)]):
             return False
         for a in args if name in ("cd", "pushd") else []:
             bad = re.search(r"[$`*?\[]", a) or a[:1] in ("~", "-") or DOTDOT_RE.search(a)
-            if bad or a[:1] == "/" and not _inside_root(a, root, None):
+            if bad or a[:1] == "/" and not _inside_root(a, root, None) and not DATE_TMP_RE.match(a + "/"):
                 return False
     return True
+
+
+def _env_chdir(prefix: List[str]) -> bool:
+    """Tiền tố lệnh có `env` với `-C`/`--chdir` (cả cụm cờ ngắn `-iC`, tên dài viết tắt `--ch=`)."""
+    plain = [_dequote(t) for t in prefix]
+    k = next((i for i, p in enumerate(plain) if posixpath.basename(p) == "env"), len(plain))
+    for p in plain[k + 1 :]:
+        key = p.partition("=")[0]
+        if p[:1] == "-" and p[1:2] != "-" and "C" in p or len(key) >= 4 and "--chdir".startswith(key):
+            return True
+    return False
 
 
 def _opaque_value_scan(cmd: str, cmds: List[Tuple[List[str], List[str]]], root: str, cwd: Optional[str]) -> str:
@@ -3319,6 +3346,7 @@ def _opaque_value_scan(cmd: str, cmds: List[Tuple[List[str], List[str]]], root: 
     ref_weak |= unmodelled
     lit = (_lit_names(cmds, cmd) | {GLOB_MARK + n for n in _glob_loop_names(cmds, cmd)}) - unmodelled
     cd, sed = _CdScope(cmd, cmds, weak | unmodelled, lit, root), _SedCtx(cmd, cmds, cwd or root, root)
+    dated = _date_names(cmds) if "date" in cmd else set()
     moved = MOVED_NONE
     # hậu tố từ tên lệnh có luật sau trình chạy gói/tên lạ (`uv run rm "$(…)"`) xét như lệnh đơn (T-3937)
     steps = [s for seg, words in cmds for s in [(seg, words), *((t, t) for t in _runner_tails(words))]]
@@ -3331,10 +3359,34 @@ def _opaque_value_scan(cmd: str, cmds: List[Tuple[List[str], List[str]]], root: 
         for w, mode in checked:
             pool = (ref_weak if id(w) in refs else weak) if mode == DD_FULL else names
             bad = mode != DD_NAMES and _dd_word_bad(w, pool, lit, mode, id(w) in refs)
+            bad = bad or mode == DD_FULL and bool(dated) and _date_ref_bad(w, dated)
             if bad or mode == DD_FULL and _dyn_dotdot(w, lit, cd.computed):
                 return OPAQUE_VALUE_WHY.format(clean_text(w)[:80])
         moved = max(moved, cd.moves(words))
     return ""
+
+
+# T-3949 (A4): biến gán từ `$(date …)` (hay từ biến như thế) mang giá trị tên LÁ có thể đã có — chỗ dùng cũng chỉ ưu
+# đãi dưới gốc/thư mục tạm như `$(date)` viết thẳng (`d=$(date +%F); rm -rf ~/"$d"` = `rm -rf ~/"$(date +%F)"`)
+DATE_SUBST_RE = re.compile(r"\$\(\s*date(?!\w)|`\s*date(?!\w)")
+
+
+def _date_names(cmds: List[Tuple[List[str], List[str]]]) -> Set[str]:
+    out: Set[str] = set()
+    for seg, _ in cmds:
+        for t in seg:
+            m = ASSIGN_WORD_RE.match(t)
+            if m and (DATE_SUBST_RE.search(t, m.end()) or _var_refs(t[m.end() :]) & out):
+                out.add(m[1])
+    return out
+
+
+def _date_ref_bad(word: str, dated: Set[str]) -> bool:
+    kind = _CodeView(word).kind
+    return any(
+        (m[2] or "") in dated and kind[m.start()] != "q" and not _date_rooted(word[: m.start()])
+        for m in VAR_REF_NAME_RE.finditer(word)
+    )
 
 
 def _dyn_dotdot(word: str, lit: Set[str], computed: bool) -> bool:
@@ -3343,7 +3395,8 @@ def _dyn_dotdot(word: str, lit: Set[str], computed: bool) -> bool:
     flat = re.sub(r"['\"]", "", word)
     i = flat.find("$")
     dyn = i >= 0 and DOTDOT_RE.search(flat[i:]) is not None and not set(_var_refs(word)) <= lit
-    return dyn or computed and flat[:1] not in ("/", "~") and DOTDOT_RE.search(flat) is not None
+    rel = flat[:1] not in ("/", "~") or flat[:2] in ("~+", "~-")  # T-3949: `~+/..` = `$PWD/..`
+    return dyn or computed and rel and DOTDOT_RE.search(flat) is not None
 
 
 # Mức dời thư mục: thư mục mờ (`cd "$(…)"` — mọi đích ghi tương đối sau đó, cả chuyển hướng) · thư mục không biết
@@ -3958,10 +4011,17 @@ INLINE_LONG = ("--eval", "--command", "--execute", "--expression", "--eval-comma
 INLINE_SHORT_RE = re.compile(r"-(?:[eEc]|ex|iex)")
 INLINE_ATTACHED_RE = re.compile(r"-[eEc](.+)", re.S)
 VI_NAMES = frozenset("ex vi vim nvim view vimdiff rvim rview gvim evim".split())
-STDIN_HINT_RE = re.compile(r"make|sqlite3|-[eEcf]|--|(?<!\S)\+")  # đường nhanh của luật lệnh đơn
+# T-3949 (A6): cụm cờ ngắn kiểu getopt có chữ cờ chương trình (`ex -sc '!…'`, `vim -Nesc`, `psql -Atc`, `mysql -Be`)
+STDIN_HINT_RE = re.compile(r"make|sqlite3|-[A-Za-z]*[eEcf]|--|(?<!\S)\+")  # đường nhanh của luật lệnh đơn
+CLUSTER_PROG = {**dict.fromkeys(VI_NAMES, "c"), "psql": "c", "expect": "c", "mysql": "e", "mariadb": "e", "dc": "e"}
 # lối thoát shell của công cụ đọc chương trình: ed/ex/vim/dc `!`, psql `\!`, sqlite3 `.shell`/`.system`, mysql
-# `system`, gdb `shell`, tcl/expect `exec`/`spawn`, lua `os.execute`/`io.popen`; `at`/`batch`/`crontab`: cả thân là lệnh
-PROG_ESCAPE_RE = re.compile(r"(?<!\w)\.?(?:shell|system|exec|spawn|popen|execute)(?!\w)|\\!|!(?!=)")
+# `system`, gdb `shell`, tcl/expect `exec`/`spawn`, lua `os.execute`/`io.popen`; `at`/`batch`/`crontab`: cả thân là lệnh.
+# T-3949 (A2): vim `systemlist()`/`job_start()`, mysql `pager`, gdb `pipe … |`, psql `copy … to program`, và ống sau
+# `.once`/`.output`/`.import` của sqlite3, `\o`/`\g` của psql (`.once |rm …`, `\o |rm …`)
+PROG_ESCAPE_RE = re.compile(
+    r"(?<!\w)\.?(?:shell|system|systemlist|job_start|exec|spawn|popen|execute|pager|pipe|program)(?!\w)|\\!|!(?!=)"
+    r"|(?:\.(?:once|output|import)|\\[og])(?!\w)[^|\n]*\|"
+)
 STDIN_WHOLE_TOOLS = frozenset("at batch crontab".split())
 STDIN_ESC, STDIN_WHOLE, STDIN_WORDS = 0, 1, 2
 STDIN_SPLIT_RE = re.compile(r"[\s;&|()!<>{}\[\],=:]+")
@@ -3976,22 +4036,53 @@ def _stdin_prog_why(cmd: str) -> str:
         plain = [_dequote(w) for w in _no_redirects(words)]
         if plain and (_stdin_script(plain) or _inline_prog(plain)):
             return STDIN_PROG_WHY.format(clean_text(" ".join(plain))[:80])
-    if "<<" in cmd and _heredoc_prog_runs(cmd):
+    if "<<" in cmd and _heredoc_prog_runs(cmd) or GROUP_FEED_RE.search(cmd) and _group_fed(cmd):
         return STDIN_PROG_WHY.format(clean_text(cmd)[:80])
     if "|" not in cmd and "<<<" not in cmd:
         return _prog_src_why(cmd)
     for pipe in pipelines(tokenize(cmd)):
         progs = [k for k, argv in enumerate(pipe) if _stdin_prog(argv)]
-        feeds = [None, *_pipe_feeds(pipe)] if progs else []
+        feeds = [None, *_pipe_feeds(pipe, True)] if progs else []
         for k in progs:
             argv, up = pipe[k], pipe[k - 1] if k else []
             # khâu trước đọc heredoc rồi đưa qua ống (`cat <<E | crontab -`)
             fed = _heredoc_scripts(cmd, lambda c: True) if "<<" in up else feeds[k] or []
             fed = fed + [argv[argv.index("<<<") + 1]] if "<<<" in argv[:-1] else fed
-            mode = _stdin_mode(argv)
-            if any(_stdin_body_runs(body, mode, True) for body in fed):
+            mode, prog = _stdin_mode(argv), _fed_prog(argv)
+            if any(_stdin_body_runs(body, mode, prog) for body in fed):
                 return STDIN_PROG_WHY.format(clean_text(" ".join(argv))[:80])
     return _prog_src_why(cmd)
+
+
+# T-3949 (A1): `$` trong here-string/chữ qua ống là CHƯƠNG TRÌNH lúc chạy chỉ với công cụ đọc chương trình
+# (`PROG_READERS`, `at`/`batch`/`crontab`, client CSDL/shell JS, trình thông dịch xét ở đây, sed/awk/make `-f -`);
+# công cụ khác đọc dữ liệu (`echo "$TOKEN" | docker login --password-stdin`, `bc <<< "$x * 2"`) — xét như thân chữ
+FED_PROG_TOOLS = frozenset("mongosh mongo redis-cli".split())
+
+
+# T-3949 (B1, B4): lệnh ghép nhận stdin (`{ python3; } <<< '…'`, `( ed ) <<<`, `fi`/`done <<E`) hay ra ống (`(crontab
+# -l; echo '…') | crontab -`) — tokenize bỏ ranh giới nhóm, nên thân đưa vào (here-string, heredoc, chữ echo/printf
+# trong lệnh) xét với MỌI lệnh đọc chương trình của lệnh (chặt; nguồn khác như `crontab -l` là nội dung đã cài)
+GROUP_FEED_RE = re.compile(r"(?:[)}]|(?<![\w-])(?:fi|done|esac))\s*(?:\d*<<|\|(?!\|))")
+
+
+def _group_fed(cmd: str) -> bool:
+    cmds = [[_dequote(w) for w in words] for _, words in _simple_cmds(cmd) or [] if words]
+    readers = [c for c in cmds if _prog_reader(c) or _stdin_script(c)]
+    if not readers:
+        return False
+    bodies = [t[t.index("<<<") + 1] for t in split_commands(tokenize(cmd)) if "<<<" in t[:-1]]
+    bodies += _heredoc_scripts(cmd, lambda c: True) if "<<" in cmd else []
+    bodies += [s for c in cmds if c[:1] in (["echo"], ["printf"]) for s in _echo_guesses(c)]
+    mode, prog = max(map(_stdin_mode, readers)), any(map(_fed_prog, readers))
+    return any(_stdin_body_runs(b, mode, prog) for b in bodies)
+
+
+def _fed_prog(argv: List[str]) -> bool:
+    n = _interp_argv(argv)
+    name = posixpath.basename(n[0]) if n else ""
+    known = name in PROG_READERS or name in STDIN_WHOLE_TOOLS or name in FED_PROG_TOOLS
+    return known or INTERP_RE.fullmatch(name) is not None or _stdin_script(n)
 
 
 def _heredoc_prog_runs(cmd: str) -> bool:
@@ -4075,13 +4166,15 @@ def _stdin_prog(argv: List[str]) -> bool:
 
 
 def _stdin_script(plain: List[str]) -> bool:
-    """sed/awk/make đọc chương trình từ stdin (`-f -`, `--file=/dev/stdin`); make có `--eval`/`-E`."""
+    """sed/awk/make đọc chương trình từ stdin (`-f -`, `--file=/dev/stdin`) hay nguồn mờ (T-3949 B3: `-f /dev/fd/3`,
+    `/proc/self/fd/N`, `<(…)`); make có `--eval`/`-E`."""
     name = posixpath.basename(plain[0])
     if name not in STDIN_SCRIPT_TOOLS:
         return False
     for a, nxt in zip(plain[1:], [*plain[2:], ""]):
         m = STDIN_FILE_FLAG_RE.fullmatch(a)
-        if m and (m[2] if m[2] else nxt) in STDIN_PATHS or "make" in name and _make_eval(a):
+        src = (m[2] if m[2] else nxt) if m else ""
+        if m and (src in STDIN_PATHS or _opaque_src([src])) or "make" in name and _make_eval(a):
             return True
     return False
 
@@ -4116,13 +4209,24 @@ def _inline_values(name: str, plain: List[str]) -> List[str]:
         attached = INLINE_ATTACHED_RE.fullmatch(a)
         if key[:2] == "--" and len(key) >= 4 and any(o.startswith(key) for o in INLINE_LONG):
             out.append(val if eq else nxt)
+        elif name in ("mysql", "mariadb") and eq and len(key) >= 5 and "--pager".startswith(key):
+            out.append("pager " + val)  # T-3949: `mysql --pager='rm …'` như lệnh `pager` của client
         elif INLINE_SHORT_RE.fullmatch(a) and (a != "-c" or with_c):
             out.append(nxt)
+        elif (k := _cluster_at(name, a)) > 1:
+            out.append(a[k + 1 :] or nxt)
         elif attached and (a[1] != "c" or with_c):
             out.append(attached[1])
         elif a[:1] == "+" and name in VI_NAMES or name == "sqlite3" and a[:1] != "-":
             out.append(a.removeprefix("+"))
     return out
+
+
+def _cluster_at(name: str, a: str) -> int:
+    """Vị trí chữ cờ chương trình (`CLUSTER_PROG`) trong cụm cờ ngắn `a` (`-sc`, `-Nesc`, `-Atc…`); không có → -1."""
+    letter = CLUSTER_PROG.get(name, "")
+    k = a.find(letter, 1) if letter and a[:1] == "-" else -1
+    return k if k > 1 and a[1:k].isascii() and a[1:k].isalpha() else -1
 
 
 def _stdin_mode(argv: List[str]) -> int:
@@ -10677,13 +10781,21 @@ def _git_inner(target: str, root: str, cwd: Optional[str]) -> bool:
     # T-3947: glob ngay sau `.git` (`.git/*`, `cd .git && rm -f *`) là bên trong; lệnh bật dotglob/GLOBIGNORE → glob ở
     # thư mục cha khớp `.git` không cần dấu chấm đầu (`*/index`, `?git/index`)
     dot = any(DOTGLOB_RE.search(re.sub(r"['\"\\]", "", layer)) for layer in SHADOW.get())
-    deeper = k < len(parts) - 1 and (parts[k][:1] == "." or dot) and fnmatch.fnmatchcase(".git", parts[k])
-    return any(base.startswith(g + "/") or base == g and k < len(parts) for g in _git_dirs(root)) or (
-        base == os.path.realpath(root) and deeper
-    )
+    if any(base.startswith(g + "/") or base == g and k < len(parts) for g in _git_dirs(root)):
+        return True
+    # T-3949 (A5): `.git` của repo con dưới gốc (`sub/.git/objects`, `shopt -s dotglob; rm -f sub/*/HEAD`) — mọi thành
+    # phần `.git` (chữ hay glob khớp) có phần sau nó, không chỉ `.git` ở gốc
+    real_root = os.path.realpath(root)
+    if base != real_root and not base.startswith(real_root + "/"):
+        return False
+    inner = base[len(real_root) :].split("/")
+    lit = any(c == ".git" for c in inner[:-1]) or inner[-1] == ".git" and k < len(parts)
+    return lit or any((c[:1] == "." or dot) and fnmatch.fnmatchcase(".git", c) for c in parts[k : len(parts) - 1])
 
 
-DOTGLOB_RE = re.compile(r"dotglob|GLOBIGNORE")
+# T-3949 (A8): bật dotglob (`shopt -s dotglob`, `bash -O dotglob`) hay đặt GLOBIGNORE — chỉ nhắc chữ (`echo 'dotglob is
+# off'`) hay đọc `$GLOBIGNORE` thì không
+DOTGLOB_RE = re.compile(r"(?<![\w-])shopt\s[^;&|\n]*dotglob|-O\s*dotglob|(?<![\w$])GLOBIGNORE(?!\w)")
 LOOP_LIST_RE = re.compile(r"(?<![\w-])for\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
 
 
@@ -14536,6 +14648,14 @@ def _unknown_where(t: str, root: str) -> List[str]:
     return out
 
 
+def _git_written(target: str, keyed: Set[str], root: str, cwd: Optional[str]) -> bool:
+    """T-3949 (A5): ghi (`>`, cp, mv, tee, truncate, sed -i, ln, install, dd, rsync…) vào BÊN TRONG thư mục git — cùng
+    hàng rào với luật xoá (`_git_inner`: `gốc/.git`, gitdir và `.git` chung của worktree liên kết, `.git` repo con), trừ
+    `*.lock`, tệp của `git config --file` (luật khoá xét) và `info/exclude` (mẫu bỏ qua cục bộ — `echo x >>
+    .git/info/exclude` phổ biến, không đổi lịch sử/nhánh)."""
+    return target not in keyed and not target.endswith("/info/exclude") and _git_inner(target, root, cwd)
+
+
 def _perm_asks(n: List[str], argv: List[str], root: str, cwd: Optional[str]) -> List[str]:
     """Đổi quyền git hook/hàng rào (`chmod 000 guard.py` → hook fail-open); đích từ xargs/file → chặn."""
     pos = _positionals(n[1:], PERM_VALUE_FLAGS if n[0] in PERM_CMDS[3:] else ())  # chmod: `-x` là mode
@@ -14587,7 +14707,7 @@ def _write_asks(
         kind = _target_kind(target, root)
         if _is_fence(target, root):
             asks.append(FENCE_WHY.format(target))
-        elif target and _git_hook_target(target, root, target in keyed):
+        elif target and (_git_hook_target(target, root, target in keyed) or _git_written(target, keyed, root, cwd)):
             asks.append(GIT_HOOK_WHY.format(target))
         elif kind == "secret":
             asks += [] if build_local_secret(target, root, cwd) else [f"ghi file bí mật qua Bash: {target}"]
@@ -17673,12 +17793,13 @@ PIPE_FILTERS: Dict[str, Tuple[str, ...]] = {
 }
 
 
-def _pipe_feed(stage: List[str], prev: Optional[List[str]]) -> Optional[List[str]]:
+def _pipe_feed(stage: List[str], prev: Optional[List[str]], guess: bool = False) -> Optional[List[str]]:
     """Chữ (script) ra khỏi một khâu của ống: echo/printf → chữ của nó; heredoc → [] (thân đã quét ở `_heredoc_scripts`);
-    here-string vào bộ lọc → chữ đó; `tee`/bộ lọc không file → chữ vào; khâu khác → None (guard không biết)."""
+    here-string vào bộ lọc → chữ đó; `tee`/bộ lọc không file → chữ vào; khâu khác → None (guard không biết). `guess`
+    (T-3949 B2): echo/printf có thoát → các bản đoán (`_echo_guesses`) thay vì None — cho công cụ đọc chương trình."""
     n = normalize(stage)
     if n[:1] in (["echo"], ["printf"]):
-        return None if _echo_opaque(n) else _echoed_scripts(n)
+        return (_echo_guesses(n) if guess else None) if _echo_opaque(n) else _echoed_scripts(n)
     if "<<" in stage:
         return []
     if n[:1] == ["tee"]:
@@ -17690,14 +17811,23 @@ def _pipe_feed(stage: List[str], prev: Optional[List[str]]) -> Optional[List[str
     return prev if all(p == "-" for p in _positionals(n[1:], PIPE_FILTERS[n[0]])) else None
 
 
-def _pipe_feeds(pipe: List[List[str]]) -> List[Optional[List[str]]]:
+def _pipe_feeds(pipe: List[List[str]], guess: bool = False) -> List[Optional[List[str]]]:
     """Chữ ra khỏi từng khâu của một ống (T-1523: `echo 'rm -rf ~' | tee /dev/null | bash` từng lọt)."""
     feeds: List[Optional[List[str]]] = []
     prev: Optional[List[str]] = None
     for stage in pipe:
-        prev = _pipe_feed(stage, prev)
+        prev = _pipe_feed(stage, prev, guess)
         feeds.append(prev)
     return feeds
+
+
+def _echo_guesses(n: List[str]) -> List[str]:
+    """Chữ echo/printf (`n` đã chuẩn hoá) theo mọi cách đọc thoát: nguyên văn (echo mặc định: `'\\o |…'`), giải như
+    `$'…'` (`echo -e`, `xpg_echo`) và bỏ `\\` (`'!r\\m -rf ~'`) — vào công cụ đọc chương trình thì so cả ba (chặt), vào
+    shell vẫn BUDGET (`_opaque_shells`)."""
+    texts = _echoed_scripts(n)
+    decoded = [ANSI_ESCAPE_RE.sub(_ansi_c_char, t) for t in texts]
+    return list(dict.fromkeys([*texts, *decoded, *(t.replace("\\", "") for t in texts)]))
 
 
 def _argless_shell_c(argv: List[str]) -> bool:
@@ -19318,7 +19448,7 @@ def _interp_scripts_at(
             out += [(c[i + 1], here) for i, a in enumerate(c[:-1]) if a == "<<<" for here in cands]
     i, places = 0, [d for _, d in placed]  # dựng một lần: dựng lại mỗi pipeline từng bậc hai (review #361 lượt 2)
     for pipe in pipelines(tokens):
-        for feed, down, downs in zip(_pipe_feeds(pipe), pipe[1:], places[i + 1 : i + len(pipe)]):
+        for feed, down, downs in zip(_pipe_feeds(pipe, True), pipe[1:], places[i + 1 : i + len(pipe)]):
             out += [(s, here) for s in feed or [] if _stdin_interp(down) for here in downs]
         i += len(pipe)
     dirs = list(dict.fromkeys(stdin_dirs)) or [cwd]

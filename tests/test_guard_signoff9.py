@@ -5,7 +5,8 @@
   vị trí của sqlite3.
 - M9 (🟠 chặn oan): thân SQL/manifest/Dockerfile chỉ quét dòng lối thoát shell.
 
-DENY: dạng tái hiện guard ở `7b1ebc84` cho chạy. ALLOW: dạng lành phải chạy."""
+DENY: dạng phải chặn — phần lớn guard ở `7b1ebc84` cho chạy, một số (15 ca) đã bị chặn từ trước và giữ làm hồi quy.
+ALLOW: dạng lành phải chạy."""
 
 from __future__ import annotations
 
@@ -277,7 +278,7 @@ class ComputedValueTest(Base):
 
 
 class PathScanTest(unittest.TestCase):
-    """10: `source TÊN` chỉ quét thư mục PATH dưới `/usr`, `/opt`, `/bin`, `/sbin`, `$HOME` (WSL `/mnt/c` chậm)."""
+    """10: `source TÊN` quét mọi thư mục PATH trừ ổ Windows gắn của WSL (`/mnt/<ổ>/…`, chậm)."""
 
     def test_path_has_skips_slow_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:

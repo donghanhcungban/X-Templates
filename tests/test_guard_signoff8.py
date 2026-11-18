@@ -14,6 +14,7 @@ DENY: dạng tái hiện guard ở `b76d7af5` cho chạy. ALLOW: dạng lành ph
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import itertools
 import os
 import sys
@@ -35,12 +36,22 @@ BC = "BASH" + "_CMDS"
 NONE, EXT, ALL = guard.SHADOW_NONE, guard.SHADOW_EXT, guard.SHADOW_ALL
 
 
+def patched(root: Path = ROOT) -> contextlib.ExitStack:
+    """Môi trường và nhánh giả cho quyết định — vào MỘT lần ở luồng chính: `mock.patch` vào/ra lồng nhau từ nhiều luồng
+    trả giá trị gốc sai thứ tự và rò `_current_branch`/env sang module test sau (T-3949, AUD-TEST-119)."""
+    stack = contextlib.ExitStack()
+    stack.enter_context(mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(root), "XT_GUARD_POLICY": ""}))
+    stack.enter_context(mock.patch.object(guard, "_current_branch", return_value="feat"))
+    return stack
+
+
+def decide_raw(cmd: str, root: Path = ROOT) -> dict:
+    return guard.apply_policy(guard.bash_decision(cmd, str(root), str(root)))
+
+
 def decide(cmd: str, root: Path = ROOT) -> dict:
-    with (
-        mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(root), "XT_GUARD_POLICY": ""}),
-        mock.patch.object(guard, "_current_branch", return_value="feat"),
-    ):
-        return guard.apply_policy(guard.bash_decision(cmd, str(root), str(root)))
+    with patched(root):
+        return decide_raw(cmd, root)
 
 
 SHADOW_DENY = (
@@ -113,10 +124,14 @@ class ShadowTest(unittest.TestCase):
     def test_concurrent_decisions_match_sequential(self):
         """`SHADOW` là ContextVar theo luồng, mức nhớ (`lru_cache`) không trộn tầng giữa các quyết định đồng thời."""
         cmds = [*SHADOW_DENY[:8], *SHADOW_ALLOW[:8]] * 3
-        seq = [decide(c)["decision"] for c in cmds]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-            par = list(pool.map(lambda c: decide(c)["decision"], cmds))
+        before = guard._current_branch, os.environ.get("XT_GUARD_POLICY"), os.environ.get("CLAUDE_PROJECT_DIR")
+        with patched():
+            seq = [decide_raw(c)["decision"] for c in cmds]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                par = list(pool.map(lambda c: decide_raw(c)["decision"], cmds))
         self.assertEqual(par, seq)
+        after = guard._current_branch, os.environ.get("XT_GUARD_POLICY"), os.environ.get("CLAUDE_PROJECT_DIR")
+        self.assertEqual(after, before)  # không rò patch sang test sau
 
 
 class ShadowLevelTest(unittest.TestCase):

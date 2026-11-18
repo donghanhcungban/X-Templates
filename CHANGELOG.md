@@ -238,6 +238,16 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3949 (D-503, D-508, phát hiện cổng ký lần 9): guard hết chặn oan here-string/ống có `$` vào công cụ không đọc
+  chương trình (`echo "$TOKEN" | docker login --password-stdin`, `bc <<< "$x * 2"`, `kubectl … /dev/stdin`), `git push
+  origin HEAD:"$(git branch --show-current)"`, `mktemp -p "$TMPDIR"`, nhắc chữ `dotglob`, `cd /tmp && rm -rf
+  "b-$(date +%F)"`. Chặn thêm: lối thoát qua stdin (vim `systemlist()`, sqlite3 `.once |`, psql `\o |`/`to program`,
+  mysql `pager`/`--pager=`, gdb `pipe`), cụm cờ ngắn (`ex -sc`, `vim -Nesc`, `psql -Atc`), `for`/`select`/`coproc
+  PATH`/`exec {PATH}>`, `$(date)` qua biến hay `env -C` ra ngoài gốc, `~+/..` sau `cd` vào thư mục tạm, GHI vào thư mục
+  git (`.git/**`, gitdir/`.git` chung của worktree liên kết, `.git` repo con; trừ `*.lock`, `info/exclude`) và xoá trong
+  `sub/.git`; stdin của lệnh ghép, echo có thoát, `-f /dev/fd/N`, nhóm `(crontab -l; echo …) | crontab -`. Test
+  đồng thời của `test_guard_signoff8` không còn rò patch sang `test_hooks`. Giới hạn chấp nhận (c) ghi ở
+  `harness-files.md`. **Dự án đích:** cài lại khung để nhận guard mới.
 - T-3947 (D-503, D-507, phát hiện cổng ký lần 8): guard sửa theo lớp — thân chương trình qua stdin/cờ so sau khi bỏ nháy
   kiểu shell, `$` ở here-string/ống, nguồn không phải chữ (`<(…)`, `<&3`, `/dev/fd/N`) vào công cụ đọc chương trình →
   BUDGET; cờ viết tắt/dính giá trị, `+cmd`/`-c`/`--cmd` của vi/ex/vim, đối số vị trí sqlite3; SQL/manifest/Dockerfile chỉ
