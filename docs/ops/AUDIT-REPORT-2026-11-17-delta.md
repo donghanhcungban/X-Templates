@@ -117,3 +117,19 @@ Hai lô reviewer-alt: fuzz tổng hợp (42 365 tổ hợp, 33 986 nguy hiểm t
 D-508: sửa mọi lỗi có thể do lỡ tay và chặn oan phổ biến; họ (c) — payload nguy hiểm viết tường minh vào stdin của công cụ đọc chương trình rồi che bằng lệnh ghép/`echo`/fd/biến — sửa vì gọn ở B1–B4 (AUD-SEC-927…930), phần còn lại (heredoc thân `$x`, `r${Z}m` trong gawk/perl, `mktemp` lỗi trả rỗng) chấp nhận có chủ và hạn 2027-01-21 (AUD-SEC-931).
 
 Đợt 12 (T-3949, #663): fz9 lọt 5 125 → 695 (610 heredoc `$x` + 27 `r${Z}m` + 45 mktemp rỗng, đều họ (c); 13 họ (a)); bộ fuzz cũ không tăng; 824 biến thể quanh từng mục sửa 0 lọt; flip ~470 nghìn ca cũ: 2 ca chặn → qua đều là `git push origin "HEAD:$(git branch --show-current)"` lành; tốc độ p50/p95 0,99×/0,96× nền. Cổng ký lần 10 chạy theo kiểu toàn diện (nhiều lô song song) sau #663.
+
+## Cổng ký lần 10 (ứng viên `a20ba307`, sau đợt 12) — toàn diện
+
+Theo yêu cầu của người dùng (kiểm toàn diện một lần để sửa ít vòng hơn): 5 lô reviewer-alt chạy song song, mỗi lô tự sinh biến thể quanh từng lỗi và báo cả họ kèm số biến thể lọt; gom hết rồi sửa một đợt. Oracle bash thật với đường tuyệt đối, PATH chỉ có lệnh giả và canary; không có sự cố. Không lô nào thấy hồi quy an toàn so với `e2f89c8b`. Lô 3 phát hiện các fuzz fz6–fz9 đặt gốc guard dưới `/tmp` nên `..` bị coi là thư mục tạm (che vài ca); các lô sau dùng gốc ngoài `/tmp` (AUD-TEST-121).
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| 1 stdin/chương trình (28 599 tổ hợp, 3 192 lọt có từ trước) | CÓ PHÁT HIỆN | 🔴 AUD-SEC-935 (template JS), AUD-SEC-936 (Python bí danh) · 🟠 AUD-SEC-937 · 🟢 họ (c) |
+| 2 đường dẫn/`.git`/ghi đè | CÓ PHÁT HIỆN | 🔴 AUD-SEC-932 (`>&TỆP`) · 🟠 AUD-SEC-939 (symlink glob), AUD-SEC-940 (công cụ ghi ngoài bảng) · 🟢 `nocaseglob`, chặn oan A4 |
+| 3 giá trị tính được | CÓ PHÁT HIỆN | 🔴 AUD-SEC-933 (biến rỗng ở đích xoá), AUD-SEC-934 (runner đổi thư mục) · 🟠 AUD-SEC-938 (push sau checkout) · 🟢 `trap 'cd ~'` (cố ý) |
+| 4 bọc/ghép/hành động ra ngoài (78 448 quyết định) | CÓ PHÁT HIỆN | 🔴 AUD-SEC-945, 947…950 · 🟠 AUD-SEC-944, 946, 951, 952 · 🟢 AUD-SEC-953, 954 |
+| 5 chặn oan/tốc độ/test/tài liệu (3 050 lệnh × 3 phiên bản; 357 idiom mới) | APPROVE | 0 🔴/🟠 do diff; 🟠 có từ trước AUD-SEC-941 (`grep -rl | xargs sed -i`) · 🟢 AUD-SEC-942, AUD-HAR-433 |
+
+D-508 áp dụng: họ (c) mở rộng (payload che bằng biến/`getattr`/template JS) chấp nhận có hạn (AUD-SEC-943); xoá trong container cục bộ chấp nhận (AUD-SEC-955); còn lại sửa. AUD-SEC-060 (🟢 mở từ trước, ghi đè dotfile `~`/`/etc`) được nâng mức và đóng.
+
+Đợt 13: T-3951 (#665) và T-3952 (#666). Số ca lọt: EV 1 484 → 0, BR 140 → 0 (lô 3); F1 229 → 0, F2 161 → 0, F4 368 → 0, F5 434 → 0, F6 230 → 0, F7 276 → 0, F8 414 → 0, F9 115 → 0, F10 506 → 0, F11 115 → 0 (lô 4, 4 660 biến thể); hồi quy tốc độ p50/p95 1,005×/1,006× nền; 170 lệnh lành phổ biến 0 bị chặn. Hai sự cố CI trên đường: CodeQL `py/clear-text-logging-sensitive-data` vì tên định danh chứa `secret` (đổi tên, không đổi hành vi) và BASE-GATE-005 cấm ngưỡng CPU cứng ở `test_guard_d503_invariant` (bỏ phép đo). Cổng ký lần 11 chạy sau #666 với phạm vi hẹp (các họ vừa sửa, họ INCONCLUSIVE, một lô chặn oan).

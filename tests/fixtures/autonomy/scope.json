@@ -691,6 +691,13 @@
    "ids": [
     "AUD-SEC-924"
    ]
+  },
+  {
+   "reason": "Cần môi trường thật mà corpus bench (gốc thường, không mạng, không git config riêng) không dựng được: symlink thư mục trỏ ra ngoài dự án (AUD-SEC-939), cấu hình git có sẵn như `push.default=upstream` hoặc `remote.origin.mirror` (AUD-SEC-946); đỡ bằng tests.test_guard_signoff11 và tests.test_guard_signoff12 (dựng cây/repo tạm) và họ `T11|*`, `T12|*` trong d503_invariant.jsonl",
+   "ids": [
+    "AUD-SEC-939",
+    "AUD-SEC-946"
+   ]
   }
  ]
 }

@@ -117,3 +117,10 @@
 
 - [x] `T-3949` 🔴 AUD-SEC-921/925/927…929, 🟠 AUD-SEC-920/922…924/930, 🟢 AUD-SEC-926, AUD-TEST-120, AUD-HAR-432 — Gate: `python3 -m unittest tests.test_guard_signoff10 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
 - [x] `T-3950` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3949; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 13 — sửa gộp phát hiện cổng ký lần 10 toàn diện (D-503, D-508)
+> Cổng ký lần 10 (ứng viên `a20ba307`), 5 lô song song: stdin/chương trình, đường dẫn/`.git`, giá trị tính được, lớp bọc/hành động ra ngoài, chặn oan/tốc độ/test/tài liệu. Hai executor sửa song song: T-3951 (đường dẫn, giá trị tính được, stdin) và T-3952 (hành động ra ngoài).
+
+- [x] `T-3951` 🔴 AUD-SEC-932…936/060, 🟠 AUD-SEC-937…941, 🟢 AUD-SEC-942, AUD-TEST-121 — Gate: `python3 -m unittest tests.test_guard_signoff11 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [x] `T-3952` 🔴 AUD-SEC-945/947…950, 🟠 AUD-SEC-944/946/951/952, 🟢 AUD-SEC-892/953/954, AUD-HAR-433 — Gate: `python3 -m unittest tests.test_guard_signoff12 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [x] `T-3953` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3951, T-3952; files: docs/ops/AUDIT-STATUS.md)
