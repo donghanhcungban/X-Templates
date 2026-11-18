@@ -21374,10 +21374,12 @@ def _rest_gh_scripts(cmd: str, tokens: List[str]) -> List[str]:
         method, urls, bodies = parse(n[1:]) if parse else ("", [], [])
         for path in (p for p in map(_github_api_path, urls) if p is not None):
             out.append(shlex.join(["gh", "api", "-X", method.upper(), path, *_gh_body_args(bodies)]))
-    for m in PY_REQUESTS_RE.finditer(_nfkc(cmd)):  # Python chuẩn hoá định danh NFKC (`ｒequests.ｄelete`)
+    # Chuỗi lệnh gốc và từng token (thân `-c` đã bỏ nháy shell); NFKC như Python đọc định danh (`ｒequests.ｄelete`)
+    texts = dict.fromkeys(_nfkc(t) for t in [cmd, *tokens] if "requests" in _nfkc(t))
+    for m in (m for text in texts for m in PY_REQUESTS_RE.finditer(text)):
         py_path = _github_api_path(m[3])
         out += [shlex.join(["gh", "api", "-X", m[1].upper(), py_path, "--input", "-"])] if py_path is not None else []
-    return out
+    return list(dict.fromkeys(out))
 
 
 # F6: `env -S '<lệnh>'`/`--split-string`: env tách chuỗi thành argv — quét như một lệnh (bản viết lại cùng lệnh).
