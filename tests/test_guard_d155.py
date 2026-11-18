@@ -191,7 +191,8 @@ class GlobCommandNameTest(unittest.TestCase):
         self.assertEqual(guard._glob_names("ls"), [])
         self.assertEqual(guard._glob_names("/bin/ls"), [])  # không glob
         self.assertEqual(guard._glob_names("r?"), [])  # tên trần: mở theo tệp ở cwd — giới hạn đã ghi
-        self.assertEqual(guard._glob_names("./tools/r?"), [])
+        self.assertEqual(guard._glob_names("./tools/r?"), ["rm"])  # T-3952 F9: mọi thư mục, mẫu độ dài cố định
+        self.assertEqual(guard._glob_names("./tools/r*"), [])  # `*` ngoài thư mục bin: thường là đối số bị tách
         self.assertEqual(guard._glob_names("/u*/bin/r?"), [])  # glob ở thư mục
         self.assertEqual(guard._glob_names("/usr/lib/jvm/*/bin/java"), [])
         self.assertEqual(guard._glob_names("/bin/*"), [])  # toàn `*`/`?`

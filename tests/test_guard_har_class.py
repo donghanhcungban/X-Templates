@@ -95,7 +95,7 @@ ALLOW = {
         here("exec 3<<'E'", "@A", "echo hi"),
         here("git commit -m 'fix: y'; cat <<'E'", "@A"),
         "{ cat <<'E'; } ; git commit -m 'fix: x'\n@A\nE",
-        here("sh -c 'git commit -F -' <<'E'", "fix: x"),
+        # T-3952 F1: `sh -c 'git commit -F -' <<E` (commit lồng, cổng commit không chạy) nay chặn — tests/test_guard_signoff12
         here("sh -c 'echo hi' <<'E'", "@A"),
         here("exec <<'E'", "echo hi", "bash"),
         here("exec <<'E'", "rm -rf @H", "cat"),

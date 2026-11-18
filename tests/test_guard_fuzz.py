@@ -240,7 +240,7 @@ CWD_RELATIVE: Dict[str, str] = {
     "(AUD-SEC-582)",
     **{
         f"aud419-{k}": "`ai_attribution: forbid` ở xt.yaml của repo ca; /tmp không khai (AUD-HAR-419)"
-        for k in ("quoted-git", "group", "exec-fd", "quoted-gh", "sh-c-commit")
+        for k in ("quoted-git", "group", "exec-fd", "quoted-gh")  # `sh-c-commit`: commit lồng chặn ở mọi cwd (T-3952)
     },
     # T-3673 (AUD-SEC-468…477): đích tương đối của ca (thư mục canh, Git dir `gd`) → dưới /tmp sau `cd /tmp`
     **{

@@ -1510,6 +1510,7 @@ class ReasonCodeLockTest(unittest.TestCase):
         "REMOTE_DELETE": "git push origin --delete someone/else",  # AUD-SEC-551, D-407
         "BUDGET": "echo " + BT + "id" + BT,
         "BRACE_OVERFLOW": "echo {1..9}{1..9}{1..9}{1..9}{1..9}{1..9}",
+        "REMOTE_EXEC": "ssh host 'git reset --hard'",  # T-3952: lệnh ở máy xa vi phạm luật
     }
     MERGE_ONLY = {"HARD_EXCEPTION": "HARD_ASK", "REVIEW_MISSING": "REVIEW_MISSING_ASK"}
 
@@ -1541,6 +1542,7 @@ class ReasonCodeLockTest(unittest.TestCase):
         ("UNRESOLVED_TARGET", "git --config-e=x push origin feat"),
         ("UNRESOLVED_TARGET", "parallel --arg-s ,, echo ,, a b"),
         ("UNRESOLVED_TARGET", "ls | xargs chmod 000"),
+        ("REMOTE_EXEC", "ssh host 'git reset --hard'"),  # T-3952
         ("BUDGET", "echo " + "a" * guard.CMD_MAX_CHARS),  # vượt ngân sách quét (mẫu ở EXAMPLES là lớp tập con)
         ("BUDGET", "gh pr merge$Z 5"),  # tên lệnh/tên cờ gh có mở rộng (AUD-SEC-587)
         ("BUDGET", "git pus? --force origin main"),  # lệnh con git không đọc chắc (AUD-SEC-635)

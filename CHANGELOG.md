@@ -238,6 +238,20 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3952 (D-503, D-508, lô 4 cổng ký lần 10): guard chặn `git commit` lồng trong shell con/heredoc/trình thông
+  dịch/`$(…)`/`npx -c` (commit không qua cổng); commit sau trình chạy/alias đứng một mình nay chạy cổng commit. Chặn
+  thêm: khoá push đặt một lần (`-c remote.origin.mirror`, hoa-thường, `GIT_CONFIG_*`, `--config-env`, `export`) và cấu
+  hình push hiệu lực khi không refspec (mirror, `remote.*.push`, upstream khác tên nhánh); REST/GraphQL GitHub qua
+  curl/wget/httpie/xh/`requests` theo cùng luật `gh api` (merge, xoá repo, bảo vệ nhánh, nhánh mặc định, `merges`,
+  `mergeBranch`); token GitHub tới host ngoài GitHub, bí mật vào message/`gh variable`/URL userinfo hay tới dịch vụ
+  trút dữ liệu (paste, webhook bắt request, ngrok, OAST); xoá đường tuyệt đối ngoài cache qua `ssh`/`kubectl exec`
+  (container cục bộ: giới hạn chấp nhận (d)); gửi bí mật/in
+  token sau trình chạy (`uv run`, `xvfb-run`, `valgrind`, `env -S`); `npx|npm x|pnpm dlx -c`; lệnh qua `ssh`/`docker
+  exec`/`kubectl exec`/`lxc exec`/`limactl shell` (đủ luật, CSDL không nêu host là không cục bộ); huỷ hạ tầng của
+  aws/gcloud/az/helm/doctl/heroku/fly/vercel/netlify/wrangler (DESTROY); thanh toán/thư/SMS; in `hosts.yml`/
+  `.git-credentials`/`.netrc`; tên lệnh glob ở mọi thư mục và tên trần theo tệp ở thư mục đang đứng. Ca bench
+  `aud419-ctl-sh-c-commit-clean` đổi thành chặn (commit lồng). Test: `tests/test_guard_signoff12.py`, ca
+  `guard-t3952-*`, họ `T12|*` của `d503_invariant.jsonl`.
 - T-3951 (D-503, D-508, phát hiện cổng ký lần 10): guard chặn `>&TỆP`/`1>&TỆP` vào hàng rào (đọc như `&>`); lệnh
   xoá/ghi có biến chưa đặt rơi vào `/`, `/*`, mục cấp một của `/`, home (`rm -rf "$TMPDIR"/*`, `rm -rf "$OUT"/etc`,
   `tee "$X/"*`) và tiền tố ngoài gốc trước mở rộng (`rm -rf "/home/$USER/x"`); tuỳ chọn đổi thư mục của trình chạy (`uv
