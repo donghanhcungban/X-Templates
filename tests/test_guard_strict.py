@@ -795,8 +795,9 @@ class StageLedgerFindFilterTest(unittest.TestCase):
         "find docs -type f -name '*.md' -print0 | xargs -0 sed -i s/a/b/",
         "find docs -iname '*.MD' | xargs sed -i s/a/b/",
         "find docs -name '*.md' -o -name '*.yaml' | xargs sed -i s/a/b/",
-        "find . -path ./docs -prune -o -name '*.py' -print | xargs sed -i s/a/b/",
-        "find . -path ./docs -prune -o -name '*.py' | xargs sed -i s/a/b/",
+        # T-3942: `*.py` khớp `.claude/hooks/guard.py` — nay BUDGET (tests/test_guard_signoff6.py); giữ dạng `-prune`
+        "find . -path ./docs -prune -o -name '*.txt' -print | xargs sed -i s/a/b/",
+        "find . -path ./docs -prune -o -name '*.txt' | xargs sed -i s/a/b/",
         "find -L docs -maxdepth 2 -path '*/adr/*.md' | xargs sed -i s/a/b/",
         "find docs -wholename 'docs/adr/0001.md' | xargs sed -i s/a/b/",
         "git ls-files 'docs/*.md' | xargs sed -i s/a/b/",

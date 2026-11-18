@@ -17823,12 +17823,12 @@
   "AUD-SEC-384"
  ],
  "input": {
-  "command": "find . -path ./docs -prune -o -name '*.py' -print | xargs sed -i s/a/b/"
+  "command": "find . -path ./docs -prune -o -name '*.txt' -print | xargs sed -i s/a/b/"
  },
  "expect": {
   "allowed": true
  },
- "note": "review #420: nguồn find có token docs nhưng bộ lọc tên không thể khớp sổ giai đoạn"
+ "note": "review #420: nguồn find có token docs nhưng bộ lọc tên không thể khớp sổ giai đoạn; T-3942: `*.py` khớp .claude/hooks/guard.py nên đổi mẫu thành `*.txt` (dạng `*.py` nay BUDGET — tests/test_guard_signoff6.py)"
 },
 {
  "id": "og-384-control-git-pathspec",
@@ -23869,6 +23869,36 @@
   {"id": "d503s5-allow-029", "origin": "audit", "refs": ["D-503"], "input": {"command": "d=build; cd \"$d\" && rm -rf out"}, "expect": {"allowed": true}},
   {"id": "d503s5-allow-030", "origin": "audit", "refs": ["D-503"], "input": {"command": "sh -c \"echo \\\"hi\\\"\""}, "expect": {"allowed": true}},
   {"id": "d503s5-allow-031", "origin": "audit", "refs": ["D-503"], "input": {"command": "pushd build && rm -rf out"}, "expect": {"allowed": true}},
-  {"id": "d503s5-allow-032", "origin": "audit", "refs": ["D-503"], "input": {"command": "X=(a b); echo \"${X[0]}\""}, "expect": {"allowed": true}}
+  {"id": "d503s5-allow-032", "origin": "audit", "refs": ["D-503"], "input": {"command": "X=(a b); echo \"${X[0]}\""}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-001", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16; do mv \"$f\" \"${f%.txt}.md\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-002", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in README.md a.md b.md c.md d.md e.md f.md g.md docs/a.md docs/b.md; do cp \"$f\" \"${f%.md}.bak\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-003", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in a b; do mv \"$f\" \"${f%.txt}.md\"; done; for f in a b; do mv \"$f\" \"${f%.txt}.md\"; done; for f in a b; do mv \"$f\" \"${f%.txt}.md\"; done; for f in a b; do mv \"$f\" \"${f%.txt}.md\"; done; for f in a b; do mv \"$f\" \"${f%.txt}.md\"; done; for f in a b; do mv \"$f\" \"${f%.txt}.md\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-005", "origin": "audit", "refs": ["D-503"], "input": {"command": "for g0 in a.txt b.txt c.txt d.txt; do cp \"$g0\" \"${g0%.txt}.bak\"; done; for g1 in a.txt b.txt c.txt d.txt; do cp \"$g1\" \"${g1%.txt}.bak\"; done; for g2 in a.txt b.txt c.txt d.txt; do cp \"$g2\" \"${g2%.txt}.bak\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-006", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in *.md docs/*.md; do cp \"$f\" \"${f%.md}.bak\"; done"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-007", "origin": "audit", "refs": ["D-503"], "input": {"command": "for f in a b; do for g in *.x; do rm -rf \"${f%x}${g%x}\"; done; done"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-010", "origin": "audit", "refs": ["D-503"], "input": {"command": "pushd scripts && find . -name '*.pyc' | xargs rm -f; popd"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-011", "origin": "audit", "refs": ["D-503"], "input": {"command": "find . -name '*.pyc' -not -path './.venv/*' | xargs rm -f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-012", "origin": "audit", "refs": ["D-503"], "input": {"command": "find . -name '.DS_Store' | xargs rm -f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-013", "origin": "audit", "refs": ["D-503"], "input": {"command": "find .github -name '*.yml' | xargs sed -i 's/a/b/'"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-014", "origin": "audit", "refs": ["D-503"], "input": {"command": "find . -name '*.bak' | xargs -I{} cp {} {}.orig"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-015", "origin": "audit", "refs": ["D-503"], "input": {"command": "find . -name '*.pyc' -print0 | xargs -0 rm -f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-016", "origin": "audit", "refs": ["D-503"], "input": {"command": "find . -name '*.orig' -print | xargs rm -f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-017", "origin": "audit", "refs": ["D-503"], "input": {"command": "find docs -name '*.md' -o -name '*.yaml' | xargs sed -i s/a/b/"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-018", "origin": "audit", "refs": ["D-503"], "input": {"command": "git ls-files docs/autopilot | xargs -I{} cp {} /tmp/bk/"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-019", "origin": "audit", "refs": ["D-503"], "input": {"command": "find docs/autopilot | xargs cp -t /tmp/bk/"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-020", "origin": "audit", "refs": ["D-503"], "input": {"command": "git ls-files 'docs/*.md' | xargs sed -i s/a/b/"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-021", "origin": "audit", "refs": ["D-503"], "input": {"command": "XT=1 git ls-files -z src | xargs -0 rm -f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-022", "origin": "audit", "refs": ["D-503"], "input": {"command": "ls | xargs -I{} rm -f {}"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-028", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/^updated: .*/updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)/\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-029", "origin": "audit", "refs": ["D-503"], "input": {"command": "mv out.json \"out-$(date -u +%Y%m%dT%H%M%SZ).json\""}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-030", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/x/$(date -I)/\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-031", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/x/$(date --iso-8601)/\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-032", "origin": "audit", "refs": ["D-503"], "input": {"command": "sed -i \"s/x/$(date --iso-8601=seconds)/\" f"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-033", "origin": "audit", "refs": ["D-503"], "input": {"command": "mv out.json \"out-$(date -I).json\""}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-034", "origin": "audit", "refs": ["D-503"], "input": {"command": "export V=1.2.3; sed -i \"s/x/$V/\" f.md"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-035", "origin": "audit", "refs": ["D-503"], "input": {"command": "mv x \"$(date +%F)\""}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-036", "origin": "audit", "refs": ["D-503"], "input": {"command": "TMP=$(mktemp -d); rm -rf \"$TMP\""}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-037", "origin": "audit", "refs": ["D-503"], "input": {"command": "export PATH=\"$HOME/bin:$PATH\"; cd docs && rm -rf out"}, "expect": {"allowed": true}},
+  {"id": "d503s6-allow-038", "origin": "audit", "refs": ["D-503"], "input": {"command": "cd build && pushd out && popd"}, "expect": {"allowed": true}}
  ]
 }

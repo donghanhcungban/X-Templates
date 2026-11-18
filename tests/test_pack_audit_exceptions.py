@@ -6,6 +6,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -124,6 +127,51 @@ class PackAuditExceptionsTest(unittest.TestCase):
         self.assertNotIn("--ignore", job)
         self.assertNotIn("audit-level high", job)
         self.assertNotIn("audit-level critical", job)
+
+
+NODE = shutil.which("node")
+CHECKER = STARTER / "scripts" / "check-audit-exceptions.ts"
+GOOD = {
+    "ghsa": "GHSA-aaaa-bbbb-cccc",
+    "cve": None,
+    "package": "x",
+    "reason": "chưa có bản vá",
+    "owner": "team",
+    "approved_by": "lead",
+    "expires": "2099-01-01",
+}
+BLOCK = "auditConfig:\n  ignoreGhsas:\n    - GHSA-aaaa-bbbb-cccc\n"
+
+
+@unittest.skipUnless(NODE, "không có node — chỉ chạy được kiểm Python ở trên")
+class TsCheckerTest(unittest.TestCase):
+    """T-3942 F6: `check-audit-exceptions.ts` (chạy bằng node, gỡ kiểu sẵn có) đỏ với hạn không phải ngày, chữ bắt buộc
+    rỗng, `auditConfig` dạng flow-mapping."""
+
+    def problems(self, workspace: str, row: dict) -> list:
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp, "probe.mjs")
+            probe.write_text(
+                f"import {{ problems }} from {json.dumps(CHECKER.as_uri())};\n"
+                f"console.log(JSON.stringify(problems({json.dumps(workspace)}, [{json.dumps(row)}], '2026-11-18')));\n",
+                encoding="utf-8",
+            )
+            out = subprocess.run([str(NODE), str(probe)], capture_output=True, text=True, timeout=60, check=True)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    def test_good_row_passes(self):
+        self.assertEqual(self.problems(BLOCK, GOOD), [])
+
+    def test_bad_rows_are_red(self):
+        for change in ({"expires": None}, {"expires": "never"}, {"expires": "2099-1-1"}, {"reason": ""}):
+            with self.subTest(change=change):
+                self.assertNotEqual(self.problems(BLOCK, {**GOOD, **change}), [])
+        self.assertTrue(any("hết hạn" in e for e in self.problems(BLOCK, {**GOOD, "expires": "2020-01-01"})))
+        self.assertTrue(any("rỗng" in e for e in self.problems(BLOCK, {**GOOD, "owner": "  "})))
+
+    def test_flow_mapping_is_red(self):
+        errs = self.problems("auditConfig: { ignoreGhsas: [GHSA-aaaa-bbbb-cccc] }\n", GOOD)
+        self.assertTrue(any("flow-mapping" in e for e in errs), errs)
 
 
 if __name__ == "__main__":

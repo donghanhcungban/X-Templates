@@ -3,7 +3,7 @@ title: File harness: PLAN · PROGRESS · BLUEPRINT · evidence · state
 kind: module
 prefix: LOOP-HARNESS
 applies_to: [all]
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # File harness: PLAN · PROGRESS · BLUEPRINT · evidence · state
@@ -147,10 +147,12 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   kỳ đâu trong chuỗi lệnh (heredoc, `printf`), hay trong nguồn thân của chính lệnh đó (`-F f`, `--body-file`, `-F k=@f`,
   `--input`, `< f`, file đọc trong `$(…)`/backtick, `cat f |`, `$(cat)` đọc stdin; cả chuỗi JSON, cả khoá) — nguồn có mà
   không đọc được (glob, fd của shell `/dev/fd/N`, không phải file thường, > 256 KiB, quá 8 nguồn, lỗi đọc, JSON lồng quá
-  sâu) bị chặn, lỗi khi quét cũng chặn; MCP quét mọi chuỗi thô. Còn lọt: dấu mã hoá lúc chạy (`printf '\74!-- …'`,
-  `base64 -d`), thân từ stdin hay file do chương trình khác sinh trong cùng lệnh (`cmd | gh … -F -`, `gen > f && gh -F f`,
-  `$(xargs cat <<< f)`), thay lệnh lồng (`$(cat $(echo f))`), heredoc không nháy chứa `$(cat f)`, stdin chuyển hướng ở cấp shell/nhóm lệnh
-  (`exec < f; gh … -F -`, `{ gh …; } < f` — AUD-SEC-180), file tương đối sau `cd`, tool MCP ngoài `MCP_REVIEW_POST_RE` (steward chỉ đọc comment issue).
+  sâu) bị chặn, lỗi khi quét cũng chặn; MCP quét mọi chuỗi thô. Mặc định chặn (D-503, mã BUDGET): dấu mã hoá lúc chạy
+  đổ vào `-F -` (`printf '\74!-- …' | gh … -F -`), stdin chuyển hướng ở cấp shell (`exec < f; gh … -F -`), file tương
+  đối sau `cd` (`cd docs && gh … -F body.md`); thay lệnh lồng (`$(cat $(echo f))`) → `REVIEW_FORGE`. Còn lọt: thân từ
+  stdin của chương trình khác không mã hoá (`cmd | gh … -F -`), file do chương trình khác sinh trong cùng lệnh
+  (`gen > f && gh -F f`, `$(xargs cat <<< f)`, `base64 -d`), heredoc không nháy chứa `$(cat f)`, `{ gh …; } < f`
+  (AUD-SEC-180), tool MCP ngoài `MCP_REVIEW_POST_RE` (steward chỉ đọc comment issue).
 - **Ref remote là ref cục bộ** (AUD-SEC-119): guard chặn lệnh git ghi `refs/remotes/…` hay tạo ref trùng `<remote>/…`
   (`REMOTE_REF_FORGE`) và ghi `refs/replace/…` (`git replace`, AUD-SEC-158 — `xt.py` cũng đọc git với
   `--no-replace-objects`, không theo grafts — AUD-SEC-168), và từ #442 (D-366) chặn cả ghi thẳng `.git/packed-refs`, `.git/refs/remotes/**` lẫn đổi gốc của remote:
@@ -166,8 +168,8 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   tổng 5 s mỗi quyết định; alias `!` quét như shell lồng; không giải được → `UNRESOLVED_TARGET`. Đối số từ stdin
   (`xargs`, `xargs -I`, `parallel`, `find -exec {}`) cho lệnh ghi ref → `UNRESOLVED_TARGET`, trừ dạng đã khoá chế độ
   không tạo ref (`branch -D`, `tag -d`, `checkout --`, `stash drop`, `worktree remove`); `xargs git branch -d` bị chặn vì
-  stdin có thể thêm `--no-delete` (dùng `-D`). Còn lọt/lệch: tệp cấu hình tạo trong CÙNG lệnh Bash rồi mới dùng
-  (`printf '[alias]…' > f && GIT_CONFIG_GLOBAL=f git y …` — lúc guard đọc, tệp chưa có); lệnh con là biến (`git $S …`);
+  stdin có thể thêm `--no-delete` (dùng `-D`). Tệp cấu hình tạo trong CÙNG lệnh Bash rồi mới dùng (`printf '[alias]…' >
+  f && GIT_CONFIG_GLOBAL=f git y …`) → `HOOK_BYPASS`; lệnh con là biến (`git $S …`) → BUDGET (D-503). Còn lọt/lệch:
   lệnh xoá biến môi trường (`env -i`, `env -u`, `unset`) — guard vẫn đọc theo môi trường của nó; `includeIf "onbranch:"`
   định nghĩa alias (`git config --list` xét nhánh, lúc mở alias git chưa dựng repo nên không xét); thư mục repo là biến
   (`git -C "$D"`, lệnh lồng không rõ thư mục) → đọc alias ở gốc dự án; git cũ hơn 2.43 thiếu một lệnh dựng sẵn có trong
@@ -225,7 +227,8 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
 - **Thân lệnh dựng lúc chạy bị chặn theo thiết kế — viết thay** (ADR-0063 lát B, AUD-SEC-322): `eval`/`sh -c` có thân lấy từ
   `$(…)`/biến và hàm gọi `"$@"` không chứng minh được lệnh sẽ chạy nên bị chặn. Cách viết thay qua guard:
   `eval "$(ssh-agent -s)"` → `ssh-agent -a "$HOME/.ssh/agent.sock" >/dev/null; export SSH_AUTH_SOCK="$HOME/.ssh/agent.sock"`;
-  `bash -c "cd $TMP"` → truyền đối số `bash -c 'cd "$1"' _ "$TMP"`; `retry(){ "$@"; }; retry ls` → vòng lặp tường minh
+  `bash -c "cd $TMP"` (thân chỉ `cd` — guard cho qua) hay thân có lệnh có luật → truyền đối số
+  `bash -c 'cd "$1" && …' _ "$TMP"`; `retry(){ "$@"; }; retry ls` → vòng lặp tường minh
   `for i in 1 2 3; do ls && break; sleep 1; done` (khoá bằng `tests/test_guard_strict.py`).
 - **Hook `TaskCompleted` chỉ chạy khi phiên có tool Task** (AUTO-02, D-068): `TaskCreate`/`TaskUpdate` không bật mặc định
   trên Opus 5.5/Sonnet 5.5/Haiku 5.5/Fable ở CLI — cần `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` hoặc nêu tool trong
