@@ -2400,6 +2400,7 @@ def _allowlist_why(cmd: str, root: str = "", cwd: Optional[str] = None) -> str:
     why = why or _set_positional_why(cmd) or _autocorrect_lookup_why(cmd)  # AUD-SEC-731/681
     why = why or _opaque_value_why(cmd, root, cwd) or _trap_assign_why(cmd)  # D-502: AUD-SEC-821/822/823/830
     why = why or _runner_dyn_why(cmd) or _xargs_why(cmd, root, cwd) or _positional_why(cmd)  # D-503, T-3937
+    why = why or _parallel_why(cmd)  # AUD-SEC-887
     # AUD-SEC-612 (đích chuyển hướng ghi có thay lệnh trần dính chữ) nay do `_opaque_value_why` (D-503) bắt: mọi đích ghi
     # có thay lệnh là giá trị mờ → BUDGET; test AUD-SEC-612 vẫn ghim hành vi.
     return why or _git_cfg_env_why(cmd, root, cwd) or _ruled_word_why(cmd)
@@ -3641,6 +3642,33 @@ def _runner_name_dyn(name: str, args: List[str]) -> bool:
         else:
             value = False
     return False
+
+
+# AUD-SEC-887 (D-503): GNU `parallel`/`sem` chạy chuỗi lệnh từ `:::`/`::::`/stdin/tệp/đối số (mẫu là shell, `eval`),
+# tuỳ chọn còn đến từ `$PARALLEL`, `~/.parallel/config`, `-J` — guard không mô hình hết → mọi lệnh đơn tên đó (sau
+# gán/trình bọc, cả `env -S '…'`; tên có nháy/thoát/đường dẫn hay glob khớp tên đó) → BUDGET. Không có dạng hẹp an toàn
+# rõ ràng: cả `--version` đọc tuỳ chọn từ môi trường/tệp cấu hình trước khi thoát.
+PARALLEL_NAMES = ("parallel", "sem")
+PARALLEL_WHY = (
+    "`{}` — GNU parallel/sem chạy chuỗi lệnh từ `:::`/`::::`/stdin/tệp/đối số guard không thấy hết (AUD-SEC-887,"
+    ' D-503); viết lại: vòng `for x in a b; do cmd "$x"; done` hay `cmd a & cmd b & wait`'
+)
+
+
+def _parallel_why(cmd: str) -> str:
+    for seg, _ in _simple_cmds(cmd) or []:
+        words = _strip_prefixes([_dequote(t) for t in _ifs_prefix(seg)[1]])  # đọc lại: `env -S` đổi số từ
+        if words and _parallel_name(posixpath.basename(words[0])):
+            return PARALLEL_WHY.format(clean_text(" ".join(words))[:80])
+    return ""
+
+
+def _parallel_name(name: str) -> bool:
+    """Tên lệnh là `parallel`/`sem`, hay glob có ký tự đầu/cuối của tên đó (`paralle[l]`, `se?`, `p*l`) — glob trần
+    (`*`, `s*` — mẫu `case`, D-155) không tính."""
+    pat = name.replace("[^", "[!")
+    lit = re.sub(r"\[[^\]]*\]|[*?]", "", name)
+    return name in PARALLEL_NAMES or any(fnmatch.fnmatchcase(n, pat) and len(lit) >= 2 for n in PARALLEL_NAMES)
 
 
 # D-503 (c): xargs nối chữ stdin vào lệnh — vào shell có tham số vị trí (`sh -c '…"$1"…' _ {}`), trình bọc thiếu lệnh
@@ -5099,6 +5127,7 @@ def _reuse_why(cmd: str) -> str:
     writes = [(i, w) for i, c in enumerate(cmds) for w in _reuse_writes(c)]
     writes += [(i, w) for i in range(len(cmds)) for w in _patch_targets_at(cmds, i)]  # diff qua ống (AUD-SEC-414)
     for i, f in dict.fromkeys(writes):
+        _tick()  # AUD-SEC-888: số đích × số lệnh — chuỗi `sed -i` 50 KB từng mất 45 s không qua điểm kiểm hạn giờ
         pat = _reuse_pattern(f)
         if pat is not None and any(_reuse_counts(cmds, j, f, pat) for j in range(len(cmds)) if j != i):
             return REUSE_WHY
@@ -6856,6 +6885,16 @@ PWD_SUBST_RE = re.compile(
 )  # `$(pwd)`/`` `pwd` `` = `$PWD` (review #187: không nháy bị tách token)
 
 
+def _pwd_subst(cmd: str) -> str:
+    """`$(pwd)` → `$PWD` chỉ ở chỗ bash TẦNG NÀY chạy nó và khi tên `pwd` chưa bị che ở tầng này (`SHADOW`, T-3942).
+    AUD-SEC-890: chữ trong nháy đơn (thân `bash -c '…'`, `find -exec sh -c '…'`, heredoc nháy) giữ nguyên — tầng lồng
+    tự thay theo `SHADOW` của nó (`pwd(){ …; }` trong thân), không theo tầng ngoài chưa thấy định nghĩa đó."""
+    if SHADOW.get() or not PWD_SUBST_RE.search(cmd):
+        return cmd
+    kind = _CodeView(cmd).kind
+    return PWD_SUBST_RE.sub(lambda m: m[0] if kind[m.start()] == "q" else "$PWD", cmd)
+
+
 SHLEX_UNCLOSED_WHY = (
     'ngoài tập con guard đọc chắc — bộ tách từ thấy nháy không đóng (`\'` trong `"…"` lồng trong `"$(…)"`) mà bash'
     " thì không, guard chỉ tách thô (AUD-SEC-656, D-415); đưa chuỗi có nháy lồng vào biến hoặc tệp (ADR-0063)"
@@ -6872,7 +6911,7 @@ def tokenize(cmd: str, strict: bool = False) -> List[str]:
     cmd = expand_ansi_c(_fold_heredocs(joined, False, True))
     strip_comments(cmd, True)  # `)#` chặn TRƯỚC khi `$IFS`/`$(pwd)` bị viết lại (`$(pwd)#` thành `$PWD#`, AUD-SEC-195)
     cmd = IFS_RE.sub(" ", cmd)
-    cmd = cmd if SHADOW.get() else PWD_SUBST_RE.sub("$PWD", cmd)  # T-3942: `pwd(){ …; }` che tên — không thay
+    cmd = _pwd_subst(cmd)
     text = strip_comments(cmd, True)
     # không dấu nào ngay sau nháy/`\` (hay đang đọc kiểu cũ, `READING`) → không `LitWord`
     lexer = _Lexer if READING.get() != LEGACY and QUOTED_PUNCT_RE.search(text) else shlex.shlex
@@ -9837,7 +9876,7 @@ def find_root_scan(cmd: str, root: str, cwd: Optional[str]) -> str:
     điểm bắt đầu khi đang đứng ở đó, hoặc điểm bắt đầu không xác định (`$`, backtick, glob, `{}`, tương đối sau `cd`);
     hoặc `-fprint*`/`-fls` ghi vào `gốc/.git`. Quét bản bỏ `"`/`'`/`\\` (`fi""nd`, `f\\ind` vẫn là find). Chữ `find`
     trong đối số có nháy cũng tính (AUD-SEC-410 mở, D-329): nhiều lệnh chạy chữ đó (`git rebase --exec`, `make --eval`)."""
-    norm = re.sub(r"[\"'\\]", "", join_continuations(cmd))
+    norm = re.sub(r"[\"'\\]", "", join_continuations(_data_heredoc_head(cmd)))
     for m in FIND_WORD_RE.finditer(norm):
         rest = norm[m.end() :]
         moved = bool(CD_WORD_RE.search(norm, 0, m.start()))
@@ -9850,6 +9889,25 @@ def find_root_scan(cmd: str, root: str, cwd: Optional[str]) -> str:
         if bad is not None:
             return f"Lệnh bị khung chặn ({FIND_ROOT_WHY.format(bad or repr(bad))}): {cmd[:300]}"
     return ""
+
+
+# AUD-SEC-889: cả lệnh chỉ là `cat >[>] TỆP <<'D'` (hay `cat <<'D' >[>] TỆP`) — delimiter có nháy (thân không mở rộng),
+# đích chữ trơn, không ống/lệnh khác — thân là dữ liệu ghi ra tệp, không phải lệnh `find`. Dòng thân trùng delimiter
+# (bash đóng heredoc sớm, phần sau là lệnh) → không nhận.
+DATA_HEREDOC_RE = re.compile(
+    r"(cat[ \t]+(?:>>?[ \t]*[\w./-]+[ \t]+<<[ \t]*(['\"])(\w+)\2|<<[ \t]*(['\"])(\w+)\4[ \t]+>>?[ \t]*[\w./-]+))[ \t]*\n"
+    r"(.*\n)?(\w+)\n?",
+    re.S,
+)
+
+
+def _data_heredoc_head(cmd: str) -> str:
+    """Dòng đầu `cat > TỆP <<'D'` khi cả lệnh là heredoc dữ liệu (xem trên); khác → `cmd` nguyên văn."""
+    m = DATA_HEREDOC_RE.fullmatch(cmd.strip())
+    delim = m and (m[3] or m[5])
+    if not m or m[7] != delim or delim in (m[6] or "").splitlines():
+        return cmd
+    return m[1]
 
 
 def _find_parts(args: List[str]) -> Tuple[List[str], int]:
@@ -17672,6 +17730,7 @@ def _var_scripts(tokens: List[str]) -> List[str]:
     # AUD-SEC-414: bản thay `~`/HOME gán tiền tố (`HOME=x bash -c '…$HOME…'`) là bản THÊM
     tildes = (False, True) if "HOME" in base and ("~" in base or "HOME=" in base) else (False,)
     for pick, split, tilde in itertools.product(range(picks), (False, True), tildes):
+        _tick()  # AUD-SEC-888
         script = _join_tokens(_expand_tokens(tokens, pick, split, tilde))
         if script not in seen:
             seen.add(script)
@@ -17802,6 +17861,7 @@ RUNNERS = {
     # AUD-SEC-817: trình bọc chạy lệnh từ đối số (cờ riêng từng công cụ; `capsh -- -c '…'`, `hyperfine '…'`, `entr -s`)
     *("setpriv", "bwrap", "capsh", "prlimit", "unbuffer", "rlwrap", "numactl", "firejail", "hyperfine", "entr", "gdb"),
     "flatpak-spawn",
+    "sem",  # AUD-SEC-887: GNU `sem` chạy lệnh từ đối số (cả lệnh còn BUDGET — `_parallel_why`)
 }
 RUNNER_SUFFIXES = 12  # số hậu tố đối số tối đa mỗi lệnh (chặn số lần quét lồng)
 # AUD-SEC-817 (lớp, D-502): lệnh guard KHÔNG mô hình (tên lạ — `direnv exec`, `op run`, `nix develop -c`, bản mới của

@@ -111,6 +111,7 @@ class AutonomyBenchRepoTest(unittest.TestCase):
             with (
                 unittest.mock.patch.object(guard, "ENV_ASSIGN_RE", re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")),
                 unittest.mock.patch.object(guard, "_parallel_jobs", return_value=([], "")),
+                unittest.mock.patch.object(guard, "_parallel_why", return_value=""),  # AUD-SEC-887
             ):
                 rows = [xt._bench_run(c, env) for c in selected]
         self.assertEqual({r["id"] for r in rows if r["status"] == "false_green"}, ids)

@@ -556,6 +556,7 @@ class GuardRemainingGapsTest(GuardRemainingGapsBase):
                 "rm -rf $CLAUDE_PROJECT_DIR/.autopilot",
                 "watch -n 5 'rm -rf ~'",
                 "ionice -c 3 sh -c 'rm -rf ~'",
+                'parallel -j4 echo ::: "rm -rf ~"',  # AUD-SEC-887 (D-503): mọi lệnh parallel → BUDGET (trước cho qua)
             ),
         )
         self.assert_all(
@@ -564,7 +565,6 @@ class GuardRemainingGapsTest(GuardRemainingGapsBase):
                 'flock /tmp/l git commit -m "rm -rf ~ is bad"',
                 'flock /tmp/l git commit -m "git reset --hard docs"',
                 'ionice -c3 npm test -- -t "git reset --hard"',
-                'parallel -j4 echo ::: "rm -rf ~"',
                 "python3 -c \"import subprocess; subprocess.run(['ls']); print('git reset --hard')\"",
                 "python3 -c \"import subprocess;subprocess.run(['grep','-r','rm -rf','.'])\"",
                 "python3 - <<'PY'\nopen('a.txt', 'w').write(\"os.system('rm -rf ~')\")\nPY",
