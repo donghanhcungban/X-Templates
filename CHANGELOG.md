@@ -238,6 +238,15 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3945 (D-503, D-506, phát hiện cổng ký lần 7): giá trị tính được `$(date …)`/`$(mktemp …)`/`$(cat …)` chỉ được tin
+  khi cả lệnh (mọi tầng bọc) chỉ gồm cấu trúc trong danh sách đóng — `BASH_CMDS[date]=…`, `export P''ATH=`, `read PATH`,
+  `printf -v`, `mapfile`, nameref, số học có tên biến, trap DEBUG có thân lạ từng lọt; `$(pwd)` không còn mất ưu đãi vì
+  `PATH=` (chặn oan); truy vấn nhánh hiện tại chỉ tính ở refspec `git push` (`rm -rf "$(git branch --show-current)/etc"`
+  → BUDGET). `env_parallel`/`parset`, `source`/`.` tên không có `/` tìm thấy trong PATH, argv `parallel` của `subprocess`/`os.spawn*` →
+  BUDGET; chương trình đọc từ stdin/heredoc/cờ `-e` của công cụ ngoài danh sách đọc-dữ-liệu (`make -f -`, ed `!`,
+  sqlite3 `.shell`, `crontab -`, `Rscript -e`…) chạy lệnh có luật → BUDGET; xoá không đệ quy trong `.git` (trừ `*.lock`)
+  và `find` vào `.git` qua xargs bị chặn. Hết chặn oan: `read`/`eval` dính chữ (`ready`, `readlink`), `pushd <chữ> … popd`
+  một tầng, địa chỉ sed từ biến vòng chữ số. Ca corpus: `guard-t3945-*`, họ `t3945:*` của `d503_invariant`.
 - T-3943 (D-503, cổng ký lần 7): mọi lệnh `parallel`/`sem` (sau gán/trình bọc, `env -S`, shell lồng, tên có nháy/thoát/
   đường dẫn/glob) → BUDGET — mẫu là shell/`eval`, lệnh từ stdin/tệp, `sem '<lệnh>'` từng lọt (AUD-SEC-887); `$(pwd)` trong
   thân `bash -c '…'`/`sh -c '…'`/heredoc nháy không còn thay bằng `$PWD` ở tầng ngoài trước khi tầng lồng thấy
