@@ -283,11 +283,9 @@ class PathScanTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "zz.env").write_text("x=1\n", encoding="utf-8")
             guard._path_has.cache_clear()
-            with mock.patch.dict(os.environ, {"HOME": tmp}):
-                self.assertTrue(guard._path_has("zz.env", f"/mnt/c/x{os.pathsep}{tmp}"))
-            guard._path_has.cache_clear()
-            with mock.patch.dict(os.environ, {"HOME": "/nonexistent-home"}):
-                self.assertFalse(guard._path_has("zz.env", f"{tmp}{os.pathsep}"))
+            self.assertTrue(guard._path_has("zz.env", f"/mnt/c/x{os.pathsep}{tmp}"))
+            with mock.patch.object(guard.os.path, "isfile", side_effect=AssertionError("không quét /mnt/c")):
+                self.assertFalse(guard._path_has("zz.env", f"/mnt/c/Windows{os.pathsep}"))
             guard._path_has.cache_clear()
 
 

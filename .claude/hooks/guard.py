@@ -3928,13 +3928,13 @@ def _source_on_path(name: str, cmd: str) -> bool:
 
 @functools.lru_cache(maxsize=64)
 def _path_has(name: str, path: str) -> bool:
-    """`name` là tệp trong một thư mục của `path` — T-3947: chỉ thư mục dưới `/usr`, `/opt`, `/bin`, `/sbin`, `$HOME`
-    (thư mục PATH trên ổ chậm — WSL `/mnt/c` — tốn ~140 ms/lệnh; tệp trồng vào PATH qua nhiều lệnh là giới hạn chấp nhận
-    (a) của D-507)."""
-    home = os.path.expanduser("~").rstrip("/")
-    roots = ("/usr/", "/opt/", "/bin/", "/sbin/", home + "/")
-    dirs = [d for d in path.split(os.pathsep) if (d.rstrip("/") + "/").startswith(roots)]
+    """`name` là tệp trong một thư mục của `path` — T-3947: bỏ ổ Windows gắn của WSL (`/mnt/<ổ>/…`, ~140 ms/lệnh; tệp
+    trồng vào PATH qua nhiều lệnh là giới hạn chấp nhận (a) của D-507)."""
+    dirs = [d for d in path.split(os.pathsep) if d and not WSL_DRIVE_RE.match(d)]
     return any(os.path.isfile(os.path.join(d, name)) for d in dirs)
+
+
+WSL_DRIVE_RE = re.compile(r"/mnt/[a-z](?:/|$)")
 
 
 # T-3945 (R2, D-503 b): công cụ NGOÀI danh sách đóng đọc-dữ-liệu (`STDIN_DATA_OK`) đọc stdin như CHƯƠNG TRÌNH có thể chạy
