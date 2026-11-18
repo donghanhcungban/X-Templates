@@ -238,6 +238,19 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3942 (D-503, cổng ký lần 6 + fuzz họ `fn:`/`cdx:`/`xs:`): guard có hạn giờ TOÀN quyết định (`DECISION_SECONDS`
+  15 s, mọi nhánh kể cả bộ theo dõi `cd`) → BUDGET trước hạn hook, kết quả `_commands_with_cwds` nhớ trong một quyết
+  định (chuỗi `cd … && …` 19 KB: 34 s → 19 s, 100 KB: 284 s → 15 s BUDGET); vòng `for` danh sách chữ không ráp như glob,
+  vòng glob ráp từng vòng (không nhân chéo); giá trị `$(date …)`/`$(cat …)`/`$(pwd)`/`$(mktemp …)`/truy vấn nhánh mất
+  ưu đãi khi tên lệnh có thể bị che (hàm, `alias`, `hash`, `eval`, `source`, `PATH=`, gán tiền tố); CDPATH/`cdable_vars`
+  so sau khi bỏ nháy, gán tên động/nameref và `popd` → thư mục không biết; nguồn xargs `find`/`git ls-files` chỉ miễn khi
+  không thể liệt kê tệp hàng rào (`find . -name '*.pyc'` qua; `-name settings.json`, `git ls-files` trần, `'*.py'`,
+  `echo -e '\x2e…'` → BUDGET), `cd <gốc>`/`pushd` giải được không còn chặn oan; `$(cat TỆP)` trong sed khi không lệnh
+  nào trước có thể ghi TỆP (thay "mọi lệnh là sed/cat/date"), đọc tệp thường `O_NONBLOCK` (FIFO không treo guard);
+  `date -I`/`--iso-8601`/`Z`; `export V=chữ`; `_SedCtx` tính điều kiện một lần (bậc hai → tuyến tính); `a[0]=1 git …`
+  như gán tiền tố. Gói `web-api-ts`: `check-audit-exceptions.ts` đỏ khi `expires` không phải `YYYY-MM-DD`,
+  `reason`/`owner`/`approved_by` rỗng, `auditConfig` dạng flow-mapping. `harness-files.md` khớp hành vi guard.
+
 - T-3940 (D-503, cổng ký lần 5 + fuzz mở rộng): hồi quy #648 — cắt `${f%…}`/`${f#…}` trên biến `for` duyệt glob không
   còn coi là chữ đã tính; bản thay ráp với từng từ của danh sách (glob giữ nguyên, ra ngoài nháy) được quét như
   `rm -rf ~/*`, không ráp chắc → BUDGET. Thân `sh -c "…"` nháy kép quét thêm bản bỏ `\` trước `$`/backtick; thư mục

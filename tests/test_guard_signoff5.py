@@ -270,7 +270,7 @@ class SignOff5HelperTest(unittest.TestCase):
         ctx = guard._SedCtx(cmd, guard._simple_cmds(cmd) or [], str(ROOT), "")
         self.assertIsNone(ctx.value("$(cat VERSION)", 1))
         ctx = guard._SedCtx(cmd, guard._simple_cmds(cmd) or [], str(ROOT), str(ROOT))
-        self.assertIsNotNone(ctx.value("$(cat VERSION)", 1))
+        self.assertIsNotNone(ctx.value("$(cat VERSION)", 0))  # T-3942: chỉ số của chính lệnh sed (lệnh trước nó: không)
         self.assertIsNone(ctx.value("$(cat .git)", 1))  # thư mục: lỗi đọc
         self.assertIsNone(ctx.value("$(cat BLUEPRINT.md)", 1))  # nội dung không phải giá trị gọn
         self.assertIsNone(ctx.value("$(echo a)", 1))

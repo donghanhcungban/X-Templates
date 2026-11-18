@@ -156,7 +156,7 @@ ALLOW = (
     "find docs -name '*.md' | xargs sed -i s/a/b/",
     "find . -name '*.pyc' | xargs rm -f",
     "ls | xargs -I{} rm -f {}",
-    "XT=1 git ls-files -z | xargs -0 rm -f",
+    "XT=1 git ls-files -z src | xargs -0 rm -f",  # T-3942: `git ls-files` trần liệt kê tệp hàng rào → BUDGET
     'a=(status); git "${a[*]}"',
     'X=build; rm -rf "$X"',
     "d=build; d=$(cat f) true; rm -rf $d",
