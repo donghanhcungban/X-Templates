@@ -15102,15 +15102,20 @@ def _fence_words(n: List[str]) -> List[str]:
     return out
 
 
+def _fence_argv_skip(n: List[str], argv: List[str]) -> bool:
+    """git/gh (luật riêng), trình bọc (`parallel`, `xargs` — luật hậu tố), shell đọc script, lệnh thụ động (`du`), lệnh
+    đọc/kiểm, xoá cả tệp, mẫu lệnh của parallel/xargs (`;`, `:::` — BUDGET riêng) không xét ở `_fence_argv_asks`."""
+    if n[0] in ("git", "gh") or n[0] in RUNNERS or n[0] in SHELLS or n[0] in GATE_PASSIVE - INTERPRETERS:
+        return True
+    if _go_reader(n, argv) or _whole_delete(n) or _fence_reader(n) or not _fence_scan_needed(n):
+        return True
+    return any(a in (";", "|", "&&", "||", ":::", "::::") for a in n)
+
+
 def _fence_argv_asks(n: List[str], argv: List[str], root: str, cwd: Optional[str]) -> List[str]:
-    """git/gh (luật riêng), trình bọc (`parallel`, `xargs` — luật hậu tố) không xét ở đây."""
-    if not n or not root or n[0] in ("git", "gh") or n[0] in RUNNERS or _go_reader(n, argv) or _whole_delete(n):
-        return []
-    if _fence_reader(n) or not _fence_scan_needed(n):
+    if not n or not root or _fence_argv_skip(n, argv):
         return []
     out: List[str] = []
-    if any(a in (";", "|", "&&", "||", ":::", "::::") for a in n):  # mẫu lệnh của parallel/xargs: luật riêng (BUDGET)
-        return []
     for a in _fence_words(n):
         p = re.split(r"[=:]", a)[-1] if a[:1] == "-" else a
         if not FENCE_PATH_RE.fullmatch(p) or p[:1] == "-" or not p.strip("./"):
@@ -21345,7 +21350,12 @@ def _empty_keep(cmds: List[Tuple[List[str], List[str]]], cmd: str) -> Set[str]:
     for seg, words in cmds:
         keep |= {words[1]} if words[:1] in (["for"], ["select"]) and len(words) > 1 else set()
         keep |= {m[1] for t in seg if (m := EMPTY_SAFE_ASSIGN_RE.match(t))}
-    return keep
+        # giá trị gán có phần chữ ngoài mở rộng (`b="backup-$(date +%F)"`) không bao giờ rỗng
+        keep |= {m[1] for t in seg if (m := ASSIGN_WORD_RE.match(t)) and EMPTY_EXPAND_RE.sub("", t[m.end() :])}
+    return keep - (_unmodelled_assigns(cmds, cmd) - EMPTY_KEEP)
+
+
+EMPTY_EXPAND_RE = re.compile(r"\$\([^)]*\)?|\$\{[^}]*\}?|\$\w+|`[^`]*`?|['\"\s]")
 
 
 def _empty_ref(m: "re.Match[str]", keep: Set[str], fill: str) -> str:

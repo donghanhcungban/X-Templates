@@ -509,6 +509,11 @@ B_ALLOW = (
     'ts=$(date +%F); cp -r data ~/bk/"$ts"',
     "echo 'src/' >> .git/info/sparse-checkout",
     'echo "$payload" | redis-cli -x set config',
+    # corpus lành r8/r9/l5 (T-3951 kiểm hồi quy): giá trị gán có chữ không rỗng, lệnh thụ động/shell đọc script
+    'backup="backup-$(date +%F)" && mkdir -p "$backup" && cp -r data "$backup/" && tar -czf "$backup.tgz" "$backup"'
+    ' && rm -rf "$backup"',
+    "du -sh .git/objects",
+    "bash .claude/hooks/x.sh",
 )
 B_DENY = (  # đối chứng
     f'for PATH in /x; do {R} -rf "$(date +%F)/x"; done',
