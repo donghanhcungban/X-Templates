@@ -104,3 +104,16 @@ Hai lô reviewer-alt: fuzz danh sách đóng (D-506) và hồi quy #656/#658. Or
 D-507: sửa mọi lỗ có thể do lỡ tay và mọi chặn oan phổ biến; chấp nhận có chủ và hạn 2027-01-21 hai họ cần nhiều bước hoặc dựng chuỗi động (AUD-SEC-912, AUD-SEC-913; giới hạn ghi ở `harness-files.md`; hàng rào thật là sandbox, ADR-0072).
 
 Đợt 11 (T-3947, #661): bộ tái hiện 34 ca sai 31 → 0; fz8 `leaks8` 2 150 → 13 (đều họ AUD-SEC-912 đã chấp nhận); fz7/fz6/fz-110f0807 0; 28 901 ca cũ: 32 ca chặn → qua đều là 16 lệnh lành × 2; chặn oan corpus lành 175 → 171; tốc độ p50/p95 8,1 → 7,0 / 19,1 → 15,7 ms. AUD-SEC-905 cùng đóng. Cổng ký lần 9 chạy sau #661.
+
+## Cổng ký lần 9 (ứng viên `e2f89c8b`, sau đợt 11)
+
+Hai lô reviewer-alt: fuzz tổng hợp (42 365 tổ hợp, 33 986 nguy hiểm trong bash thật) và hồi quy #661 (2 336 lệnh lành × nền). Oracle bash thật chạy với đường tuyệt đối, PATH chỉ có lệnh giả và canary; không có sự cố. Mọi bộ lọt cũ của cổng ký 4–8 0 lọt (ngoài 13 ca họ (a)); các họ #661 mới thêm (`git push` từ `$(branch)`, `.git` chung của worktree, `.git` qua glob, `git -C`/`GIT_DIR`) 0 lọt; mọi ca bọc `parallel`/`sem` bị chặn; tốc độ 0,89× (fuzz) và 1,02× (hồi quy) nền. 27 module `test_guard_*` rồi `test_hooks` một tiến trình: 47 test đỏ do test `signoff8` làm rò patch (AUD-TEST-120).
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| Fuzz | CÓ PHÁT HIỆN | 🔴 AUD-SEC-927 (chuyển hướng stdin vào lệnh ghép), AUD-SEC-925 (`ex -sc`), AUD-SEC-921 (hồi quy: lối thoát qua stdin), AUD-SEC-928 (`echo \| ed`), AUD-SEC-929 (`make -f /dev/fd/N`) · 🟠 AUD-SEC-923 (`$(date)` qua biến), AUD-SEC-924 (ghi đè `.git/**`), AUD-SEC-930 (nhóm lệnh trước `crontab -`) · 🟢 họ (c): AUD-SEC-931 |
+| Hồi quy | CÓ PHÁT HIỆN | 🟠 AUD-SEC-920 (`$` ở here-string), AUD-SEC-922 (`for PATH in`), AUD-SEC-923 · 🟢 AUD-SEC-926, AUD-TEST-120, AUD-HAR-432 |
+
+D-508: sửa mọi lỗi có thể do lỡ tay và chặn oan phổ biến; họ (c) — payload nguy hiểm viết tường minh vào stdin của công cụ đọc chương trình rồi che bằng lệnh ghép/`echo`/fd/biến — sửa vì gọn ở B1–B4 (AUD-SEC-927…930), phần còn lại (heredoc thân `$x`, `r${Z}m` trong gawk/perl, `mktemp` lỗi trả rỗng) chấp nhận có chủ và hạn 2027-01-21 (AUD-SEC-931).
+
+Đợt 12 (T-3949, #663): fz9 lọt 5 125 → 695 (610 heredoc `$x` + 27 `r${Z}m` + 45 mktemp rỗng, đều họ (c); 13 họ (a)); bộ fuzz cũ không tăng; 824 biến thể quanh từng mục sửa 0 lọt; flip ~470 nghìn ca cũ: 2 ca chặn → qua đều là `git push origin "HEAD:$(git branch --show-current)"` lành; tốc độ p50/p95 0,99×/0,96× nền. Cổng ký lần 10 chạy theo kiểu toàn diện (nhiều lô song song) sau #663.
