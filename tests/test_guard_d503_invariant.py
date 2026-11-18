@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
 import unittest
 import unittest.mock as mock
 from pathlib import Path
@@ -45,15 +44,14 @@ class D503InvariantTest(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 300)
 
     def test_no_dangerous_combination_allowed(self):
-        # T-3951: thời gian CPU của tiến trình — không giòn khi máy chạy song song nhiều module (đồng hồ tường đo cả chờ)
-        start = time.process_time()
+        # Không đo thời gian ở đây (BASE-GATE-005: ngưỡng CPU cứng bị cấm; hiệu năng guard do tests/test_perf và
+        # các test cpu_budget giữ) — test này chỉ khẳng định không tổ hợp nguy hiểm nào được cho qua.
         leaked = []
         for line in FIXTURE.read_text(encoding="utf-8").splitlines():
             row = json.loads(line)
             if decide(row["cmd"])["decision"] not in ("deny", "ask"):
                 leaked.append(row["id"])
         self.assertEqual(leaked, [])
-        self.assertLess(time.process_time() - start, 60)
 
 
 if __name__ == "__main__":
