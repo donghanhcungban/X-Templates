@@ -97,11 +97,17 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   nhắc chữ như `echo "PATH is set"` thì không), hàm/alias/`hash`/`enable`/
   `eval`/`source`, trap khác EXIT có thân ngoài danh sách, tên lệnh động → mất ưu đãi (BUDGET); `$(pwd)` (builtin) chỉ mất
   trước cấu trúc đổi được builtin (hàm, `BASH_FUNC_`, `BASH_ENV`, builtin lạ — `PATH=` thì không). T-3947: giá trị tính
-  được chỉ là thành phần lá — `..` theo sau (cả `cd` vào nó rồi `cd ..`/đường `../`) → BUDGET; `$(mktemp)` có `-p`/
-  `--tmpdir`/mẫu có `/`/TMPDIR gán trong lệnh mất ưu đãi; `$(date)` chỉ ưu đãi khi thư mục đích dưới gốc dự án (tiền tố
-  tương đối, `cd` vào thư mục con chữ trơn). Truy vấn nhánh hiện tại (`$(git branch --show-current)`, HEAD tách rời →
-  rỗng) chỉ tính ở vị trí tên-ref vô hại: refspec `git push` chiếm trọn (`src:dst` thì không — rỗng thành xoá nhánh
-  remote), đối số `pull`/`fetch`/`rebase`/`merge`/`checkout`/`switch`, `--set-upstream-to=`/`-u`, `gh pr create`.
+  được chỉ là thành phần lá — `..` theo sau (cả `cd` vào nó rồi `cd ..`/`~+/..`/đường `../`) → BUDGET; `$(mktemp)` có
+  `-p`/`--tmpdir`/mẫu có `/` trỏ `~`/`$HOME`/`..`, hay TMPDIR GÁN trong lệnh (gán, `read`/`export`/`for TMPDIR`,
+  `${TMPDIR:=…}`) mất ưu đãi — chỉ đọc/nhắc (`ls "$TMPDIR"`, `mktemp -p "$TMPDIR"` = thư mục mặc định của mktemp) thì
+  giữ; `$(date)` — viết thẳng hay qua biến gán từ nó (`d=$(date +%F); rm -rf ~/"$d"`) — chỉ ưu đãi khi thư mục đích dưới
+  gốc dự án (tiền tố tương đối, `cd` vào thư mục con chữ trơn; không `env -C`/`--chdir`) hay `/tmp`, `/var/tmp` (cả `cd
+  /tmp && rm -rf "b-$(date +%F)"`); đích ngoài gốc (`>> ~/logs/$(date +%F).log`, `cp -r d "$HOME/b-$(date +%F)"`) →
+  BUDGET, viết lại bằng đường dưới `/tmp` hay trong dự án (T-3949). `for`/`select`/`coproc PATH`, `exec {PATH}>` cũng là
+  ghi PATH. Truy vấn nhánh hiện tại (`$(git branch --show-current)`, HEAD tách rời → rỗng) chỉ tính ở vị trí tên-ref vô
+  hại: refspec `git push` chiếm trọn hay vế đích sau nguồn chữ (`HEAD:"$(…)"`, `"HEAD:refs/heads/$(…)"` — rỗng thì git
+  từ chối; `"$(…):dst"` thì không — rỗng thành xoá nhánh remote), đối số `pull`/`fetch`/`rebase`/`merge`/`checkout`/
+  `switch`, `--set-upstream-to=`/`-u`, `gh pr create`.
 - **Duyệt giai đoạn** (ADR-0058, AUD-SEC-155; ADR-0069: chỉ đúng MỘT lệnh đơn `python3 <xt.py của dự án> stage approve --sha … [--note …]` — không `env`/`unset`/gán biến/cờ trình thông dịch, không nối hay lồng lệnh, không token mờ — được cho qua khi xt.yaml ở cây **và** bản đã commit ở nhánh chính (`origin/main`, rồi `origin/master`) khai `stage_approval: agent`, `XT_GUARD_POLICY=strict` không nới): luật chữ (`xt.py … stage … approve`/`init … --adopt`) cộng luật token
   mờ: ở mọi vị trí script (`-m xt`/`-mxt`/`-m scripts.xt`, lồng trong `perf sample --`), bỏ chuyển hướng và fd
   (`2>/dev/null`, `{fd}>f`; đích bị cắt như `> >(cat)` là mờ), lệnh con, cờ/giá trị `--framework` (cả `=` rỗng) hay tuỳ
@@ -203,21 +209,33 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   như shell lồng) chạy trước nên lệnh nguy hiểm giữ mã của nó. Gán phần tử mảng đầu lệnh (`a[0]=1 cmd`) và
   `x+=$(echo …)` dùng ở lệnh sau đều bị chặn (RULE_DENY/BUDGET, AUD-HAR-430). Công cụ ngoài danh sách đóng đọc-dữ-liệu
   (`cat`/`grep`/`jq`/`git`/`gh`…) đọc chương trình từ stdin/heredoc/here-string/ống chữ hay cờ chương trình (`-e`/`--eval`
-  cả viết tắt `--eva=`, dính giá trị `-e'…'`; `-c`/`--cmd`/`+cmd` ở client CSDL, vi/ex/vim, expect; đối số vị trí sqlite3)
-  mà thân, so sau khi bỏ nháy kiểu shell, chạy lệnh có luật → BUDGET: công cụ biết lối thoát (ed/ex/vim/dc `!`, psql
-  `\!`, sqlite3 `.shell`/`.system`, mysql `system`, gdb `shell`, tcl/expect `exec`) chỉ xét chữ sau lối thoát (có `$`
-  cũng tính) — SQL/manifest/Dockerfile là dữ liệu; `at`/`crontab` xét cả thân; công cụ khác xét mọi từ; here-string/ống
-  có `$` là giá trị lúc chạy → BUDGET. Nguồn không phải chữ (`<(…)`, fd khác 0 `<&3`, `/dev/fd/N`, ống từ khâu đọc
-  chúng) vào shell/trình thông dịch/công cụ đọc chương trình → BUDGET, trừ `<(…)` chỉ đọc nội dung đã lưu (`git
-  cat-file`/`git show`/`cat tệp`, dự phòng chỉ thoát — Gate `/optimize`). `make` đọc makefile từ stdin hay `--eval`/`-E`
-  → BUDGET (T-3945, T-3947, D-503 b, D-507). Xoá không đệ quy bên trong `.git` của dự án (`rm -f .git/HEAD`, `.git/*`,
-  `cd .git && rm -f *`, `unlink`, `shred`; lệnh bật `dotglob`/`GLOBIGNORE` thì `*/index` cũng tính; biến vòng `for f in
-  …` xét theo mẫu; gốc là worktree liên kết thì cả gitdir riêng và `.git` chung của repo chính) → WIPE_OUTSIDE, trừ
-  `*.lock`; ghi đè `.git/HEAD`/`.git/index`/`.git/config` (cả repo con) bằng `mv`/`truncate`/`>`/`cp`/`tee`/`sed -i`/
-  `ln`/`install` → HOOK_BYPASS; `find` có gốc trong `.git` hay duyệt vào `.git` khớp tên mẫu vào xargs → BUDGET.
-  **Giới hạn chấp nhận** (D-507, hạn xét lại 2027-01-21 cùng mốc sandbox ADR-0072): (a) trồng lệnh vào thư mục PATH qua
-  nhiều lệnh rồi `$(date)`/`$(mktemp)`; (b) argv `parallel` dựng bằng nối chuỗi/biến/`exec {"parallel"}` của perl,
-  `pcntl_exec`/`proc_open` của php — cần chủ ý nhiều bước/chuỗi động, hàng rào là sandbox.
+  cả viết tắt `--eva=`, dính giá trị `-e'…'`; `-c`/`--cmd`/`+cmd` ở client CSDL, vi/ex/vim, expect, cả trong cụm cờ ngắn
+  `ex -sc`/`vim -Nesc`/`psql -Atc`/`mysql -Be`; `mysql --pager=`; đối số vị trí sqlite3) mà thân, so sau khi bỏ nháy kiểu
+  shell, chạy lệnh có luật → BUDGET: công cụ biết lối thoát (ed/ex/vim/dc `!`, vim `system()`/`systemlist()`/
+  `job_start()`, psql `\!`/`\o |`/`\g |`/`to program`, sqlite3 `.shell`/`.system`/`.once |`/`.output |`/`.import "|…"`,
+  mysql `system`/`pager`, gdb `shell`/`pipe … |`, tcl/expect `exec`) chỉ xét chữ sau lối thoát (có `$` cũng tính) —
+  SQL/manifest/Dockerfile là dữ liệu; `at`/`crontab` xét cả thân; công cụ khác xét mọi từ. Here-string/ống có `$` là
+  chương trình lúc chạy → BUDGET chỉ với công cụ đọc chương trình (ed/ex/vim/dc/gdb/tclsh/expect, client CSDL psql/
+  sqlite3/mysql/mongosh/redis-cli, `at`/`crontab`, lua, sed/awk/make `-f -`); công cụ khác đọc dữ liệu (`echo "$TOKEN" |
+  docker login --password-stdin`, `bc <<< "$x * 2"`) — T-3949. Chữ echo có thoát vào công cụ đọc chương trình xét mọi
+  cách đọc (nguyên văn, giải `-e`, bỏ `\`); stdin gắn vào lệnh ghép (`{ python3; } <<< '…'`, `( ed ) <<<`, `done <<E`)
+  hay nhóm ra ống (`(crontab -l; echo '…') | crontab -`) xét với mọi lệnh đọc chương trình bên trong (chặt: `echo
+  "… $HOME/…"` vào `crontab -` qua nhóm → BUDGET như dạng thẳng). Nguồn không phải chữ (`<(…)`, fd khác 0 `<&3`,
+  `/dev/fd/N`, `-f /dev/fd/3` của sed/awk/make, ống từ khâu đọc chúng) vào shell/trình thông dịch/công cụ đọc chương
+  trình → BUDGET, trừ `<(…)` chỉ đọc nội dung đã lưu (`git cat-file`/`git show`/`cat tệp`, dự phòng chỉ thoát — Gate
+  `/optimize`). `make` đọc makefile từ stdin hay `--eval`/`-E` → BUDGET (T-3945, T-3947, T-3949, D-503 b, D-507, D-508).
+  Xoá không đệ quy bên trong thư mục git (`rm -f .git/HEAD`, `.git/*`, `cd .git && rm -f *`, `unlink`, `shred`; lệnh bật
+  dotglob — `shopt -s dotglob`, `-O dotglob`, đặt `GLOBIGNORE`; nhắc chữ thì không — thì `*/index` cũng tính; biến vòng
+  `for f in …` xét theo mẫu) → WIPE_OUTSIDE; GHI vào đó (`>`, `: >`, `cp`, `mv`, `tee`, `truncate`, `sed -i`, `ln`,
+  `install`, `dd`, `rsync`) → HOOK_BYPASS. Thư mục git: `.git` của gốc, gốc là worktree liên kết thì cả gitdir riêng
+  (`<chung>/worktrees/<tên>/HEAD|index`) và `.git` chung, mọi `.git` của repo con dưới gốc (`sub/.git/objects`); trừ
+  `*.lock` và (chỉ ghi) `info/exclude`. `find` có gốc trong `.git` hay duyệt vào `.git` khớp tên mẫu vào xargs → BUDGET.
+  **Giới hạn chấp nhận** (D-507, D-508, hạn xét lại 2027-01-21 cùng mốc sandbox ADR-0072): (a) trồng lệnh vào thư mục
+  PATH qua nhiều lệnh rồi `$(date)`/`$(mktemp)`; (b) argv `parallel` dựng bằng nối chuỗi/biến/`exec {"parallel"}` của
+  perl, `pcntl_exec`/`proc_open` của php; (c) chương trình nguy hiểm viết tường minh rồi che bằng biến: heredoc không
+  nháy chỉ có `$x` vào công cụ đọc chương trình (`x='!rm …'; ed <<E` + `$x`), `r${Z}m` trong chuỗi `system()` của
+  `gawk -e`/`perl -e`, `mktemp` lỗi trả rỗng (`"$(mktemp -d -p nonexist)"/etc`) — cần chủ ý nhiều bước/chuỗi động, hàng
+  rào là sandbox.
 - **`merge-check` so giờ sổ review cục bộ với giờ GitHub** (AUD-XFEAT-019, D-104): review chặn chỉ có ở sổ cục bộ được
   tính khi ghi sau dấu đã đăng mới nhất ở cùng head; đồng hồ máy chậm hơn GitHub thì review chặn ghi ngay sau một dấu sạch
   bị coi là cũ hơn. Lớp đỡ: `pr reviewed` đăng ngay kết luận (dấu đã đăng là nguồn của `merge-check`/steward/guard).
