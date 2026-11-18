@@ -238,6 +238,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3943 (D-503, cổng ký lần 7): mọi lệnh `parallel`/`sem` (sau gán/trình bọc, `env -S`, shell lồng, tên có nháy/thoát/
+  đường dẫn/glob) → BUDGET — mẫu là shell/`eval`, lệnh từ stdin/tệp, `sem '<lệnh>'` từng lọt (AUD-SEC-887); `$(pwd)` trong
+  thân `bash -c '…'`/`sh -c '…'`/heredoc nháy không còn thay bằng `$PWD` ở tầng ngoài trước khi tầng lồng thấy
+  `pwd(){ …; }` (AUD-SEC-890); điểm kiểm hạn giờ ở luật dùng lại tệp vừa ghi và bản thay biến (nhiều `sed -i` 50 KB:
+  16–20 s → 15 s BUDGET, AUD-SEC-888); heredoc dữ liệu `cat > TỆP <<'EOF'` chứa chữ `find … -delete` hết bị chặn oan
+  (AUD-SEC-889). Ca corpus: `guard-sec887-*`, `guard-sec890-*`, `d503s6-deny-003`; đối chứng `parallel` cũ đổi kỳ vọng.
 - T-3942 (D-503, cổng ký lần 6 + fuzz họ `fn:`/`cdx:`/`xs:`): guard có hạn giờ TOÀN quyết định (`DECISION_SECONDS`
   15 s, mọi nhánh kể cả bộ theo dõi `cd`) → BUDGET trước hạn hook, kết quả `_commands_with_cwds` nhớ trong một quyết
   định (chuỗi `cd … && …` 19 KB: 34 s → 19 s, 100 KB: 284 s → 15 s BUDGET); vòng `for` danh sách chữ không ráp như glob,

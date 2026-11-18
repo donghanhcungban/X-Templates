@@ -3,7 +3,9 @@ trong hộp cát) không được cho qua.
 
 `tests/fixtures/autonomy/d503_invariant.jsonl`: tập con cố định của bộ sinh có hướng (lệnh có luật × dạng mở rộng ở vị
 trí tên/cờ/lệnh con/đích × gốc lọt): một nửa số ca lọt của MỖI gốc (thứ tự id, chỉ số chẵn) — biến gán ngoài mô hình,
-tham số vị trí `sh -c`, hậu tố/tên lệnh động sau trình chạy, `cd` vào thay lệnh, xargs, lệnh ghi — cộng mọi dạng trơn."""
+tham số vị trí `sh -c`, hậu tố/tên lệnh động sau trình chạy, `cd` vào thay lệnh, xargs, lệnh ghi — cộng mọi dạng trơn.
+Họ `fnw:*` (AUD-SEC-890) và `par:887` (T-3943) lấy từ ca lọt ở `1b462999` của ma trận `test_guard_signoff7`, chưa chạy
+bash thật: chỉ dạng che chắc đổi lệnh (định nghĩa hàm) và lệnh nguy hiểm nguyên văn."""
 
 from __future__ import annotations
 
