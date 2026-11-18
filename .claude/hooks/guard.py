@@ -4053,7 +4053,7 @@ CLUSTER_PROG = {**dict.fromkeys(VI_NAMES, "c"), "psql": "c", "expect": "c", "mys
 # `.once`/`.output`/`.import` của sqlite3, `\o`/`\g` của psql (`.once |rm …`, `\o |rm …`)
 PROG_ESCAPE_RE = re.compile(
     r"(?<!\w)\.?(?:shell|system|systemlist|job_start|exec|spawn|popen|execute|pager|pipe|program)(?!\w)|\\!|!(?!=)"
-    r"|(?:\.(?:once|output|import)|\\[og])(?!\w)[^|\n]*\|"
+    r"|(?:\.(?:once|output|import|read)|\\[ogw])(?!\w)[^|\n]*\|"  # T-3954 B7: `.read '|…'`, psql `\w |…`
     r"|[\"{]\|"  # T-3951 A12: ống đầu chuỗi `open "|lệnh"`/`{|lệnh}` (tcl/expect, Ruby/Perl `open`) — lối thoát chung
 )
 STDIN_WHOLE_TOOLS = frozenset("at batch crontab".split())
@@ -4135,7 +4135,7 @@ def _heredoc_prog_runs(cmd: str) -> bool:
 # T-3947 (D-507): chương trình từ nguồn KHÔNG phải chữ — thay tiến trình, fd khác 0 (`exec 3< <(…); sh <&3`), đường fd —
 # vào stdin hay làm tệp chương trình của shell/trình thông dịch/công cụ đọc chương trình (`PROG_READERS`), kể cả qua ống
 # từ khâu đọc nguồn đó (`cat <(…) | node`) và nhóm (`{ ed; } < <(…)`) → BUDGET: guard không thấy chữ chạy.
-PROG_READERS = frozenset("ed red dc gdb sqlite3 psql mysql mariadb tclsh wish expect".split()) | VI_NAMES
+PROG_READERS = frozenset("ed red dc gdb lldb sqlite3 psql mysql mariadb tclsh wish expect".split()) | VI_NAMES
 # công cụ biết lối thoát (đọc thân theo dòng lối thoát): trên + client CSDL + công cụ đọc manifest/Dockerfile từ stdin
 STDIN_ESCAPE_TOOLS = PROG_READERS | frozenset(
     "mongosh mongo redis-cli kubectl docker podman nerdctl buildah helm oc kustomize".split()
@@ -4268,7 +4268,7 @@ def _inline_values(name: str, plain: List[str]) -> List[str]:
             out.append(val if eq else nxt)
         elif name in ("mysql", "mariadb") and eq and len(key) >= 5 and "--pager".startswith(key):
             out.append("pager " + val)  # T-3949: `mysql --pager='rm …'` như lệnh `pager` của client
-        elif INLINE_SHORT_RE.fullmatch(a) and (a != "-c" or with_c):
+        elif INLINE_SHORT_RE.fullmatch(a) and (a != "-c" or with_c) or a in INLINE_TOOL_FLAGS.get(name, ()):
             out.append(nxt)
         elif (k := _cluster_at(name, a)) > 1:
             out.append(a[k + 1 :] or nxt)
@@ -4277,6 +4277,9 @@ def _inline_values(name: str, plain: List[str]) -> List[str]:
         elif a[:1] == "+" and name in VI_NAMES or name == "sqlite3" and a[:1] != "-":
             out.append(a.removeprefix("+"))
     return out
+
+
+INLINE_TOOL_FLAGS = {"lldb": ("-o", "-O", "-k", "-K", "--one-line", "--one-line-before-file", "--one-line-on-crash")}
 
 
 def _cluster_at(name: str, a: str) -> int:
@@ -4297,16 +4300,26 @@ def _stdin_mode(argv: List[str]) -> int:
 # T-3951 B1 (lô 5): lối thoát THEO TỪNG công cụ — `pipe`/`program`/`pager`/`system`/`!` là chữ SQL thường ở client CSDL
 # (`where status = 'pipe' and id > $N`, `select program from t where id=$ID`). Công cụ ngoài bảng/không biết tên (nhóm
 # nhiều lệnh đọc) → `PROG_ESCAPE_RE` chung (chặt).
-VI_ESCAPE = r"!(?!=)|(?<!\w)(?:system|systemlist|job_start)(?!\w)"
+# T-3954 B7: vim/nvim `:terminal`, `jobstart()`/`termopen()`, lệnh nhúng trình thông dịch (`:lua`, `:python3`, `:perl`…);
+# psql `\w |…`; sqlite3 `.read '|…'`; gdb `python`/`guile`; lldb `platform shell`/`script`; mongosh/mongo `require(
+# "child_process")`.
+VI_ESCAPE = (
+    r"!(?!=)|(?<!\w)(?:system|systemlist|job_start|jobstart|termopen|terminal|term|lua|luado|python3?|py3?|pyx|perl"
+    r"|perldo|ruby|rubydo)(?!\w)"
+)
+JS_SHELL_ESCAPE = re.compile(r"child_process|(?<!\w)(?:execSync|spawnSync|execFileSync)(?!\w)|(?<!\w)require\s*\(")
 TOOL_ESCAPE_RE: Dict[str, "re.Pattern[str]"] = {
     **{n: re.compile(VI_ESCAPE) for n in (*VI_NAMES, "ed", "red", "ex")},
     "dc": re.compile(r"!"),
-    "psql": re.compile(r"\\!|\\[og](?!\w)[^|\n]*\||(?<!\w)to\s+program(?!\w)", re.I),
+    "psql": re.compile(r"\\!|\\[ogw](?!\w)[^|\n]*\||(?<!\w)to\s+program(?!\w)", re.I),
     "mysql": re.compile(r"\\!|(?:^|;)\s*(?:system|pager)(?!\w)", re.I),
     "mariadb": re.compile(r"\\!|(?:^|;)\s*(?:system|pager)(?!\w)", re.I),
-    "sqlite3": re.compile(r"\.(?:shell|system)(?!\w)|\.(?:once|output|import)(?!\w)[^|\n]*\|"),
-    "gdb": re.compile(r"(?<!\w)(?:shell|pipe)(?!\w)|!"),
+    "sqlite3": re.compile(r"\.(?:shell|system)(?!\w)|\.(?:once|output|import|read)(?!\w)[^|\n]*\|"),
+    "gdb": re.compile(r"(?<!\w)(?:shell|pipe|python|python-interactive|pi|py|guile|gu)(?!\w)|!"),
+    "lldb": re.compile(r"(?<!\w)(?:platform\s+shell|shell|script)(?!\w)|!"),
     "lua": re.compile(r"(?<!\w)(?:execute|popen)(?!\w)"),
+    "mongosh": JS_SHELL_ESCAPE,
+    "mongo": JS_SHELL_ESCAPE,
 }
 # T-3951 A12: tcl/expect — `exec`/`spawn`, `open "|lệnh"`/`open {|lệnh}` (ống đầu chuỗi là lối thoát chung)
 TCL_ESCAPE_RE = re.compile(r"(?<!\w)(?:exec|spawn)(?!\w)|[\"{]\|")
@@ -11389,13 +11402,16 @@ def _release_sign_help(argv: List[str], root: str, cwd: Optional[str]) -> bool:
     return len(others) < len(tail) and "--" not in tail and _approve_opts(others, RELEASE_SIGN_OPTS)
 
 
+PY_STDIN_SCRIPTS = frozenset({"-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"})  # script đọc từ stdin
+
+
 def _signs_release(argv: List[str]) -> bool:
     """AUD-SEC-545: `release-sign` qua mọi dạng gọi xt mà luật `stage approve` nhận (`python3 -m xt`, glob `x?.py`, đường
     mờ `"$XT"` sau `python`) — cùng bộ nhận dạng script (`_xt_named`, `_vague`, `_xt_sub`)."""
     n = normalize(_no_redirects(argv))
     py = False
     for k, t in enumerate(n):
-        if _xt_named(n, k) or (k == 0 or py) and _vague(t):
+        if _xt_named(n, k) or (k == 0 or py) and (_vague(t) or t in PY_STDIN_SCRIPTS):  # T-3954 C7: `python3 -`
             if _xt_sub(n, k + 1)[1] == "release-sign":
                 return True
         py = py or bool(PYTHON_RE.fullmatch(posixpath.basename(t)))
@@ -13501,13 +13517,28 @@ def _ssh_local_scripts(tokens: List[str]) -> List[str]:
 
 
 def _curl_methods(args: List[str]) -> List[str]:
-    """Phương thức của curl: `-X M`, `-XM`, `--request[=]M`, và cờ gộp `-sX M`/`-sXM`."""
-    out = _flag_values(args, ("-X", "--request"))
+    """Phương thức của curl: `-X M`, `-XM`, `--request[=]M`, và cờ gộp `-sX M`/`-sSfXPUT` (T-3954 R3: getopt)."""
+    return [m.upper() for m in _flag_values(args, ("--request",)) + _curl_short_values(args, "X")]
+
+
+def _curl_short_values(args: List[str], letters: str) -> List[str]:
+    """Giá trị của cờ ngắn curl `letters` ở mọi dạng getopt (`-X M`, `-XM`, cụm `-sSfXPUT`, `-sd x`): đọc từng chữ của
+    cụm tới cờ nhận giá trị đầu tiên (`CURL_SHORT_VALUE`) — phần còn lại của cụm hay đối số sau là giá trị của nó."""
+    out: List[str] = []
+    skip = False
     for i, a in enumerate(args):
-        if re.fullmatch(r"-[A-Za-z]+X[A-Za-z]*", a) and not a.startswith("-X"):
-            rest = a.split("X", 1)[1]
-            out.append(rest or (args[i + 1] if i + 1 < len(args) else ""))
-    return [m.upper() for m in out]
+        if skip or a == "--":
+            skip = False
+            continue
+        if a[:1] != "-" or a.startswith("--"):
+            continue
+        for j, c in enumerate(a[1:], 1):
+            if c in CURL_SHORT_VALUE or c in letters:
+                rest = a[j + 1 :]
+                skip = not rest
+                out += [rest or (args[i + 1] if i + 1 < len(args) else "")] if c in letters else []
+                break
+    return out
 
 
 CURL_SHORT_VALUE = {f[1] for f in CURL_VALUE_FLAGS if len(f) == 2}
@@ -14274,12 +14305,52 @@ def _copy_targets(name: str, args: List[str]) -> List[str]:
 
 def _inplace_targets(name: str, args: List[str]) -> List[str]:
     """sed -i / perl -i: file được sửa tại chỗ (bỏ script `-e`/`-f`, và script đầu khi không có `-e`)."""
-    if name == "sed" and any(x == "-i" or x.startswith(("-i", "--in-place")) for x in args):
-        pos = _positionals(args, ("-e", "-f", "--expression", "--file"))
-        return pos if any(x in ("-e", "-f") or x.startswith(("--expression", "--file")) for x in args) else pos[1:]
+    if name in SED_INPLACE_NAMES:
+        inplace, script, pos = _sed_getopt(args)
+        return (pos if script else pos[1:]) if inplace else []
     if name == "perl" and any(x.startswith("-") and not x.startswith("--") and "i" in x[1:] for x in args):
         return _positionals(args, ("-e", "-E", "-M", "-I"))
     return []
+
+
+# T-3954 R1 (AUD-SEC-940): sed đọc cờ như getopt — cụm `-Ei`, `-ni`, `-sEi`: `i` ở BẤT KỲ vị trí (trước cờ nhận giá trị)
+# là sửa tại chỗ, phần sau `i` là hậu tố sao lưu; `-e`/`-f`/`-l` ăn phần còn lại của cụm hay đối số sau.
+SED_INPLACE_NAMES = frozenset({"sed", "gsed"})
+SED_GETOPT_VALUE = frozenset("efl")  # tên dài nhận giá trị: `SED_LONG_VALUE`
+
+
+def _sed_short(a: str) -> Tuple[bool, bool, bool]:
+    """(sửa tại chỗ, có `-e`/`-f`, đối số sau là giá trị) của một cụm cờ ngắn sed."""
+    for j, c in enumerate(a[1:], 1):
+        if c == "i":
+            return True, False, False
+        if c in SED_GETOPT_VALUE:
+            return False, c != "l", j == len(a) - 1
+    return False, False, False
+
+
+def _sed_long(a: str) -> Tuple[bool, bool, bool]:
+    key = a.split("=", 1)[0]
+    value = len(key) >= 3 and any(f.startswith(key) for f in SED_LONG_VALUE)
+    script = value and not "--line-length".startswith(key)
+    return len(key) >= 3 and "--in-place".startswith(key), script, value and "=" not in a
+
+
+def _sed_getopt(args: List[str]) -> Tuple[bool, bool, List[str]]:
+    """(sửa tại chỗ, có chương trình qua `-e`/`-f`, đối số vị trí) của sed theo getopt (sau `--` chỉ còn đối số)."""
+    inplace = script = skip = False
+    pos: List[str] = []
+    for k, a in enumerate(args):
+        if skip:
+            skip = False
+        elif a == "--":
+            return inplace, script, pos + args[k + 1 :]
+        elif a.startswith("-") and a != "-":
+            i, s, skip = (_sed_long if a.startswith("--") else _sed_short)(a)
+            inplace, script = inplace or i, script or s
+        else:
+            pos.append(a)
+    return inplace, script, pos
 
 
 def _url_name(u: str) -> str:
@@ -14615,7 +14686,8 @@ def write_targets(n: List[str], argv: List[str]) -> List[str]:
         return out + FILE_WRITERS[name](args)
     if name == "sed":
         out += _sed_writes(args)
-    created = _py_archive(args)[1] if PY_UNPACK_RE.fullmatch(name) else []  # `python -m zipfile -c F` (AUD-SEC-475)
+    # `python -m zipfile -c F` (AUD-SEC-475); `python -m json.tool IN OUT` ghi OUT (T-3954 B1)
+    created = _py_archive(args)[1] + _py_json_out(args) if PY_UNPACK_RE.fullmatch(name) else []
     return out + created + _inplace_targets(name, args)
 
 
@@ -14837,6 +14909,18 @@ def _perm_asks(n: List[str], argv: List[str], root: str, cwd: Optional[str]) -> 
     return asks + ([PERM_NO_TARGET_WHY] if hidden else [])
 
 
+def _glob_targets(targets: List[str], root: str, cwd: Optional[str]) -> List[str]:
+    """T-3954 C2: đích ghi có glob (`.autopilo[t]/state.json`, `.gi[t]/HEAD`) — bash mở thành tệp có thật: các tệp khớp
+    lúc xét (tính từ thư mục đang đứng hay gốc), để luật hàng rào/bằng chứng xét đúng tên thật."""
+    out: List[str] = []
+    for t in targets:
+        first = posixpath.normpath(t).split("/", 1)[0]  # `build/*.o`: thư mục chữ thường — không phải hàng rào, bỏ
+        if GLOB_RE.search(t) and not set(t) & {"$", "`"} and (GLOB_RE.search(first) or first[:1] in (".", "", "~")):
+            base = cwd or root
+            out += sorted(globmod.glob(os.path.join(base, os.path.expanduser(t))))[:GLOB_EXPAND_MAX]
+    return out
+
+
 def _write_asks(
     n: List[str], argv: List[str], root: str, cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None
 ) -> List[str]:
@@ -14849,6 +14933,7 @@ def _write_asks(
     # AUD-SEC-458: giải nén không nêu thư mục ghi vào thư mục đang đứng — xét như `-C .`/`-d .` (chỉ ở đây: `.` không
     # là đích của luật tệp-vừa-ghi-rồi-chạy, ADR-0066); AUD-SEC-470: chép VÀO thư mục → cả `đích/<tên nguồn>`
     targets = [*write_targets(n, argv), *([cfg] if cfg else []), *_extract_here(n), *_copied_into(n, root, cwd)]
+    targets += _glob_targets(targets, root, cwd)  # T-3954 C2
     found = [x for t in find_evidence for x in _where(t, root, cwd) if t not in targets]
     asks += [EVIDENCE_WHY.format(t) for t in found if _target_kind(t, root) == "evidence"]
     asks += [FENCE_WHY.format(t) for t in found if _is_fence(t, root)]
@@ -15024,7 +15109,9 @@ HOME_DOTFILE_WHY = (
 
 def _home_dotfile(x: str) -> str:
     """Loại đích `x`: 'secret' (`~/.ssh/**`, `~/.gnupg/**`, `~/.aws/**`, `~/.kube/**`, `~/.netrc`, `~/.npmrc`,
-    `~/.gitconfig`), 'etc' (`/etc/**`), 'rc' (tệp khởi động shell ở home); khác → ''."""
+    `~/.gitconfig`), 'etc' (`/etc/**`), 'rc' (tệp khởi động shell ở home); khác → ''. T-3954 R2: `$HOME`/`${HOME}`
+    (cả trong nháy kép) quy về `~` trước khi xét."""
+    x = HOME_REF_RE.sub("~", _dequote(x)) if "HOME" in x else x
     p = posixpath.normpath(os.path.expanduser(x)) if x[:1] in ("/", "~") else ""
     if p == "/etc" or p.startswith("/etc/"):
         return "etc"
@@ -15042,14 +15129,34 @@ def _appends(t: str, n: List[str], argv: List[str]) -> bool:
     redir = [o for o in ops if _is_redirect(o)]
     if redir:
         return all(o in (">>", "&>>") for o in redir)
-    return n[:1] == ["tee"] and any(a in ("-a", "--append") or re.fullmatch(r"-\w*a\w*", a) for a in n[1:])
+    return n[:1] in (["tee"], ["sponge"]) and any(
+        a in ("-a", "--append") or re.fullmatch(r"-\w*a\w*", a) for a in n[1:]
+    )
+
+
+# T-3954 R2: công cụ ngoài bảng đích ghi sửa/thay tệp đối số tại chỗ (`sponge ~/.bashrc`, `vim -es … ~/.bashrc`, `ed`,
+# `dos2unix`, `gzip ~/.netrc` — thay bằng `.gz`); trình nén có cờ chỉ đọc/giữ nguồn thì không. Trình thông dịch/sed/awk:
+# chỉ khi sửa tại chỗ hay chương trình có lời gọi ghi (`_fence_scan_needed`).
+HOME_WRITE_TOOLS = frozenset("sponge ed ex vim vi nvim gvim dos2unix unix2dos mac2unix".split())
+HOME_PACKERS = frozenset("gzip bzip2 xz lzma zstd lz4 lzip compress pigz".split())
+HOME_PACK_KEEP_RE = re.compile(r"-[a-zA-Z0-9]*[cklt][a-zA-Z0-9]*|--(?:stdout|to-stdout|keep|test|list)")
+
+
+def _home_tool_words(n: List[str]) -> List[str]:
+    head = posixpath.basename(n[0]) if n else ""
+    if head in HOME_PACKERS:
+        writes = not any(HOME_PACK_KEEP_RE.fullmatch(a) for a in n[1:])
+    else:
+        interp = INTERP_RE.fullmatch(head) or head in SED_NAMES or head in AWK_NAMES
+        writes = head in HOME_WRITE_TOOLS or bool(interp) and _fence_scan_needed(n)
+    return [a for a in n[1:] if a[:1] != "-"] if writes else []
 
 
 def _home_dotfile_asks(n: List[str], argv: List[str], targets: List[str], root: str, cwd: Optional[str]) -> List[str]:
     out: List[str] = []
     if root == "/":  # trong container (gốc giả `/`): `/etc` là của container, không phải máy (`_container_asks`)
         return out
-    for t in dict.fromkeys(targets):
+    for t in dict.fromkeys(targets + _home_tool_words(n)):
         xs = [t, *_where(t, root, cwd), *_real_targets(t, root, cwd)]
         if any(map(_global_git_config, xs)):  # cấu hình git toàn cục: luật AUD-SEC-424 (HOOK_BYPASS) xét
             continue
@@ -15076,7 +15183,9 @@ def _fence_reader(n: List[str]) -> bool:
 
 
 FENCE_ARGV_SKIP = frozenset("cd pushd popd echo printf test [ [[ true false : export local declare readonly".split())
-FENCE_PATH_RE = re.compile(r"[\w.@%+~/-]*[./][\w.@%+~/-]*")  # từ dạng đường: có `.` hay `/`, không dấu mã/nháy
+# từ dạng đường: có `.` hay `/`, không dấu mã/nháy; T-3954 C2: cả glob `[…]`/`?` (`_glob_targets` mở — `*` thì không:
+# danh sách tệp của vòng `for f in .claude/hooks/*.sh` là đọc)
+FENCE_PATH_RE = re.compile(r"[\w.@%+~/\[\]?!-]*[./][\w.@%+~/\[\]?!-]*")
 # trình thông dịch/sed/awk đọc tệp đối số: chỉ tính khi sửa tại chỗ (`-i`, `-pi`) hay chương trình có lời gọi ghi/xoá
 FENCE_INTERP_WRITE_RE = re.compile(
     r"open\s*\(|\.write|write_(?:text|bytes)|unlink\s*[($]|os\.remove|shutil\.|rename\s*\(|truncate\s*\(|sysopen|\bfs\."
@@ -15126,7 +15235,7 @@ def _fence_argv_asks(n: List[str], argv: List[str], root: str, cwd: Optional[str
         p = re.split(r"[=:]", a)[-1] if a[:1] == "-" else a
         if not FENCE_PATH_RE.fullmatch(p) or p[:1] == "-" or not p.strip("./"):
             continue
-        for x in [*_where(p, root, cwd), *_real_targets(p, root, cwd)]:
+        for x in [*_where(p, root, cwd), *_real_targets(p, root, cwd), *_glob_targets([p], root, cwd)]:
             if _is_fence(x, root):
                 out.append(FENCE_WHY.format(x))
             elif _git_written(x, set(), root, cwd):
@@ -15523,6 +15632,12 @@ def _argparse(args: List[str], table: Dict[str, Tuple[str, int]]) -> Dict[str, L
             k += 1
         out[key], i = ([explicit] if explicit is not None else args[i:k]), k
     return out
+
+
+def _py_json_out(args: List[str]) -> List[str]:
+    """Tệp ra của `python -m json.tool [IN] [OUT]` (đối số vị trí thứ hai; `--indent N` ăn giá trị)."""
+    mod, rest = _py_module(args)
+    return _positionals(_no_redirects(rest), ("--indent",))[1:2] if mod == "json.tool" else []
 
 
 def _py_archive(args: List[str]) -> Tuple[List[str], List[str]]:
@@ -17493,6 +17608,7 @@ def _dyn_exec_check(placed: "PlacedCmds", cmd: str = "") -> None:
             why = why or "`git push` theo `HEAD` sau khi `switch`/`checkout` trong cùng lệnh (AUD-SEC-554)"
         switched = switched or n[:2] in HEAD_MOVERS
         why = why or _env_file_why(c) or _cmd_env_why(c, name, args) or _runner_why(name, args, n) or _xargs_gh_why(c)
+        why = why or _pwsh_why(n)  # T-3954 B4
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
 
@@ -17655,7 +17771,8 @@ def _exec_env_token(t: str, prev: str) -> bool:
 
 # AUD-SEC-588: biến mà git/ssh/trình soạn chạy như lệnh shell — gán giá trị ngoài danh sách an toàn → BUDGET (giá trị
 # là chữ shell guard không quét: `PAGER='gh pr merge 5 #' git log`).
-# `*PAGER` không ở đây: git/gh chỉ mở pager khi có TTY, lệnh Bash của agent không có (AUD-SEC-420).
+# `*PAGER` không ở đây: git/gh chỉ mở pager khi có TTY, lệnh Bash của agent không có (AUD-SEC-420) — giá trị lạ vẫn
+# chặn ở `_hook_env_bad` (T-3954 B5).
 CMD_ENV_RE = re.compile(
     r"(?:GIT_)?EDITOR|VISUAL|GIT_SEQUENCE_EDITOR|GIT_SSH(?:_COMMAND)?|(?:GIT_|SSH_)ASKPASS|GIT_PROXY_COMMAND"
 )
@@ -17666,9 +17783,39 @@ CMD_ENV_SAFE = frozenset({"", "cat", "less", "more", "true", ":", "vi", "vim", "
 def _cmd_env_why(c: List[str], name: str, args: List[str]) -> str:
     for t in _assigned_tokens(c, name, args):
         key, eq, val = t.partition("=")
-        if CMD_ENV_RE.fullmatch(key.rstrip("+")) and (not eq or _dequote(val) not in CMD_ENV_SAFE):
+        bad = CMD_ENV_RE.fullmatch(key.rstrip("+")) and (not eq or _dequote(val) not in CMD_ENV_SAFE)
+        raw = val.strip()  # token đã bỏ nháy; `_dequote` ghép từ (`sh -c x` → `sh-cx`) nên không dùng ở đây
+        raw = raw[1:-1] if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"" else raw
+        if bad or _hook_env_bad(key.rstrip("+"), raw, bool(eq)):
             return f"gán biến chạy lệnh `{key.rstrip('+')}` (giá trị là lệnh shell guard không quét, AUD-SEC-588)"
     return ""
+
+
+# T-3954 B5 (F21): biến khác mà công cụ chạy như lệnh — pager (`PAGER`, `GIT_PAGER`, `GH_PAGER`, `MANPAGER`,
+# `SYSTEMD_PAGER`; git/gh cần TTY nhưng `git -p`/công cụ khác thì không), trình duyệt (`BROWSER`, `GH_BROWSER` — `gh
+# browse` không cần TTY), `GH_EDITOR`: giá trị là chương trình + cờ trơn (`less -R`, `delta --dark`, `firefox`) thì qua;
+# metachar/đối số không phải cờ/shell hay trình thông dịch (`sh -c …`, `rm -rf ~`) → BUDGET. `npm_config_script_shell`:
+# chỉ đường tới shell; `TAR_OPTIONS`: cờ nhận lệnh của tar; `NODE_OPTIONS`: nạp mã từ `data:`/URL.
+HOOK_ENV_RE = re.compile(r"(?:GIT_|GH_|MAN|SYSTEMD_)?PAGER|(?:GH_)?BROWSER|GH_EDITOR")
+HOOK_ENV_SIMPLE_RE = re.compile(r"[\w./+-]+(?:\s+-[\w=.,:-]*)*")
+TAR_CMD_OPT_RE = re.compile(
+    r"--(?:to-command|use-compress-program|checkpoint-action|info-script|new-volume-script|rsh-command|rmt-command)"
+    r"|(?:^|\s)-[A-Za-z]*[IF]"
+)
+
+
+def _hook_env_bad(key: str, val: str, eq: bool) -> bool:
+    if key.upper() == "TAR_OPTIONS":
+        return bool(TAR_CMD_OPT_RE.search(val))
+    if key.upper() == "NODE_OPTIONS":
+        return bool(re.search(r"(?:data|https?):", val))
+    prog = posixpath.basename(val.split()[0]) if val.split() else ""
+    if key.lower() == "npm_config_script_shell":
+        return eq and bool(val) and (not re.fullmatch(r"[\w./-]+", val) or prog not in SHELLS)
+    if not HOOK_ENV_RE.fullmatch(key) or not eq or not val:
+        return False
+    shell = (prog in SHELLS or bool(INTERP_RE.fullmatch(prog))) and len(val.split()) > 1  # `PAGER=sh` trơn: AUD-SEC-419
+    return not HOOK_ENV_SIMPLE_RE.fullmatch(val) or shell
 
 
 # AUD-SEC-608: script nội tuyến vừa chạy shell vừa đọc argv/stdin — lệnh thật nằm ngoài script, guard không mô hình.
@@ -17682,6 +17829,42 @@ TMUX_RUN_SUBS = frozenset(
     "new new-session new-window neww split-window splitw respawn-pane respawnp respawn-window respawnw run-shell run"
     " send-keys send if-shell if pipe-pane pipep display-popup popup".split()
 )
+
+
+# T-3954 B6 (F22): script nội tuyến đọc stdin (`<STDIN>`, `<>`, `gets`, `sys.stdin`, `input()`, `fgets(STDIN)`,
+# `readFileSync(0)`, vòng `-n`/`-p` của perl/ruby) rồi đưa vào lời gọi chạy lệnh (`system`, `exec`, `os.system`…) — dữ
+# liệu stdin chạy như lệnh, guard không thấy → BUDGET (như `awk '{system($0)}'`, `sed e`).
+STDIN_EXEC_RE = re.compile(
+    r"\b(?:system|exec|popen|shell_exec|passthru|proc_open|execSync|spawnSync|spawn)\b|subprocess|child_process|`|\bqx"
+)
+STDIN_READ_RE = re.compile(
+    r"<STDIN>|<>|\bgets\b|\bSTDIN\b|\$stdin|sys\.stdin|\binput\s*\(|readFileSync\s*\(\s*(?:0\b|['\"]/dev/stdin)"
+    r"|process\.stdin|io\.read|\breadline|ARGF"
+)
+STDIN_LOOP_RE = re.compile(r"-[a-zA-Z]*[np][a-zA-Z]*")
+
+
+STDIN_HERE_OPS = frozenset({"<<", "<<-", "<<<"})
+
+
+def _stdin_exec_runs(n: List[str]) -> bool:
+    name = posixpath.basename(n[0]) if n else ""
+    if not INTERP_RE.fullmatch(name):
+        return False
+    loop = name.startswith(("perl", "ruby")) and any(STDIN_LOOP_RE.fullmatch(a) for a in n[1:])
+    return any(STDIN_EXEC_RE.search(s) and (loop or STDIN_READ_RE.search(s)) for s in _inline_scripts(n))
+
+
+def _stdin_exec_check(tokens: List[str]) -> None:
+    """B6: stdin của script đó là nguồn mờ (tệp, `cat f |`, lệnh khác) → BUDGET; thân chữ (heredoc, here-string, ống từ
+    echo/printf/`cat <<E`) thì lớp quét stdin đã xét (AUD-SEC-392/608)."""
+    for pipe in pipelines(tokens):
+        feeds: List[Optional[List[str]]] = [None, *_pipe_feeds(pipe)]
+        for k, c in enumerate(pipe):
+            here = STDIN_HERE_OPS & set(c) or k > 0 and STDIN_HERE_OPS & set(pipe[k - 1])
+            seen = feeds[k] is not None or bool(here)
+            if not seen and _stdin_exec_runs(normalize(c)):
+                raise ScanTooComplex(f"script nội tuyến chạy dữ liệu stdin mờ như lệnh (T-3954 B6): {' '.join(c)[:80]}")
 
 
 def _runner_why(name: str, args: List[str], n: List[str]) -> str:
@@ -18010,6 +18193,7 @@ def _tool_exec_sources(
 ) -> Tuple[Placed, List[str]]:
     """(lệnh lồng, câu hỏi chặn) từ công cụ tự chạy lệnh và chỗ bash tự mở rộng (AUD-SEC-250/251)."""
     _dyn_exec_check(placed, cmd)
+    _stdin_exec_check(tokens)  # T-3954 B6
     out: Placed = [(s, here) for c, here in placed for s in _tool_exec_scripts(c)]
     out += [(s, start) for s in _prompt_scripts(cmd, tokens)]
     if _interp_families(tokens, start) & QUOTE_EXEC_FAMILIES:
@@ -19002,8 +19186,8 @@ def _trigger_suffixes(rest: List[str]) -> List[str]:
 # dõi thư mục như `env -C`, có mở rộng thì thư mục mờ (D-106/BUDGET). Đọc chặt: `-p`/`-d`/`-w` của công cụ khác
 # (`uv run -p 3.12`) chỉ thành `cd` vào tên tương đối dưới gốc — vô hại.
 RUNNER_CHDIR_LONG = frozenset(
-    "--directory --dir --cwd --prefix --chdir --working-directory --workdir --wd --root --project-dir".split()
-)
+    "--directory --dir --cwd --prefix --chdir --working-directory --workdir --wd --root --project-dir --project".split()
+)  # `--project`: `pdm --project D` như `pdm -p D` (T-3954 C1)
 RUNNER_CHDIR_SHORT = frozenset({"-C", "-p", "-w", "-d"})
 
 
@@ -19094,6 +19278,7 @@ def _opaque_shells(tokens: List[str]) -> List[str]:
 
 
 KUBECTL_VALUE_FLAGS = ("-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user", "-s", "--server")
+KUBE_EXEC_SUBS = (["exec"], ["run"], ["debug"])
 
 
 def _container_cli(n: List[str]) -> List[str]:
@@ -19107,9 +19292,9 @@ def _container_exec(argv: List[str]) -> Tuple[List[str], List[str]]:
     """(cờ, lệnh) chạy trong container: `docker exec ctr sh -c …`, `docker run img bash -c …`, `compose run
     --entrypoint sh dv -c …` (entrypoint shell nhận phần còn lại làm đối số)."""
     n = _container_cli(normalize(argv))
-    if n[:1] == ["kubectl"]:  # `kubectl [cờ toàn cục] exec [cờ] pod -- <lệnh>` (AUD-SEC-042)
-        k = 1 + _skip_opts(n[1:], KUBECTL_VALUE_FLAGS)
-        return [], n[n.index("--") + 1 :] if n[k : k + 1] == ["exec"] and "--" in n else []
+    if n[:1] in (["kubectl"], ["oc"]):  # `kubectl [cờ toàn cục] exec [cờ] pod -- <lệnh>` (AUD-SEC-042)
+        k = 1 + _skip_opts(n[1:], KUBECTL_VALUE_FLAGS)  # T-3954 B3: cả `run`/`debug` (pod mới trong cụm), `oc`
+        return [], n[n.index("--") + 1 :] if n[k : k + 1] in KUBE_EXEC_SUBS and "--" in n else []
     if n[:1] not in (["docker"], ["podman"]):
         return [], []
     args = n[1:][_skip_opts(n[1:], DOCKER_GLOBAL_VALUE_FLAGS) :]
@@ -19174,6 +19359,7 @@ def _wrapped_scripts(tokens: List[str]) -> Tuple[List[str], List[Tuple[str, List
         if n[0] == "nix-shell":
             host += _flag_values(n[1:], ("--run", "--command"))
         host += _npx_call_scripts(n) + _pager_cmd_scripts(n)  # T-3952 F7: npx -c/--call, `man -P`, `zip -TT`
+        host += _bun_exec_scripts(n) + _pwsh_scripts(n)  # T-3954 B2, B4
     return host, ctr
 
 
@@ -19304,7 +19490,7 @@ def _nested_sources(
     nested = _nested_pairs(cmd, tokens, placed, start, budget, pick)
     nested += [(s, here) for c, here in placed for s in _wrapped_scripts(c)[0]]
     interp = _interp_scripts_at(cmd, tokens, start, budget)
-    loose = [(s, here) for raw, here in interp for s in _exec_api_scripts([raw])]
+    loose = [(s, here) for raw, here in interp for s in _exec_api_scripts([raw]) + _exec_mention_literals(raw)]
     nested += [
         (s, here) for raw, here in interp for s in _exec_api_verbatim([raw])
     ]  # sh đọc nguyên văn: chặt (AUD-SEC-307)
@@ -20046,6 +20232,31 @@ def _exec_argv(name: str, args: List[str]) -> Optional[List[str]]:
         tail = _seq_items(args[1]) if len(args) > 1 else None
         return [_literal(x) for x in LITERAL_RE.finditer(args[0])] + (tail or [])
     return None
+
+
+# T-3954 R6 (AUD-SEC-935/936): script nhắc API chạy tiến trình — lời gọi qua bí danh (`const {execSync: x} =
+# require("child_process"); x("…")`, `sp = subprocess.Popen`), template (`` Bun.$`…` ``) — không còn dạng `EXEC_CALL_RE`
+# nhận ra: MỌI chuỗi/template trong thân và mọi danh sách chuỗi (argv) quét như lệnh bằng toàn bộ luật (nguồn lỏng).
+# Chỉ khi script GẮN TÊN KHÁC cho API (gán/destructure/import có tên, tham chiếu không gọi) hay dùng Bun Shell — lời gọi
+# trực tiếp (`subprocess.run([...])`) đã quét đúng đối số, chuỗi khác là dữ liệu (`print('git reset --hard')`, #134).
+EXEC_MENTION_RE = re.compile(
+    r"=\s*(?:await\s+)?(?:require|import)\s*\(\s*['\"](?:node:)?child_process"
+    r"|import\s[^;\n]*from\s*['\"](?:node:)?(?:child_process|bun)['\"]"
+    r"|from\s+(?:subprocess|os|asyncio|pty)\s+import|import\s+(?:subprocess|os)\s+as\b"
+    r"|\b(?:subprocess\s*\.\s*\w+|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*))\s*(?=[,;)\]}\n]|$)"
+    r"|\bgetattr\s*\(\s*(?:subprocess|os)\b|\bBun\s*\.\s*(?:\$|spawn)"
+)
+EXEC_MENTION_SEQ_MAX = 64  # số danh sách `[…]` tối đa đọc mỗi script
+
+
+def _exec_mention_literals(raw: str) -> List[str]:
+    script = _nfkc(raw)
+    if not EXEC_MENTION_RE.search(script):
+        return []
+    out = [_literal(m) for m in LITERAL_RE.finditer(script)]
+    starts = [k for k, ch in enumerate(script) if ch == "["][:EXEC_MENTION_SEQ_MAX]
+    out += [shlex.join(items) for k in starts if (items := _seq_items(script[k:]))]
+    return list(dict.fromkeys(s for s in out if s.strip()))
 
 
 def _exec_api_scripts(scripts: List[str]) -> List[str]:
@@ -21113,18 +21324,22 @@ def secret_exfil(tokens: List[str], root: str) -> Optional[str]:
             leaked = [f for f in files if _is_secret_file(f, root) and not f.endswith(".pub")]  # khoá công khai
             leaked += _subst_secrets(c[1:], root)
             if not leaked and "-" in files:  # đọc stdin: xem lệnh phía trước trong ống
-                for up in group[:i]:
-                    head = posixpath.basename(up[0]) if up else ""
-                    nu = normalize(up)
-                    if (
-                        (head == "env" and not nu)
-                        or head == "printenv"
-                        or any(_is_secret_file(a, root) for a in up[1:])
-                    ):
-                        leaked.append(" ".join(up)[:60])
+                leaked += [" ".join(up)[:60] for up in group[:i] if _pipe_leaks(up, root)]
             if leaked:
                 return f"gửi bí mật ra mạng ({leaked[0]})"
     return None
+
+
+def _pipe_leaks(up: List[str], root: str) -> bool:
+    """Khâu trước trong ống in ra bí mật (`env`/`printenv`, tệp bí mật; T-3954 R4: `echo`/`printf` biến bí mật —
+    `$GH_TOKEN`, `${API_KEY}`), kể cả khi khâu mở đầu lệnh ghép (`{`, `do`, `then` — `_strip_prefixes` bóc)."""
+    words = _strip_prefixes(up) or up
+    head = posixpath.basename(words[0]) if words else ""
+    nu = normalize(up)
+    if (head == "env" and not nu) or head == "printenv" or any(_is_secret_file(a, root) for a in words[1:]):
+        return True
+    echo = posixpath.basename(nu[0]) in ("echo", "printf") if nu else False
+    return echo and (_token_echo(nu, False) or any(_authref_hits(a) for a in nu[1:]))
 
 
 # AUD-SEC-818: in biến môi trường mang token GitHub ra transcript — chặn như `gh auth token` (cùng lý do, cùng mã):
@@ -21347,9 +21562,10 @@ def _scan_param_rewrites(
 # biến gán từ `$(mktemp …)`/`$(date …)` (ADR-0076: `rm -rf "$TMP"/x`).
 EMPTY_RULED = DD_DELETERS | DD_WRITERS
 EMPTY_KEEP = frozenset({"HOME", "PWD", "OLDPWD", "BASH", "SHELL", "CLAUDE_PROJECT_DIR", "0", "RANDOM", "SECONDS"})
-EMPTY_KEEP |= frozenset({"LINENO", "BASHPID", "PPID", "UID", "EUID", "$", "!", "#", "?", "-", "@", "*", "_"})
+# T-3954 R7 (AUD-SEC-933): `$@`/`$*`/`${@}`/`${*}` ở lệnh Bash là RỖNG (không tham số vị trí) — `rm -rf "$@"/*` là `/*`
+EMPTY_KEEP |= frozenset({"LINENO", "BASHPID", "PPID", "UID", "EUID", "$", "!", "#", "?", "-", "_"})
 EMPTY_ANY = "xt-any"
-EMPTY_REF_RE = re.compile(r"\$(?:\{([^{}]*)\}|([A-Za-z_]\w*|[0-9]))")
+EMPTY_REF_RE = re.compile(r"\$(?:\{([^{}]*)\}|([A-Za-z_]\w*|[0-9@*]))")
 EMPTY_SAFE_ASSIGN_RE = re.compile(r"""(?:[A-Za-z_]\w*\s+)*([A-Za-z_]\w*)=["']?\$\(\s*(?:mktemp|date)(?!\w)""")
 EMPTY_DEFAULT_RE = re.compile(r":?[-=](.*)", re.S)
 EMPTY_LEAD = SHELL_KEYWORDS | {"(", ")"}
@@ -21623,7 +21839,7 @@ GITHUB_HOSTS = frozenset(
 )
 SECRET_VAR_RE = re.compile(r"\$\{?!?([A-Za-z_][A-Za-z0-9_]*)")
 SECRET_NAME_RE = re.compile(r"[A-Za-z0-9_]*(?:TOKEN|_KEY|SECRET|PASSWORD|PASSWD|_PAT)", re.I)
-HTTP_SENDERS = frozenset({"http", "https", "xh", "xhs"})
+HTTP_SENDERS = frozenset({"http", "https", "xh", "xhs", "curlie"})  # curlie: T-3954 R3
 T12_GIT_MSG_SUBS = frozenset({"commit", "tag", "notes", "commit-tree"})
 BARE_HOST_RE = re.compile(r"([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?::\d+)?(?:/|$)")
 TOKEN_ROUTE_WHY = "token/bí mật `${}` gửi tới máy chủ ngoài GitHub hoặc ghi vào artefact (`{}`) — token chỉ đi tới host của nó (T-3952)"
@@ -21711,7 +21927,7 @@ CLOUD_DESTROY_WORDS: Dict[str, "re.Pattern[str]"] = {
     "aws": re.compile(
         r"(?:delete|terminate|deregister|purge|destroy|remove|revoke|schedule-key-deletion)(?:-.*)?|rb|rm"
     ),
-    "gcloud": re.compile(r"delete|destroy|rm|rb"),
+    "gcloud": re.compile(r"delete|destroy|rm|rb|unlink"),  # `billing projects unlink`: tắt thanh toán (T-3954 C5)
     "gsutil": re.compile(r"rm|rb"),
     "az": re.compile(r"delete(?:-.*)?|purge|remove"),
     "helm": re.compile(r"uninstall|delete|del|un"),
@@ -21805,19 +22021,125 @@ NPX_CLUSTER_RE = re.compile(r"-[A-Za-z]*c")
 
 
 PAGER_CMD_FLAGS: Dict[str, Tuple[str, ...]] = {"man": ("-P", "--pager"), "zip": ("-TT", "--unzip-command")}
+# T-3954 B5/B7: `wget --use-askpass=<lệnh>`, `rsync --rsync-path=<lệnh>` (chạy ở đầu kia — cục bộ khi không có máy)
+PAGER_CMD_FLAGS |= {"wget": ("--use-askpass",), "rsync": ("--rsync-path",)}
 
 
 def _pager_cmd_scripts(n: List[str]) -> List[str]:
-    """Lệnh shell trong giá trị cờ: `man -P '<lệnh>'` (pager chạy qua `sh -c`), `zip -TT '<lệnh>'` (lệnh kiểm tra)."""
-    flags = PAGER_CMD_FLAGS.get(posixpath.basename(n[0])) if n else None
-    return _flag_values(n[1:], flags) if flags else []
+    """Lệnh shell trong giá trị cờ: `man -P '<lệnh>'` (pager chạy qua `sh -c`), `zip -TT '<lệnh>'` (lệnh kiểm tra);
+    T-3954 B7: lệnh khởi đầu `less +'!<lệnh>'`, `git bisect run <lệnh…>`."""
+    base = posixpath.basename(n[0]) if n else ""
+    flags = PAGER_CMD_FLAGS.get(base)
+    out = _flag_values(n[1:], flags) if flags else []
+    out += [a.split("!", 1)[1] for a in n[1:] if a[:1] == "+" and "!" in a] if base in ("less", "more") else []
+    k = _git_sub_at(n[1:]) + 1 if base == "git" else 0
+    return out + ([" ".join(n[k + 2 :])] if k and n[k : k + 2] == ["bisect", "run"] and n[k + 2 :] else [])
+
+
+def _npm_sub_at(n: List[str], subs: Tuple[str, ...] = ()) -> int:
+    """T-3954 R5: chỉ số lệnh con `x`/`exec`/`dlx` của npm/pnpm/yarn (hay `subs`) sau tuỳ chọn chung (`npm -y x`, `npm
+    --yes exec`, `pnpm --package=x dlx`, `pnpm -C d exec`): từ đầu không phải cờ, hay từ thứ hai khi từ đầu đứng sau một
+    cờ không `=` (có thể là giá trị của cờ đó); không có → 0."""
+    subs = subs or (NPX_SUBS.get(n[0], ()) if n else ())
+    words = [(k, a) for k, a in enumerate(n[1:], 1) if a[:1] != "-"]
+    for idx, (k, a) in enumerate(words[:2]):
+        valued = idx == 0 or (n[words[0][0] - 1][:1] == "-" and "=" not in n[words[0][0] - 1])
+        if a in subs and valued:
+            return k
+    return 0
+
+
+def _bun_exec_scripts(n: List[str]) -> List[str]:
+    """T-3954 B2: `bun [tuỳ chọn] exec '<lệnh>'` chạy chuỗi bằng Bun Shell (cú pháp gần sh) — quét như thân `sh -c`."""
+    k = _npm_sub_at(n, ("exec",)) if n and posixpath.basename(n[0]) == "bun" else 0
+    return [" ".join(n[k + 1 :])] if k and n[k + 1 :] else []
+
+
+# T-3954 B4: PowerShell (`pwsh`, `powershell`; `*.exe` của Windows ở luật WSL) chạy chuỗi `-c|-Command` (tên tham số
+# không phân biệt hoa-thường, viết tắt được), `-EncodedCommand`, `-File`/tệp vị trí — cú pháp guard không mô hình: câu
+# lệnh xoá (`Remove-Item`/`rm`/`rd`/`del`/`ri`/`erase`, đích chữ) dịch sang `rm -rf -- <đích>` cho luật xoá xét (ngoài
+# gốc → WIPE_OUTSIDE); câu khác ngoài danh sách chỉ đọc (`Get-*`, `Select-*`, `Format-*`, `Test-Path`…) → BUDGET.
+PWSH_NAMES = frozenset({"pwsh", "pwsh-preview", "powershell"})
+PWSH_INFO_FLAGS = frozenset({"-v", "-version", "--version", "-h", "-help", "--help", "-?", "/?", "-nologo"})
+PWSH_RM = frozenset({"remove-item", "rm", "rmdir", "rd", "del", "erase", "ri"})
+PWSH_READ_RE = re.compile(
+    r"(?:get|select|format|measure|test|resolve|split|join|convertto|convertfrom|compare|sort|where|out-string|write-output"
+    r"|write-host)(?:-[\w-]+)?|ls|dir|gci|gc|cat|pwd|echo|\$psversiontable(?:\.\w+)*",
+    re.I,
+)
+PWSH_OPAQUE_CHARS = frozenset("$(){}&>@`[")
+PWSH_HOME_RE = re.compile(r"^(?:\$HOME|\$env:(?:HOME|USERPROFILE)|\$\{env:(?:HOME|USERPROFILE)\})(?=[/\\]|$)", re.I)
+
+
+def _pwsh_body(n: List[str]) -> Optional[str]:
+    """Chuỗi lệnh của `pwsh -c …` (phần còn lại ghép lại); dạng mờ (`-EncodedCommand`, `-File`, tệp vị trí) → None;
+    không chạy gì (`pwsh --version`, không đối số) → ''."""
+    for k, a in enumerate(n[1:], 1):
+        low = a.lower()
+        if low in PWSH_INFO_FLAGS:
+            continue
+        key = low.split(":", 1)[0]
+        if len(key) >= 2 and "-command".startswith(key) or key == "/c":
+            return " ".join(n[k + 1 :])
+        if a[:1] != "-" or "-encodedcommand".startswith(key) or "-file".startswith(key):
+            return None
+    return ""
+
+
+def _pwsh_statements(body: str) -> List[List[str]]:
+    out: List[List[str]] = []
+    for stmt in re.split(r"[;\n]", body):
+        try:
+            words = shlex.split(stmt.replace("\\", "/"))
+        except ValueError:
+            words = [stmt]
+        out += [words] if words else []
+    return out
+
+
+def _pwsh_rm_targets(words: List[str]) -> Optional[List[str]]:
+    """Đích của câu xoá PowerShell (đối số không cờ, giá trị `-Path`/`-LiteralPath`); không phải câu xoá → None."""
+    if words[0].lower() not in PWSH_RM or any(set(w) & (PWSH_OPAQUE_CHARS | {"|"}) - {"$"} for w in words):
+        return None
+    return [PWSH_HOME_RE.sub("~", w) for w in words[1:] if w[:1] != "-"]
+
+
+def _pwsh_scripts(n: List[str]) -> List[str]:
+    if not n or posixpath.basename(n[0]).lower() not in PWSH_NAMES:
+        return []
+    out: List[str] = []
+    for words in _pwsh_statements(_pwsh_body(n) or ""):
+        targets = _pwsh_rm_targets(words)
+        out += [shlex.join(["rm", "-rf", "--", *targets])] if targets else []
+    return out
+
+
+def _pwsh_why(n: List[str]) -> str:
+    """Lý do BUDGET: PowerShell chạy chuỗi/tệp guard không đọc chắc (câu xoá đã dịch và câu chỉ đọc thì không)."""
+    if not n or posixpath.basename(n[0]).lower() not in PWSH_NAMES:
+        return ""
+    body = _pwsh_body(n)
+    if body is None:
+        return "PowerShell chạy tệp/lệnh mã hoá guard không đọc (T-3954 B4)"
+    for words in _pwsh_statements(body):
+        if not (_pwsh_rm_targets(words) or all(map(_pwsh_read_stage, " ".join(words).split("|")))):
+            return "PowerShell chạy câu lệnh ngoài danh sách chỉ đọc (T-3954 B4)"
+    return ""
+
+
+def _pwsh_read_stage(stage: str) -> bool:
+    """Một khâu ống PowerShell chỉ đọc: cmdlet/alias đọc, đối số không có mở rộng/khối/chuyển hướng."""
+    parts = stage.split()
+    head_ok = bool(parts) and bool(PWSH_READ_RE.fullmatch(parts[0])) and not set(parts[0]) & PWSH_OPAQUE_CHARS - {"$"}
+    return head_ok and not set(" ".join(parts[1:])) & PWSH_OPAQUE_CHARS
 
 
 def _npx_call_scripts(n: List[str]) -> List[str]:
+    k = _npm_sub_at(n)
     if n[:1] == ["npx"]:
         body = n[1:]
-    elif n[1:2] and n[1] in NPX_SUBS.get(n[0], ()):
-        body = n[2:]
+    elif k:
+        body = n[k + 1 :]
     else:
         return []
     body = list(itertools.takewhile(lambda a: a != "--", body))
@@ -21861,9 +22183,9 @@ Request = Tuple[str, List[str], List[str]]  # (phương thức, URL, thân)
 
 
 def _curl_request(args: List[str]) -> Request:
-    methods = _flag_values(args, ("-X", "--request"))
-    bodies = _flag_values(args, CURL_BODY_FLAGS)
-    uploads = _flag_values(args, ("-T", "--upload-file"))
+    methods = _curl_methods(args)  # T-3954 R3: cụm cờ ngắn (`-sX PUT`, `-sSfXPUT`, `-sd x`, `-sT f`)
+    bodies = _flag_values(args, tuple(f for f in CURL_BODY_FLAGS if f[1] == "-")) + _curl_short_values(args, "dF")
+    uploads = _flag_values(args, ("--upload-file",)) + _curl_short_values(args, "T")
     urls = [a for a in args if URL_RE.fullmatch(a)] + _flag_values(args, ("--url",))
     implicit = "GET" if "-G" in args or "--get" in args else "POST" if bodies else "PUT" if uploads else "GET"
     return (methods[-1] if methods else implicit), urls, bodies + ["@" + u for u in uploads]
@@ -21889,10 +22211,18 @@ def _httpie_request(args: List[str]) -> Request:
     return (method or ("POST" if bodies else "GET")), [url] if url else [], bodies
 
 
+def _curlie_request(args: List[str]) -> Request:
+    """T-3954 R3: curlie = cú pháp httpie (`curlie PUT url k=v`) trên cờ curl (`-X PUT`, `-H …` ăn giá trị)."""
+    method, urls, bodies = _httpie_request(_positionals(args, CURL_VALUE_FLAGS))
+    forced = _curl_methods(args)
+    return (forced[-1] if forced else method), urls, bodies
+
+
 REST_PARSERS: Dict[str, Callable[[List[str]], Request]] = {
     "curl": _curl_request,
     "wget": _wget_request,
     **dict.fromkeys(HTTP_SENDERS, _httpie_request),
+    "curlie": _curlie_request,
 }
 
 
@@ -21977,22 +22307,39 @@ def _ctr_exec_inner(c: List[str], n: List[str]) -> Tuple[List[str], bool]:
         return args[k + 1 :], False
     inner = _container_exec(c)[1]
     args = m[1:][_skip_opts(m[1:], DOCKER_GLOBAL_VALUE_FLAGS) :]
-    return inner, m[:1] != ["kubectl"] and "exec" not in args[:6]
+    return inner, m[:1] not in (["kubectl"], ["oc"]) and "exec" not in args[:6]
+
+
+MOSH_VALUE_FLAGS = ("-p", "--port", "--ssh", "--server", "--client", "--predict", "--family", "--bind-server")
+
+
+def _ssh_like(n: List[str]) -> List[str]:
+    """Đối số kiểu ssh (`[cờ] host [lệnh…]`) của ssh/autossh/mosh: autossh bỏ `-M port`; mosh bỏ cờ của nó và `--`."""
+    if n[0] == "autossh":
+        return [a for k, a in enumerate(n[1:]) if n[k] != "-M" and not a.startswith("-M")]  # n[k]: từ trước `a`
+    if n[0] == "mosh":
+        args = n[1:]
+        k = _skip_opts(args, MOSH_VALUE_FLAGS)
+        rest = args[k + (args[k : k + 1] == ["--"]) :]
+        return rest[:1] + rest[1 + (rest[1:2] == ["--"]) :]
+    return n[1:]
 
 
 def _remote_exec_scripts(tokens: List[str]) -> List[RemoteScript]:
     out: List[RemoteScript] = []
     for c in split_commands(tokens):
         n = normalize(c)
-        if n[:1] == ["ssh"]:
-            host, remote = _ssh_target(n[1:])
+        if n[:1] in (["ssh"], ["autossh"], ["mosh"]):  # T-3954 B3: autossh (cờ ssh + `-M`), mosh (`host -- lệnh`)
+            host, remote = _ssh_target(_ssh_like(n))
             remote = remote if not _is_loopback(host.rsplit("@", 1)[-1]) else []
             out += [
                 (s, REMOTE_EXEC_ROOT, True) for s in dict.fromkeys([" ".join(remote), _join_tokens(remote)]) if remote
             ]
         elif n:
             inner, fresh = _ctr_exec_inner(c, n)
-            root = REMOTE_EXEC_ROOT if n[:1] == ["kubectl"] else CONTAINER_ROOT  # cụm (có thể prod) như máy xa
+            root = (
+                REMOTE_EXEC_ROOT if n[:1] in (["kubectl"], ["oc"]) else CONTAINER_ROOT
+            )  # cụm (có thể prod) như máy xa
             out += [(_shell_c_script(inner) or _join_tokens(inner), root, not fresh)] if inner else []
     return out
 
@@ -22047,7 +22394,7 @@ GLOB_EXTRA_NAMES = tuple(
     sorted(
         (
             {"printenv", "dropdb", "psql", "mysql", "mariadb", "mysqladmin", "mongosh", "mongo", "redis-cli", "sqlcmd"}
-            | {"npx", "npm", "pnpm", "yarn", "uv", "uvx", "http", "https", "xh", "xhs"}
+            | {"npx", "npm", "pnpm", "yarn", "uv", "uvx", "http", "https", "xh", "xhs", "curlie"}
             | set(CLOUD_DESTROY_WORDS)
             | MAIL_SENDERS
             | set(MONEY_MSG_WORDS)

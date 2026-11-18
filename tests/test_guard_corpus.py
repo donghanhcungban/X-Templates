@@ -306,9 +306,9 @@ class GuardCorpusPairsPart4Test(GuardCorpusPairs, GuardCorpusBase):
 # Lỗ ĐÃ BIẾT, guard chưa chặn (review #130, có sẵn trước bộ tấn công): ghi lại để không im lặng. Khi guard chặn được một
 # dòng, test dưới đỏ → chuyển nó sang SEEDS/ca chặn. Nhóm biến/eval biến/mã trong ngôn ngữ khác về nguyên tắc không
 # chặn hết bằng quét chuỗi — lớp đỡ là review và chế độ quyền.
-KNOWN_GAPS = (
-    "python3 -c \"import os; getattr(os, 'sys' + 'tem')('rm -rf ~')\"",  # ghép chuỗi tên hàm lúc chạy (né cố ý, D-051)
-)
+# T-3954 R6: `getattr(os, 'sys' + 'tem')('rm -rf ~')` nay bị chặn (script gắn tên khác cho API chạy tiến trình → mọi
+# chuỗi quét như lệnh) — chuyển sang `tests/test_guard_signoff13.py`.
+KNOWN_GAPS: tuple[str, ...] = ()
 
 
 class GuardKnownGapsTest(unittest.TestCase):
