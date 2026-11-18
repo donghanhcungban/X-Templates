@@ -566,3 +566,10 @@
 - Chọn: Ngoại lệ có hạn theo BASE-DEP-004: pnpm auditConfig.ignoreGhsas cho đúng GHSA này trong starter, kèm tệp ngoại lệ có cve/reason/expires (hạn 2026-12-18) và test đỏ khi hết hạn hay khi ignore không có dòng ngoại lệ; giữ --audit-level moderate
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: phụ thuộc chạy thật (kysely, pg) không dính; mẫu glob trong chuỗi dev lấy từ repo, không từ người dùng; ngoại lệ hẹp đúng một GHSA, có hạn, máy đỏ khi hết hạn — cổng không bị nới cho advisory khác. Phương án 2 nới cổng (cấm, LOOP-CI-001); phương án 3 bỏ khả năng test của gói. Đây cũng là đường ngoại lệ có hạn AUD-DEP-024 còn thiếu.
 - Đường lùi: Gỡ ignoreGhsas và tệp ngoại lệ khi picomatch có bản vá (nâng lockfile)
+
+### D-505 · 2026-11-18T00:36:31+00:00 · Hạn DECISION_SECONDS của guard: 15 s hay 30 s? (T-3942) Chuỗi cd … && … 19 KB trước cho qua sau 34 s, nay BUDGET; lệnh 100 KB cần quyết định < 20 s để không vượt hạn hook 1200 s.
+
+- Phương án: (1) Giữ 15 s: lệnh dài phải tách nhỏ, lệnh 100 KB quyết định ≤ 15 s · (2) Nâng ~30 s: giữ lệnh 19 KB nhưng lệnh 100 KB quá 20 s
+- Chọn: Giữ 15 s: lệnh dài phải tách nhỏ, lệnh 100 KB quyết định ≤ 15 s
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn trên hết: quá hạn là BUDGET (chặn, không hỏi người), lỗ 256 KB chạy quá 1300 s vượt hạn hook đã đóng. Lệnh Bash 19 KB một dòng rất hiếm, tách nhỏ không mất gì; nâng hạn chỉ phục vụ tốc độ/tiện (tiêu chí 5).
+- Đường lùi: Đổi hằng DECISION_SECONDS ở .claude/hooks/guard.py kèm test thời gian 100 KB

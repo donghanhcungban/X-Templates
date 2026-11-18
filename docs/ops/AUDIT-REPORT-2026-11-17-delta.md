@@ -67,3 +67,14 @@ Hai lô: fuzz bất biến D-503 mở rộng (kèm dạng bọc) và hồi quy. 
 | Hồi quy #648/#647 | CÓ PHÁT HIỆN | 🔴 AUD-SEC-869 (hồi quy #648: `for` duyệt glob + `${f%…}`) · 🟠 AUD-SEC-873 (sed/`$(date)` chặn oan) · 🟢 AUD-SEC-874, AUD-DEP-031 |
 
 Đợt 8 (T-3940, #650): fuzz mở rộng 2 535 → 0, bộ cổng ký 4 vẫn 0/829; mọi dạng chặn mới vào `tests/fixtures/autonomy/d503_invariant.jsonl`. Một lỗi CI trên đường: nhánh trả về của `_heredoc_shell_why` không còn bị test phủ vì bước quét sớm chặn trước — ghim bằng test gọi thẳng hàm (không đổi mã).
+
+## Cổng ký lần 6 (ứng viên `49ce04a1`, sau đợt 8)
+
+Hai lô reviewer-alt: fuzz họ mới (hàm che lệnh, CDPATH/`popd`, nguồn xargs) và hồi quy #650/#648/#647. Oracle bash thật chạy với đường tuyệt đối, PATH chỉ có lệnh giả và canary; không có sự cố. Lô fuzz: 665/1 848 tổ hợp họ mới lọt ở ứng viên (nền `702e006d`: 755), gồm 213 ca hồi quy; tiền tố/lớp bọc mới 203 218 tổ hợp 0 lọt; tốc độ 1,02–1,15× nền. Chưa rà (INCONCLUSIVE, chuyển cổng ký 7): phần còn lại của `while`, `case`, `coproc`, `time { }`, `sh -c` lồng 2–3 tầng, `sh -c` → `bash -c` (~133 500 tổ hợp).
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| Fuzz họ mới | CÓ PHÁT HIỆN | 🔴 AUD-SEC-875 (hồi quy #650), AUD-SEC-876, AUD-SEC-877 · 🟠 AUD-SEC-878 · 🟢 AUD-SEC-879 |
+| Hồi quy #650/#648 | CÓ PHÁT HIỆN | 🟠 AUD-SEC-880…882, AUD-SEC-884 · 🟢 AUD-SEC-883, AUD-DEP-032, AUD-HAR-429 · có từ trước: 🔴 AUD-SEC-885 (không có hạn giờ chung), AUD-SEC-886, AUD-SEC-887 · 🟢 AUD-SEC-888, AUD-SEC-889 |
+
+Đợt 9 (T-3942, #652): bộ fuzz chỉ-guard `leaks6.fam` 665, bộ cổng ký 4 (829) và 5 (2 535) → 0 lọt; hạn giờ chung `DECISION_SECONDS` 15 s (D-505) đóng lỗ lệnh 256 KB chạy quá 1300 s. Còn mở: AUD-SEC-887 (`parallel`/`sem`) và AUD-SEC-890 (🔴 `$(pwd)` + hàm che trong thân `sh -c`, do fuzz tất định của CI bắt ở #653), cả hai ở T-3943. Cổng ký lần 7 chạy sau T-3943, gồm cả các họ INCONCLUSIVE.
