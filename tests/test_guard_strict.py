@@ -1528,6 +1528,9 @@ class ReasonCodeLockTest(unittest.TestCase):
     # Mã có nhiều dấu (review #407 R1: ≥ 3 dấu WIPE_OUTSIDE chưa khoá): mỗi DẤU một lệnh thật sinh đúng dấu đó.
     MARKER_EXAMPLES = (
         ("WIPE_OUTSIDE", "rm -r ."),  # xoá đệ quy gốc dự án
+        ("WIPE_OUTSIDE", "echo x > ~/.ssh/authorized_keys"),  # ghi đè/xoá khoá hay cấu hình (T-3951 A11)
+        ("WIPE_OUTSIDE", 'echo x | tee "$OUT"/*'),  # rỗng khi biến chưa đặt (T-3951 A2)
+        ("WIPE_OUTSIDE", 'echo x | tee "/home/$USER/x"'),  # tiền tố ngoài gốc trước biến (T-3951 A2)
         ("WIPE_OUTSIDE", "rm -f .git/HEAD"),  # xoá tệp bên trong .git (T-3945)
         ("WIPE_OUTSIDE", "find . -delete"),  # bắt đầu từ gốc dự án bị chặn
         ("WIPE_OUTSIDE", "ls | xargs rm -rf"),  # rm -rf không có đích
@@ -2662,7 +2665,7 @@ class GuardLiteralFormsT3663Test(unittest.TestCase):
                 "printf x > setup.py; pip install .",
                 "printf x > build.rs; cargo test",
                 "printf x > .cargo/config.toml; cargo run",
-                "printf x > ~/.profile; bash --login -c true",
+                "printf x >> ~/.profile; bash --login -c true",  # T-3951 A11: `>` vào rc đã chặn riêng
                 "printf x > ~/.zshenv; zsh -c true",
                 "printf '* filter=x' > .gitattributes; git add .",
                 "sed -i 's/a/b/' Makefile && make",
@@ -2675,7 +2678,7 @@ class GuardLiteralFormsT3663Test(unittest.TestCase):
             (
                 "make > build.log 2>&1; tail -5 build.log",
                 "printf x > notes.md; make",
-                "printf x > ~/.bashrc; bash -c true",
+                "printf x >> ~/.bashrc; bash -c true",  # T-3951 A11: cắt `>` rc chặn (AUD-SEC-060)
                 "cat Makefile; make",
                 "pytest -q > out.txt; tail -3 out.txt",
             ),

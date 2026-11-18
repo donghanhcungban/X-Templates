@@ -12,7 +12,8 @@
 - B1–B4 (họ (c) D-508, sửa vì gọn): stdin của lệnh ghép, echo có thoát vào công cụ đọc chương trình, `-f /dev/fd/N`,
   chữ echo trong nhóm đưa qua ống vào `crontab -`/`at`.
 
-DENY: dạng tái hiện guard ở `e2f89c8b` cho chạy. ALLOW: dạng lành phải chạy (nhiều dạng `e2f89c8b` chặn oan)."""
+DENY: dạng tái hiện guard ở `e2f89c8b` cho chạy, cộng ca hồi quy/biến thể sinh quanh nó (một phần — 22/71 ca — đã bị
+`e2f89c8b` chặn; giữ để khoá hành vi, như signoff9). ALLOW: dạng lành phải chạy (nhiều dạng `e2f89c8b` chặn oan)."""
 
 from __future__ import annotations
 

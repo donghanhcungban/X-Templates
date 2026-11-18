@@ -419,10 +419,10 @@ class F5TokenRoute(Base):
         self.assert_allow(F5_ALLOW)
 
     def test_helpers(self):
-        self.assertEqual(guard._token_route_rule([], []), ("", ""))
-        self.assertEqual(guard._token_route_rule(["ls", TOK], ["ls", TOK]), ("", ""))
-        self.assertFalse(guard._gh_token_bad(["gh", "secret", "set"], ["secret", "set", "X", "--body", TOK]))
-        self.assertTrue(guard._gh_token_bad(["gh"], [TOK]))
+        self.assertEqual(guard._authref_route_rule([], []), ("", ""))
+        self.assertEqual(guard._authref_route_rule(["ls", TOK], ["ls", TOK]), ("", ""))
+        self.assertFalse(guard._gh_authref_bad(["gh", "secret", "set"], ["secret", "set", "X", "--body", TOK]))
+        self.assertTrue(guard._gh_authref_bad(["gh"], [TOK]))
         self.assertTrue(guard._github_host("API.GitHub.com."))
         self.assertTrue(guard._github_host("x.ghe.com"))
         self.assertFalse(guard._github_host("github.com.evil.io"))
