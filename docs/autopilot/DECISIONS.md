@@ -573,3 +573,10 @@
 - Chọn: Giữ 15 s: lệnh dài phải tách nhỏ, lệnh 100 KB quyết định ≤ 15 s
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn trên hết: quá hạn là BUDGET (chặn, không hỏi người), lỗ 256 KB chạy quá 1300 s vượt hạn hook đã đóng. Lệnh Bash 19 KB một dòng rất hiếm, tách nhỏ không mất gì; nâng hạn chỉ phục vụ tốc độ/tiện (tiêu chí 5).
 - Đường lùi: Đổi hằng DECISION_SECONDS ở .claude/hooks/guard.py kèm test thời gian 100 KB
+
+### D-506 · 2026-11-18T02:12:13+00:00 · Cổng ký lần 7 (b76d7af5) vẫn có 7 🔴/🟠 (4 ở lớp giá trị tính được, 3 ở lớp stdin/heredoc/.git/RUNNERS). Mỗi cổng ký lại thấy thêm cách che mới. Sửa tiếp thế nào để hội tụ?
+
+- Phương án: (1) Đảo chiều lớp giá trị tính được: chỉ tin $(date/mktemp/git/cat) khi toàn lệnh chỉ có cấu trúc trong danh sách đóng (mọi gán biến lạ, hàm, trap, eval, hash/alias → bỏ ưu đãi), sửa tiếp theo lớp (stdin của công cụ ngoài, .git/**, RUNNERS) trong một đợt T-3945, rồi cổng ký 8 · (2) Từng ca như trước (thêm tên vào SHADOW, từng regex) · (3) Bỏ hẳn ưu đãi giá trị tính được cho mọi lệnh có luật (rm/mv…): chặn oan `rm -rf "$TMP"` với TMP=$(mktemp -d) phổ biến
+- Chọn: Đảo chiều lớp giá trị tính được: chỉ tin $(date/mktemp/git/cat) khi toàn lệnh chỉ có cấu trúc trong danh sách đóng (mọi gán biến lạ, hàm, trap, eval, hash/alias → bỏ ưu đãi), sửa tiếp theo lớp (stdin của công cụ ngoài, .git/**, RUNNERS) trong một đợt T-3945, rồi cổng ký 8
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn (tiêu chí 1) và hội tụ: danh sách đóng không phụ thuộc cách che mới; giữ trải nghiệm cuối (tiêu chí 4) vì lệnh lành rm -rf "$TMP"/mv x "$(date +%F)" trong lệnh không có cấu trúc lạ vẫn qua. Phương án 2 là cách đã thất bại 6 vòng (D-502); phương án 3 chặn oan lệnh phổ biến.
+- Đường lùi: Hoàn nguyên commit T-3945; quay về luật SHADOW theo tên của #654
