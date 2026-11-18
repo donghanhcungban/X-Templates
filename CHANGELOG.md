@@ -238,6 +238,15 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3951 (D-503, D-508, phát hiện cổng ký lần 10): guard chặn `>&TỆP`/`1>&TỆP` vào hàng rào (đọc như `&>`); lệnh
+  xoá/ghi có biến chưa đặt rơi vào `/`, `/*`, mục cấp một của `/`, home (`rm -rf "$TMPDIR"/*`, `rm -rf "$OUT"/etc`,
+  `tee "$X/"*`) và tiền tố ngoài gốc trước mở rộng (`rm -rf "/home/$USER/x"`); tuỳ chọn đổi thư mục của trình chạy (`uv
+  run --directory ~`, `pnpm -C`, `yarn --cwd`, `npm --prefix`, `poetry -C`, `pdm -p`); chuỗi template JS trong
+  `execSync`/`spawnSync`; Python gọi `subprocess`/`os` qua bí danh/`from … import`; `git push` theo nhánh hiện tại sau
+  `checkout`/`switch`/`merge` cùng lệnh. Hết chặn oan `d=$(mktemp -d "${TMPDIR:-/tmp}/b.XXXXXX"); rm -rf "$d"`. Fixture:
+  ca `guard-t3951-*`, họ `T11|*` của bất biến D-503; ba ca `T10` vô hại chuyển nhóm BUDGET có chủ; ca trùng
+  `guard-t3949-b4-allow-01` đổi sang ca crontab khác (nhóm `{ }`).
+
 - T-3949 (D-503, D-508, phát hiện cổng ký lần 9): guard hết chặn oan here-string/ống có `$` vào công cụ không đọc
   chương trình (`echo "$TOKEN" | docker login --password-stdin`, `bc <<< "$x * 2"`, `kubectl … /dev/stdin`), `git push
   origin HEAD:"$(git branch --show-current)"`, `mktemp -p "$TMPDIR"`, nhắc chữ `dotglob`, `cd /tmp && rm -rf

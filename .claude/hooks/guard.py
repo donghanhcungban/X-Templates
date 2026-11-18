@@ -2867,7 +2867,8 @@ TMPDIR_READ_RE = re.compile(r"\$\{?[#!]?TMPDIR(?!\w)(?!:?=)")
 
 def _tmpdir_written(layer: str) -> bool:
     """T-3949 (A8): TMPDIR ở chỗ KHÔNG phải đọc `$TMPDIR`/`${TMPDIR:-…}` (gán, `read`/`for`/`export TMPDIR`…) — chỉ
-    nhắc/đọc (`ls "$TMPDIR"`, `mktemp -p "$TMPDIR"` = thư mục mặc định của mktemp) giữ ưu đãi."""
+    nhắc/đọc (`ls "$TMPDIR"`, `mktemp -p "$TMPDIR"` = thư mục mặc định của mktemp, mẫu `"${TMPDIR:-/tmp}/b.XXXXXX"` —
+    viết thẳng hay qua biến gán, T-3951 B5) giữ ưu đãi."""
     return "TMPDIR" in TMPDIR_READ_RE.sub("", re.sub(r"\\\n|['\"\\]", "", layer)) if "TMPDIR" in layer else False
 
 
@@ -3314,6 +3315,8 @@ def _cwd_rooted(cmds: List[Tuple[List[str], List[str]]], root: str, cwd: Optiona
         name = posixpath.basename(_dequote(words[0])) if words else ""
         args = [_dequote(a) for a in _no_redirects(words[1:])]
         if name == "popd" or name in ("cd", "pushd") and not args or _env_chdir(seg[: len(seg) - len(words)]):
+            return False
+        if _runner_tails(words) and _runner_chdirs(words[1:]):  # T-3951 A3: `uv run --directory ~ rm "$(date)"`
             return False
         for a in args if name in ("cd", "pushd") else []:
             bad = re.search(r"[$`*?\[]", a) or a[:1] in ("~", "-") or DOTDOT_RE.search(a)
@@ -3861,7 +3864,13 @@ SAFE_VALUE_OP_RE = re.compile(r":\d+(?::\d+)?|(?:%%?|##?)[^$`'\"\\(){}]*")
 
 
 def _value_ops_modelled(value: str, seeded: Set[str]) -> bool:
-    return all(n in seeded and SAFE_VALUE_OP_RE.fullmatch(op) for n, op in _dd_params(value) if op)
+    """T-3951 B5: `${TMPDIR:-/tmp}`/`${TMPDIR:?}` (giá trị là TMPDIR hay chữ dưới thư mục tạm — `_dd_op_ok`) cũng là mô
+    hình được (`d=$(mktemp -d "${TMPDIR:-/tmp}/b.XXXXXX")`)."""
+    return all(
+        n in seeded and SAFE_VALUE_OP_RE.fullmatch(op) or n == "TMPDIR" and TMPDIR_OP_RE.fullmatch(op)
+        for n, op in _dd_params(value)
+        if op
+    )
 
 
 CD_ENV_DIR_RE = re.compile(
@@ -6566,7 +6575,7 @@ def _raw_tokens(cmd: str, subst: bool = False, fd_issues: Optional[List[str]] = 
             return None
         word.append(s[i:j])
         i = j
-    return _fn_forms(out + (["".join(word)] if word else []))
+    return _fn_forms(_dup_file(out + (["".join(word)] if word else [])))
 
 
 def _raw_word_part(s: str, i: int) -> int:
@@ -7516,7 +7525,7 @@ def tokenize(cmd: str, strict: bool = False) -> List[str]:
     lex.whitespace_split = True
     lex.commenters = ""  # comment đã bỏ ở strip_comments; mặc định của shlex là "#" (mở comment cả giữa từ)
     try:
-        return _with_here_bodies(_fn_forms(_unglue(list(lex))), joined)
+        return _with_here_bodies(_fn_forms(_dup_file(_unglue(list(lex)))), joined)
     except ValueError:  # nháy không đóng: tách thô để vẫn kiểm được (bảo thủ) — xuống dòng là ranh giới lệnh như bash,
         # không phải khoảng trắng (`"` lẻ trong thân heredoc của `"$(cat <<'EOF'` làm shlex lệch; review #361 lượt 3)
         if strict:
@@ -7656,6 +7665,21 @@ def _unglue(tokens: List[str]) -> List[str]:
     for t in tokens:
         parts = _OPS_RE.findall(t) if _is_punct(t) and ("<" in t or ">" in t) else [t]
         out += parts if len(parts) > 1 else [t]
+    return out
+
+
+FD_DUP_WORD_RE = re.compile(r"[0-9]+-?|-")  # đích `>&` là nhân bản/đóng fd (`2>&1`, `>&-`, `>&3-`), không phải tệp
+
+
+def _dup_file(tokens: List[str]) -> List[str]:
+    """`>&TỪ`/`>& TỪ` với TỪ không phải số fd hay `-` (kể cả có mở rộng): bash mở TỪ để ghi (cắt tệp) như `&>TỪ` (T-3951
+    A1) — đọc thành `&>` để mọi bảng toán tử ghi (`REDIRECTS`, `REUSE_OUT_OPS`…) thấy đích; có số fd đứng trước
+    (`1>&TỆP`) thì thành `>` để số fd không rơi vào argv."""
+    out = list(tokens)
+    for k in range(len(out) - 1):
+        nxt = out[k + 1]
+        if out[k] == ">&" and nxt and not _is_punct(nxt) and not FD_DUP_WORD_RE.fullmatch(nxt):
+            out[k] = ">" if k and out[k - 1].isdigit() else "&>"
     return out
 
 
@@ -17173,18 +17197,19 @@ def _sed_exec_prog(p: str, anchored: bool = False) -> bool:
     return any("e" in m[4] for rx in rules for m in rx.finditer(p))
 
 
-def _dyn_exec_check(placed: "PlacedCmds") -> None:
+def _dyn_exec_check(placed: "PlacedCmds", cmd: str = "") -> None:
     """ADR-0063 lớp mã động: công cụ chạy chữ guard không thấy như lệnh → chặn (không đoán nội dung): sed `e`/`s///e`
     (pattern space là đầu vào), awk `system(`/ống với lệnh không phải chuỗi nguyên văn, chương trình sed/awk đọc từ stdin
     (`-f -`), ghi `BASH_ENV`/`PS0…PS4`/`PROMPT_COMMAND` bằng lệnh dựng sẵn (`printf -v`, `mapfile`, `read`, `declare`…)."""
     switched = False
+    queried = {m[1] for m in BRANCH_ASSIGN_RE.finditer(cmd)}
     for c, _ in placed:
         n = normalize(c)
         name, args = (n[0], n[1:]) if n else ("", [])
         why = _dyn_exec_why(name, args) or _special_var_why(c, name, args) or _exec_env_why(c, name, args)
-        if switched and n[:2] == ["git", "push"] and _push_reads_head(n[2:]):
+        if switched and n[:2] == ["git", "push"] and _push_reads_head(n[2:], queried):
             why = why or "`git push` theo `HEAD` sau khi `switch`/`checkout` trong cùng lệnh (AUD-SEC-554)"
-        switched = switched or n[:2] in (["git", "switch"], ["git", "checkout"])
+        switched = switched or n[:2] in HEAD_MOVERS
         why = why or _env_file_why(c) or _cmd_env_why(c, name, args) or _runner_why(name, args, n) or _xargs_gh_why(c)
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
@@ -17388,11 +17413,21 @@ def _runner_why(name: str, args: List[str], n: List[str]) -> str:
     return ""
 
 
-def _push_reads_head(args: List[str]) -> bool:
-    """AUD-SEC-554: push mà nhánh đích lấy từ `HEAD` lúc chạy — không nêu refspec (nhánh hiện tại/upstream) hay refspec
-    nhắc `HEAD`/`@`; luật "nhánh hiện tại" của guard đọc `HEAD` lúc xét, trước `switch`/`checkout` của cùng lệnh."""
+# T-3951 A7 (lô 3 BR): lệnh git đổi HEAD trước `push` của cùng lệnh; truy vấn nhánh hiện tại (viết thẳng hay qua biến gán
+# từ nó) ở refspec là đọc HEAD lúc chạy (`git checkout main && git push origin "$(git branch --show-current)"`)
+HEAD_MOVERS = tuple(["git", s] for s in ("switch", "checkout", "reset", "rebase", "merge", "pull", "worktree"))
+BRANCH_QUERY = r"\bbranch\s+--show-current|\bsymbolic-ref\b|--abbrev-ref|\bname-rev\b"
+BRANCH_QUERY_RE = re.compile(BRANCH_QUERY)
+BRANCH_ASSIGN_RE = re.compile(rf"(?<![\w$])([A-Za-z_]\w*)=[\"']?(?:\$\(|`)[^)`]*?(?:{BRANCH_QUERY})")
+
+
+def _push_reads_head(args: List[str], queried: FrozenSet[str] | Set[str] = frozenset()) -> bool:
+    """AUD-SEC-554: push mà nhánh đích lấy từ `HEAD` lúc chạy — không nêu refspec (nhánh hiện tại/upstream), refspec
+    nhắc `HEAD`/`@`, truy vấn nhánh hiện tại hay biến `queried` gán từ nó (T-3951 A7); luật "nhánh hiện tại" của guard
+    đọc `HEAD` lúc xét, trước `switch`/`checkout`/`merge`… của cùng lệnh."""
     pos = [a for a in args if a[:1] != "-"]
-    return len(pos) < 2 or any("HEAD" in a or a == "@" or a.startswith(("@:", "+@")) for a in pos[1:])
+    head = any("HEAD" in a or a == "@" or a.startswith(("@:", "+@")) or BRANCH_QUERY_RE.search(a) for a in pos[1:])
+    return len(pos) < 2 or head or any(_var_refs(a) & queried for a in pos[1:])
 
 
 def _xargs_gh_why(c: List[str]) -> str:
@@ -17641,6 +17676,26 @@ def _quote_exec_scripts(script: str) -> List[str]:
     return ["\n".join(lits), "".join(lits), " ".join(x.lstrip("| ") for x in lits)]
 
 
+# T-3951 A5 (lô 1 F2a): Python gọi mô-đun chạy lệnh qua bí danh/`from … import` (`import subprocess as s; s.run("…",
+# shell=True)`, `from os import system as x`, `__import__("os")`) — tên lời gọi không khớp `EXEC_CALL_RE`: mọi chuỗi nguyên
+# văn của script quét như lệnh bash (như nhánh Perl/Ruby/PHP).
+PY_EXEC_MODULES = r"(?:subprocess|os|posix|pty|commands|asyncio)"
+PY_EXEC_IMPORT_RE = re.compile(
+    rf"\bimport\s+(?:[\w.]+\s*(?:as\s+\w+\s*)?,\s*)*{PY_EXEC_MODULES}\s+as\s+\w"
+    rf"|\bfrom\s+{PY_EXEC_MODULES}\s+import\b|\b__import__\s*\(|\bimport_module\s*\("
+)
+
+
+def _py_alias_scripts(script: str) -> List[str]:
+    script = _nfkc(script)
+    if not PY_EXEC_IMPORT_RE.search(script):
+        return []
+    lits = list(dict.fromkeys(_literal(m) for m in LITERAL_RE.finditer(script)))
+    if len(lits) > QUOTE_JOIN_MAX or sum(map(len, lits)) > QUOTE_SCAN_MAX:
+        raise ScanTooComplex(f"script Python nhập mô-đun chạy lệnh có hơn {QUOTE_JOIN_MAX} chuỗi để quét")
+    return ["\n".join(lits), " ".join(lits)] if lits else []
+
+
 def _m4_exec_scripts(text: str) -> List[str]:
     """Đối số `syscmd(…)`/`esyscmd(…)` trong đầu vào m4, bỏ dấu trích của m4 (`` ` `` và `'`)."""
     out = [_balanced(text, m.end(), "(", ")") for m in M4_EXEC_RE.finditer(text)]
@@ -17672,11 +17727,12 @@ def _tool_exec_sources(
     cmd: str, tokens: List[str], placed: PlacedCmds, interp: Placed, start: Optional[str], budget: Optional[ScanBudget]
 ) -> Tuple[Placed, List[str]]:
     """(lệnh lồng, câu hỏi chặn) từ công cụ tự chạy lệnh và chỗ bash tự mở rộng (AUD-SEC-250/251)."""
-    _dyn_exec_check(placed)
+    _dyn_exec_check(placed, cmd)
     out: Placed = [(s, here) for c, here in placed for s in _tool_exec_scripts(c)]
     out += [(s, start) for s in _prompt_scripts(cmd, tokens)]
     if _interp_families(tokens, start) & QUOTE_EXEC_FAMILIES:
         out += [(s, here) for raw, here in interp for s in _quote_exec_scripts(raw)]
+    out += [(s, here) for raw, here in interp for s in _py_alias_scripts(raw)]  # T-3951 A5
     out += _m4_inputs(cmd, tokens, placed, budget)
     out += _stdin_exec_inputs(cmd, tokens, placed, budget)
     return [(s, d) for s, d in out if s.strip()], _bash_env_asks(tokens)
@@ -18608,7 +18664,7 @@ def _runner_scripts(tokens: List[str]) -> List[str]:
             if posixpath.basename(a[0]) in SHELL_JOIN_RUNNERS:  # nối đối số bằng khoảng trắng rồi `sh -c`: `';'` là
                 out.append(" ".join(_no_redirects(rest)))  # toán tử ở tầng đó (`watch echo ';' git push`, AUD-SEC-605)
             for k in range(min(len(rest), RUNNER_SUFFIXES)):
-                out.append(_join_tokens(rest[k:]))
+                out.append(_chdir_lead(rest[:k]) + _join_tokens(rest[k:]))  # T-3951 A3: `--working-directory=D`
                 lead = all(t.startswith("-") or t.isdigit() for t in rest[:k]) or bool(
                     k and RUNNER_CMD_FLAG_RE.fullmatch(rest[k - 1])
                 )
@@ -18627,8 +18683,43 @@ def _unmodelled_sources(tokens: List[str], start: Optional[str], picks: int) -> 
 
 
 def _unmodelled_suffixes(c: List[str]) -> List[str]:
+    """Phần lệnh từ MỌI từ là tên lệnh có luật (vị trí lệnh sau trình bọc, AUD-SEC-817; D-503: không chỉ từ đầu tiên —
+    `uv run --with rm git push --force`), tối đa `RUNNER_SUFFIXES` hậu tố, sau `cd` của tuỳ chọn đặt thư mục đứng trước
+    (T-3951 A3). Chữ trong đối số của lệnh bên trong (`commit -m "rm -rf ~ is bad"`, `npm test -- -t "git reset
+    --hard"`) là dữ liệu: từ có khoảng trắng không phải tên lệnh (reviewer #134)."""
     words = _strip_prefixes(c)
-    return _trigger_suffixes(words[1:]) if _unmodelled_runner(words) else []
+    if not _unmodelled_runner(words):
+        return []
+    rest = words[1:]
+    return [_chdir_lead(rest[:k]) + _join_tokens(rest[k:]) for k in _trigger_starts(rest)]
+
+
+# T-3951 A3 (lô 3 RC): tuỳ chọn đặt thư mục làm việc của trình chạy gói/trình bọc (`uv run --directory ~ rm -rf x`,
+# `pnpm -C D exec`, `yarn --cwd D exec`, `npm --prefix D exec --`, `poetry -C D run`, `pdm -p D run`, `systemd-run
+# --working-directory=D`) đứng trước hậu tố có lệnh có luật: hậu tố quét sau `cd -- D &&` — thư mục chữ vào bộ theo
+# dõi thư mục như `env -C`, có mở rộng thì thư mục mờ (D-106/BUDGET). Đọc chặt: `-p`/`-d`/`-w` của công cụ khác
+# (`uv run -p 3.12`) chỉ thành `cd` vào tên tương đối dưới gốc — vô hại.
+RUNNER_CHDIR_LONG = frozenset(
+    "--directory --dir --cwd --prefix --chdir --working-directory --workdir --wd --root --project-dir".split()
+)
+RUNNER_CHDIR_SHORT = frozenset({"-C", "-p", "-w", "-d"})
+
+
+def _runner_chdirs(opts: List[str]) -> List[str]:
+    """Giá trị (token thô) của tuỳ chọn đặt thư mục trong `opts` (`--dir D`, `--dir=D`, `-C D`, `-CD`)."""
+    out: List[str] = []
+    for k, t in enumerate(opts):
+        p = _dequote(t)
+        key, eq, _ = p.partition("=")
+        if key in RUNNER_CHDIR_LONG or p in RUNNER_CHDIR_SHORT:
+            out.append(t.partition("=")[2] if eq else (opts[k + 1 : k + 2] or [""])[0])
+        elif p[:2] in RUNNER_CHDIR_SHORT and t[:2] == p[:2]:
+            out.append(t[2:])
+    return [d for d in out if d]
+
+
+def _chdir_lead(opts: List[str]) -> str:
+    return "".join(f"cd -- {d} && " for d in _runner_chdirs(opts))
 
 
 def _unmodelled_runner(words: List[str]) -> bool:
@@ -18655,14 +18746,6 @@ def _exec_trigger(word: str) -> bool:
 
 def _trigger_starts(rest: List[str]) -> List[int]:
     return [k for k, t in enumerate(rest) if _exec_trigger(t)][:RUNNER_SUFFIXES]
-
-
-def _trigger_suffixes(rest: List[str]) -> List[str]:
-    """Phần lệnh từ MỌI từ là tên lệnh có luật (vị trí lệnh sau trình bọc, AUD-SEC-817; D-503: không chỉ từ đầu tiên —
-    `uv run --with rm git push --force`), tối đa `RUNNER_SUFFIXES` hậu tố. Chữ trong đối số của lệnh bên trong
-    (`commit -m "rm -rf ~ is bad"`, `npm test -- -t "git reset --hard"`) là dữ liệu: từ có khoảng trắng không phải tên
-    lệnh (reviewer #134)."""
-    return [_join_tokens(rest[k:]) for k in _trigger_starts(rest)]
 
 
 def _runner_tails(argv: List[str]) -> List[List[str]]:
@@ -19469,12 +19552,15 @@ NODE_FILE_EXEC = frozenset({"spawn", "spawnSync", "execFile", "execFileSync"})
 # `shell=<giá trị>` khác `False`/`None`/`0` (review lượt 2: `shell=1`, `shell=flag`) → chặt: phần tử đầu là lệnh shell
 SHELL_TRUE_RE = re.compile(r"\bshell\s*=(?!=)\s*(?!(?:False|None|0)\b)[^\s,)]")
 EXECUTABLE_KW_RE = re.compile(r"executable\s*=(?!=)\s*(.*)", re.S)  # `Popen([...], executable="/bin/sh")`
-# Chuỗi nguồn của Python/JS/Ruby: tiền tố r/b/f/u, nháy ba trước nháy đơn; mỗi nhánh khớp tuyến tính.
+# Chuỗi nguồn của Python/JS/Ruby: tiền tố r/b/f/u, nháy ba trước nháy đơn; mỗi nhánh khớp tuyến tính. T-3951 A4: chuỗi
+# template JS `` `…` `` (cả `String.raw`): phần chữ là lệnh như chuỗi nháy (`${…}` để lại — luật mở rộng của shell xét).
 LITERAL_RE = re.compile(
-    r"""[rRbBfFuU]{0,2}(?:'\'\'(.*?)'\'\'|\"\"\"(.*?)\"\"\"|'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)")""", re.S
+    r"""[rRbBfFuU]{0,2}(?:'\'\'(.*?)'\'\'|\"\"\"(.*?)\"\"\"|'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)")"""
+    r"|`((?:[^`\\]|\\.)*)`",
+    re.S,
 )
 STR_ANY_RE = re.compile(
-    r"""'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)\"""", re.S
+    r"""'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)\"|`((?:[^`\\]|\\.)*)`""", re.S
 )  # mỗi ký tự khớp đúng một nhánh: không backtracking lũy thừa
 EXEC_ARG_WINDOW = 400
 
@@ -19501,15 +19587,23 @@ def _nfkc(script: str) -> str:
     return unicodedata.normalize("NFKC", script)
 
 
+JS_INTERP_RE = re.compile(r"\$\{[^{}`]*\}|\$\{")
+JS_INTERP_WORD = (
+    "$(xt-js-expr)"  # `${…}` của template JS là giá trị tính lúc chạy — như thay lệnh với shell (T-3951 A4)
+)
+
+
 def _literal(m: "re.Match[str]") -> str:
-    return ANSI_ESCAPE_RE.sub(_ansi_c_char, m.group(m.lastindex or 0))  # `\"`, `\\n` trong chuỗi nguồn → ký tự thật
+    text = m.group(m.lastindex or 0)
+    text = JS_INTERP_RE.sub(lambda _: JS_INTERP_WORD, text) if m.group(0).rstrip().endswith("`") else text
+    return ANSI_ESCAPE_RE.sub(_ansi_c_char, text)  # `\"`, `\\n` trong chuỗi nguồn → ký tự thật
 
 
 def _first_arg(args: str) -> str:
     """Đối số đầu của lời gọi (tới dấu phẩy ngoài ngoặc/chuỗi): `'rm' + ' -rf ~', shell=True` → `'rm' + ' -rf ~'`."""
     depth, i = 0, 0
     while i < len(args):
-        m = LITERAL_RE.match(args, i) if args[i] in "'\"rRbBfFuU" else None
+        m = LITERAL_RE.match(args, i) if args[i] in "'\"`rRbBfFuU" else None
         if m and m.end() > i + 1:
             i = m.end()
             continue
@@ -19522,9 +19616,9 @@ def _first_arg(args: str) -> str:
 
 PLAIN_LITERAL_RE = re.compile(
     r"""\s*[rRuU]?(?:'\'\'((?:(?!'\'\').)*)'\'\'|\"\"\"((?:(?!\"\"\").)*)\"\"\""""
-    r"""|'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)")\s*""",
+    r"""|'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|(?:String\.raw)?`((?:[^`\\$]|\\.|\$(?!\{))*)`)\s*""",
     re.S,
-)  # một chuỗi (cả nháy ba — review #405), không f/ghép
+)  # một chuỗi (cả nháy ba — review #405; template JS không `${` — T-3951 A4), không f/ghép
 
 
 def _exec_api_verbatim(scripts: List[str]) -> List[str]:
@@ -20922,6 +21016,154 @@ def _scan_param_rewrites(
         PARAM_SPLICED.reset(token)
 
 
+# T-3951 A2 (lô 3 EV): biến guard không tính chắc ở lệnh đơn xoá/ghi — shell không giữ trạng thái giữa các lần gọi Bash,
+# biến chưa đặt là RỖNG: `rm -rf "$TMPDIR"/*` là `rm -rf /*`, `rm -rf "$OUT"/etc` là `rm -rf /etc`. Mỗi lệnh đơn có luật
+# xoá/ghi (`EMPTY_RULED`, cả đích chuyển hướng ghi của mọi lệnh) đọc thêm hai bản quét như lệnh: bản RỖNG (`$V`, `${V}`,
+# `${V%…}`… → rỗng; `${V:-chữ}`/`${V-chữ}`/`${V:=chữ}` → chữ; `${V:+…}` → rỗng) và bản GIÁ TRỊ BẤT KỲ (`EMPTY_ANY`):
+# tiền tố tuyệt đối/`~` ngoài gốc trước mở rộng (`/home/$USER/x`, `~/../$USER`) bị luật đích chặn bất kể giá trị.
+# Không đọc lại: biến gán chữ, biến luôn có (`EMPTY_KEEP`), `${V:?…}` (dừng khi rỗng), `${!V}`, biến vòng `for`/`select`,
+# biến gán từ `$(mktemp …)`/`$(date …)` (ADR-0076: `rm -rf "$TMP"/x`).
+EMPTY_RULED = DD_DELETERS | DD_WRITERS
+EMPTY_KEEP = frozenset({"HOME", "PWD", "OLDPWD", "BASH", "SHELL", "CLAUDE_PROJECT_DIR", "0", "RANDOM", "SECONDS"})
+EMPTY_KEEP |= frozenset({"LINENO", "BASHPID", "PPID", "UID", "EUID", "$", "!", "#", "?", "-", "@", "*", "_"})
+EMPTY_ANY = "xt-any"
+EMPTY_REF_RE = re.compile(r"\$(?:\{([^{}]*)\}|([A-Za-z_]\w*|[0-9]))")
+EMPTY_SAFE_ASSIGN_RE = re.compile(r"""(?:[A-Za-z_]\w*\s+)*([A-Za-z_]\w*)=["']?\$\(\s*(?:mktemp|date)(?!\w)""")
+EMPTY_DEFAULT_RE = re.compile(r":?[-=](.*)", re.S)
+EMPTY_LEAD = SHELL_KEYWORDS | {"(", ")"}
+EMPTY_SKIP_OPS = ("<<", "<<-", "<<<")
+
+
+def _empty_keep(cmds: List[Tuple[List[str], List[str]]], cmd: str) -> Set[str]:
+    """Biến không đọc lại: luôn có, gán chữ đứng riêng (cả khi lệnh có hàm — `_lit_names` bỏ hẳn) mà không bị `unset`/
+    `${X:=…}`/gán kiểu khác, biến vòng, biến gán từ `$(mktemp …)`/`$(date …)`."""
+    lit = {m[1] for seg, words in cmds if not words for t in seg if (m := ASSIGN_LIT_RE.fullmatch(t))}
+    keep = set(EMPTY_KEEP) | _lit_names(cmds, cmd) | lit - _unmodelled_assigns(cmds, cmd)
+    for seg, words in cmds:
+        keep |= {words[1]} if words[:1] in (["for"], ["select"]) and len(words) > 1 else set()
+        keep |= {m[1] for t in seg if (m := EMPTY_SAFE_ASSIGN_RE.match(t))}
+    return keep
+
+
+def _empty_ref(m: "re.Match[str]", keep: Set[str], fill: str) -> str:
+    """Chữ thay cho một tham chiếu biến `m` ở bản rỗng (`fill` rỗng) hay bản giá trị bất kỳ; giữ nguyên khi không đọc
+    lại."""
+    if m[2]:
+        return m[0] if m[2] in keep else fill
+    p = DD_PARAM_RE.fullmatch(m[1])
+    if p is None or p[1] == "!" or p[2] in keep or p[4][:1] == "?" or p[4][:2] == ":?":
+        return m[0]
+    if p[1] == "#":
+        return "0"
+    d = EMPTY_DEFAULT_RE.fullmatch(p[4])
+    return d[1] if d and not fill else fill
+
+
+def _empty_word(word: str, keep: Set[str], fill: str) -> str:
+    if "$" not in word:
+        return word
+    kind = _CodeView(word).kind
+    return EMPTY_REF_RE.sub(
+        lambda m: (
+            m[0] if kind[m.start()] == "q" or word[m.start() - 1 : m.start()] == "\\" else _empty_ref(m, keep, fill)
+        ),
+        word,
+    )
+
+
+def _empty_exists(path: str) -> bool:
+    """Đường của bản đọc lại trỏ tới thứ có thể có: tương đối, có glob, hay đường tuyệt đối/`~` đang tồn tại; rỗng → False."""
+    if not path:
+        return False
+    if path[:1] not in ("/", "~") or GLOB_RE.search(path):
+        return True
+    return os.path.lexists(os.path.expanduser(path))
+
+
+def _empty_seg(seg: List[str], keep: Set[str], fill: str) -> str:
+    """Lệnh đơn `seg` (token thô) ở bản rỗng/giá trị bất kỳ; '' khi không có gì đọc lại. Bỏ từ khoá đầu (`do`, `{`),
+    heredoc/here-string (thân không phải đích); số fd dính toán tử chuyển hướng (`2>/dev/null`)."""
+    out: List[str] = []
+    changed, skip = False, False
+    for t in seg:
+        if skip or t in EMPTY_SKIP_OPS:
+            skip = not skip
+            continue
+        if not out and t in EMPTY_LEAD:
+            continue
+        new = _empty_word(t, keep, fill)
+        changed = changed or new != t
+        # từ rỗng hẳn (`"$X"` → `""`) hay đường tuyệt đối chưa có (`"$TMPDIR/x"` → `/x`): bash không mở/xoá được gì — đọc
+        # như tên tương đối (bỏ đi thì `rm -rf` mất đích; `/x` chưa có mà luật đích vẫn hỏi như xoá ngoài dự án)
+        new = EMPTY_ANY if new != t and not fill and not _empty_exists(_dequote(new)) else new
+        glue = bool(out) and out[-1].isdigit() and _is_redirect(t)
+        out[-1:] = [out[-1] + new] if glue else [*out[-1:], new]
+    return " ".join(out) if changed else ""
+
+
+# Đích bản rỗng rơi vào `/`, `/*`, mục cấp một của `/` (`/etc`, `/home`) hay home (`~`, `~/*`) — chặn với mọi lệnh xoá/ghi
+# (`tee /*`, `mv /etc x`, `cp /dev/null /home/` — luật đích của lệnh ghi không xét các chỗ này)
+EMPTY_TOP_RE = re.compile(r"/[^/]*|~(?:/[^/]*[*?\[][^/]*)?")
+EMPTY_TOP_WHY = (
+    "đích `{}` của {} rỗng khi biến chưa đặt thành `{}` (gốc hệ thống/home) — shell không giữ biến giữa các lần gọi;"
+    " viết đường nguyên văn hoặc `${{X:?}}` (T-3951)"
+)
+EMPTY_LAST_ONLY = frozenset({"cp", "install", "ln", "rsync"})  # chỉ toán hạng cuối là đích; nguồn chỉ đọc
+
+
+def _empty_targets(name: str, seg: List[str], words: List[str]) -> List[str]:
+    out = [b for a, b in zip(seg, seg[1:]) if _is_redirect(a) and ">" in a]
+    if name not in EMPTY_RULED or name in ("sed", "dd") or name == "find" and _dd_read_only(name, words[1:]):
+        return out
+    pos = [w for w in words[1:] if _dequote(w)[:1] not in ("-", "(", "!")]
+    return out + (pos[-1:] if name in EMPTY_LAST_ONLY else pos)
+
+
+def _empty_top_why(name: str, seg: List[str], words: List[str], keep: Set[str], root: str, cwd: Optional[str]) -> str:
+    for w in _empty_targets(name, seg, words):
+        e = _dequote(_empty_word(w, keep, "")) if "$" in w else ""
+        norm = posixpath.normpath(e) if e[:1] in ("/", "~") else ""
+        if norm and EMPTY_TOP_RE.fullmatch(norm) and (norm == "/" or _empty_exists(norm)):
+            return EMPTY_TOP_WHY.format(clean_text(w)[:80], name or "chuyển hướng", norm)
+        # tiền tố tuyệt đối/`~` ngoài gốc trước mở rộng: mọi giá trị đều ở ngoài (`tee "/home/$USER/x"`, `~/../$USER`)
+        anyv = HOME_REF_RE.sub("~", _dequote(_empty_word(w, keep, EMPTY_ANY))) if e else ""
+        lead = anyv.partition(EMPTY_ANY)[0].rpartition("/")[0] if EMPTY_ANY in anyv else ""
+        if lead[:1] in ("/", "~") and root and _outside_project(lead, root, cwd):
+            return EMPTY_OUT_WHY.format(clean_text(w)[:80], name or "chuyển hướng", lead)
+    return ""
+
+
+EMPTY_OUT_WHY = (
+    "WIPE_OUTSIDE: đích `{}` của {} nằm dưới `{}` ngoài thư mục dự án, phần sau là biến guard không tính chắc — mọi giá"
+    " trị đều ghi/xoá ngoài dự án (T-3951)"
+)
+
+
+def _empty_readings(cmd: str, root: str = "", cwd: Optional[str] = None) -> Tuple[List[str], str]:
+    """Bản rỗng và bản giá trị bất kỳ của mọi lệnh đơn xoá/ghi có biến không tính chắc, và lý do chặn khi đích bản rỗng
+    là gốc hệ thống/home hay tiền tố ngoài gốc đứng trước biến (T-3951 A2)."""
+    cmds = _simple_cmds(cmd) if "$" in cmd else None
+    if not cmds:
+        return [], ""
+    keep = _empty_keep(cmds, cmd)
+    out: List[str] = []
+    for seg, words in cmds:
+        name = posixpath.basename(_dequote(words[0])) if words else ""
+        if name in EMPTY_RULED or any(_is_redirect(a) and ">" in a for a in seg):
+            why = _empty_top_why(name, seg, words, keep, root, cwd)
+            if why:
+                return [], why
+            out += [_empty_seg(seg, keep, fill) for fill in ("", EMPTY_ANY)]
+    return [x for x in dict.fromkeys(out) if x], ""
+
+
+def _scan_empty_readings(
+    cmd: str, root: str, cwd: Optional[str], depth: int, asks: List[str], budget: "ScanBudget", rw: int
+) -> str:
+    variants, why = _empty_readings(cmd, root, cwd)
+    return why or _scan_scripts(variants, root, cwd, depth, asks, 0, budget, rw)
+
+
 def _glob_rewrites(cmd: str, tokens: List[str], heads: Dict[str, List[str]]) -> List[str]:
     """Bản viết lại CHUỖI LỆNH GỐC (giữ heredoc, `<(`, nháy, gán biến) cho MỖI tên nhạy cảm khớp mẫu glob của tên một lệnh
     đơn: mọi lần xuất hiện của từ đó thay cùng lúc. Quét như shell lồng — `bash_decision` đệ quy chịu ngân sách và
@@ -21181,6 +21423,7 @@ def _bash_decision(
     nested_deny = nested_deny or _scan_glob_rewrites(cmd, tokens, root, cwd, depth, asks, budget, rewrites)
     nested_deny = nested_deny or _scan_param_rewrites(cmd, root, cwd, depth, asks, budget, rewrites)  # AUD-SEC-803
     nested_deny = nested_deny or _scan_last_arg(cmd, root, cwd, depth, asks, budget, rewrites)  # D-503
+    nested_deny = nested_deny or _scan_empty_readings(cmd, root, cwd, depth, asks, budget, rewrites)  # T-3951 A2
     if nested_deny:
         return _nested_deny_result(res, nested_deny, budget)
     asks += _late_pending_asks(cmd, tokens, every, root, cwd, pending_bare, budget)

@@ -236,6 +236,16 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   nháy chỉ có `$x` vào công cụ đọc chương trình (`x='!rm …'; ed <<E` + `$x`), `r${Z}m` trong chuỗi `system()` của
   `gawk -e`/`perl -e`, `mktemp` lỗi trả rỗng (`"$(mktemp -d -p nonexist)"/etc`) — cần chủ ý nhiều bước/chuỗi động, hàng
   rào là sandbox.
+  T-3951 (cổng ký 10): `>&TỪ`/`1>&TỪ` (TỪ không phải số fd/`-`) là ghi như `&>TỪ`. Lệnh xoá/ghi có biến guard không tính
+  chắc đọc thêm bản RỖNG (shell không giữ biến giữa các lần gọi: `rm -rf "$TMPDIR"/*` = `rm -rf /*`; `${X:-chữ}` → chữ;
+  không đọc lại: biến luôn có như `HOME`/`PWD`, gán chữ, `${X:?}`, biến vòng, gán từ `$(mktemp …)`/`$(date …)`) và bản
+  GIÁ TRỊ BẤT KỲ: đích bản rỗng là `/`, mục cấp một đang có của `/` hay home → chặn; tiền tố tuyệt đối/`~` ngoài gốc trước
+  mở rộng (`/home/$USER/x`, `~/../$USER`) → WIPE_OUTSIDE; bản rỗng là đường tuyệt đối chưa có (`"$TMPDIR/x"`) vô hại.
+  Tuỳ chọn đặt thư mục của trình chạy (`--directory`, `--dir`, `-C`, `--cwd`, `--prefix`, `-p`, `-w`, `-d`,
+  `--working-directory`…) đứng trước lệnh có luật là `cd` (`uv run --directory ~ rm -rf x`). Chuỗi template JS là chuỗi
+  chữ (`${…}` đọc như thay lệnh); Python nhập mô-đun chạy lệnh qua bí danh/`from … import`/`__import__` → mọi chuỗi chữ
+  quét như lệnh. `git push` đọc nhánh hiện tại (viết thẳng hay qua biến) sau `checkout`/`switch`/`merge`/`reset`/
+  `rebase`/`pull` cùng lệnh → BUDGET. Họ (c) thêm: `` `r${"m"} -rf ~` `` trong template JS.
 - **`merge-check` so giờ sổ review cục bộ với giờ GitHub** (AUD-XFEAT-019, D-104): review chặn chỉ có ở sổ cục bộ được
   tính khi ghi sau dấu đã đăng mới nhất ở cùng head; đồng hồ máy chậm hơn GitHub thì review chặn ghi ngay sau một dấu sạch
   bị coi là cũ hơn. Lớp đỡ: `pr reviewed` đăng ngay kết luận (dấu đã đăng là nguồn của `merge-check`/steward/guard).
