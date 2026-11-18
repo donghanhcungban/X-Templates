@@ -92,3 +92,10 @@
 
 - [x] `T-3940` 🔴 AUD-SEC-869/870/871, 🟠 AUD-SEC-872/873, 🟢 AUD-SEC-874, AUD-DEP-031 — Gate: `python3 -m unittest tests.test_guard_signoff5 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/templates/packs/web-api-ts/)
 - [x] `T-3941` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3940; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 9 — sửa phát hiện cổng ký lần 6 (D-503, D-505)
+> Cổng ký lần 6 (ứng viên `49ce04a1`): hồi quy 🔴 của #650 (`$(date)`/`$(cat)` tin theo tên lệnh), CDPATH/`popd`, nguồn xargs, hạn giờ chung của quyết định, cùng chặn oan xargs/sed và hiệu năng vòng `for`. #652 (T-3942) sửa hầu hết; còn `parallel`/`sem`.
+
+- [ ] `T-3942` 🔴 AUD-SEC-875/876/877/885/886, 🟠 AUD-SEC-878/880/881/882/884, 🟢 AUD-SEC-879/883, AUD-DEP-032, AUD-HAR-429 — Gate: `python3 -m unittest tests.test_guard_signoff6 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [ ] `T-3943` 🔴 AUD-SEC-887 `parallel`/`sem` chạy chuỗi lệnh từ `:::`/stdin → BUDGET (mặc định chặn); đo lại hạn giờ cho dạng sed/for ~50 KB (AUD-SEC-888) — Gate: `python3 -m unittest tests.test_guard_signoff7 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/)
+- [ ] `T-3944` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3943; files: docs/ops/AUDIT-STATUS.md)
