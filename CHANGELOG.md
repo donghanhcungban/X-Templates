@@ -238,6 +238,16 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3947 (D-503, D-507, phát hiện cổng ký lần 8): guard sửa theo lớp — thân chương trình qua stdin/cờ so sau khi bỏ nháy
+  kiểu shell, `$` ở here-string/ống, nguồn không phải chữ (`<(…)`, `<&3`, `/dev/fd/N`) vào công cụ đọc chương trình →
+  BUDGET; cờ viết tắt/dính giá trị, `+cmd`/`-c`/`--cmd` của vi/ex/vim, đối số vị trí sqlite3; SQL/manifest/Dockerfile chỉ
+  quét dòng lối thoát shell (hết chặn oan `truncate table`, `at time zone`, `image: python:3.12`). `.git`: glob ngay sau
+  `.git`, `dotglob`/`GLOBIGNORE`, biến vòng, `.git` chung của worktree liên kết; ghi đè `.git/HEAD`/`index`/`config` (cả
+  repo con) → HOOK_BYPASS (AUD-SEC-905). Giá trị tính được chỉ là thành phần lá (`..` sau → BUDGET), `mktemp -p`/
+  `--tmpdir`/TMPDIR mất ưu đãi, `$(date)` chỉ dưới gốc dự án; `git push "$(…):dst"` → BUDGET, còn `pull`/`fetch`/`rebase`/
+  `merge`/`checkout`/`switch`/`gh pr create` với truy vấn nhánh hết chặn oan; `[ -eq ]` và nhắc chữ `PATH` không còn làm
+  mất ưu đãi `$(mktemp)`/`$(date)`. Ca `guard-t3945-f2-deny-03` đổi sang dạng lọt thật ở nền. Giới hạn chấp nhận (hạn
+  2027-01-21) ghi ở `harness-files.md`. **Dự án đích:** cài lại khung để nhận guard mới.
 - T-3945 (D-503, D-506, phát hiện cổng ký lần 7): giá trị tính được `$(date …)`/`$(mktemp …)`/`$(cat …)` chỉ được tin
   khi cả lệnh (mọi tầng bọc) chỉ gồm cấu trúc trong danh sách đóng — `BASH_CMDS[date]=…`, `export P''ATH=`, `read PATH`,
   `printf -v`, `mapfile`, nameref, số học có tên biến, trap DEBUG có thân lạ từng lọt; `$(pwd)` không còn mất ưu đãi vì

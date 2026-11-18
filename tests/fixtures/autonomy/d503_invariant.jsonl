@@ -818,3 +818,57 @@
 {"id": "T8|r3|2", "root": "t3945:r3", "cmd": "rm -f .git/HEAD"}
 {"id": "T8|r3|3", "root": "t3945:r3", "cmd": "find . -name '*.pack' | xargs rm -f"}
 {"id": "T8|r3|4", "root": "t3945:r3", "cmd": "find .git -name '*.pack' | xargs rm -f"}
+{"id": "T9|m1|1", "root": "t3947:m1", "cmd": "rm -f .git/*"}
+{"id": "T9|m1|2", "root": "t3947:m1", "cmd": "cd .git && rm -f *"}
+{"id": "T9|m1|3", "root": "t3947:m1", "cmd": "shopt -s dotglob; rm -f */objects/pack/*.pack"}
+{"id": "T9|m1|4", "root": "t3947:m1", "cmd": "GLOBIGNORE=x; rm -f *it/objects/pack/*.pack"}
+{"id": "T9|m1|5", "root": "t3947:m1", "cmd": "bash -O dotglob -c 'rm -f */index'"}
+{"id": "T9|m1|6", "root": "t3947:m1", "cmd": "shopt -s dotglob; shred -u */index"}
+{"id": "T9|m1|7", "root": "t3947:m1", "cmd": "shopt -s dotglob; for f in */index; do unlink \"$f\"; done"}
+{"id": "T9|m2|1", "root": "t3947:m2", "cmd": "rm -rf \"$(mktemp -d -p ~)/../Documents\""}
+{"id": "T9|m2|2", "root": "t3947:m2", "cmd": "rm -rf \"$(mktemp -d --tmpdir=$HOME)/../Documents\""}
+{"id": "T9|m2|3", "root": "t3947:m2", "cmd": "cd \"$(mktemp -d ~/x.XXXXXX)\" && rm -rf ../Documents"}
+{"id": "T9|m2|4", "root": "t3947:m2", "cmd": "export TMPDIR=~; cd \"$(mktemp -d)\" && rm -rf ../Documents"}
+{"id": "T9|m2|5", "root": "t3947:m2", "cmd": "cd \"$(mktemp -d)\" && cd ../.. && rm -rf home"}
+{"id": "T9|m2|6", "root": "t3947:m2", "cmd": "cd ~ && mkdir -p \"$(date +%F)\" && rm -rf \"$(date +%F)/../Documents\""}
+{"id": "T9|m2|7", "root": "t3947:m2", "cmd": "d=$(date +%F); cd ~ && mkdir -p \"$d\" && rm -rf \"$d/../Documents\""}
+{"id": "T9|m2|8", "root": "t3947:m2", "cmd": "cd ~/backups && rm -rf \"$(date +%F)\""}
+{"id": "T9|m2|9", "root": "t3947:m2", "cmd": "rm -rf ~/\"$(date +%F)\""}
+{"id": "T9|m4|1", "root": "t3947:m4", "cmd": "git push origin \"$(git branch --show-current):feat/other\""}
+{"id": "T9|m4|2", "root": "t3947:m4", "cmd": "git push origin \"$(git symbolic-ref --short -q HEAD):feat/other\""}
+{"id": "T9|m4|3", "root": "t3947:m4", "cmd": "B=$(git branch --show-current); git push origin \"$B:feat/other\""}
+{"id": "T9|m5|1", "root": "t3947:m5", "cmd": "ed -s /dev/null <<< '!r\"\"m -rf ~'"}
+{"id": "T9|m5|2", "root": "t3947:m5", "cmd": "sqlite3 x.db <<'EOF'\n.shell r''m -rf ~\nEOF"}
+{"id": "T9|m5|3", "root": "t3947:m5", "cmd": "psql -c '\\! r\"\"m -rf ~'"}
+{"id": "T9|m5|4", "root": "t3947:m5", "cmd": "at now <<< 'r\"\"m -rf ~'"}
+{"id": "T9|m5|5", "root": "t3947:m5", "cmd": "crontab - <<'EOF'\n* * * * * r''m -rf ~\nEOF"}
+{"id": "T9|m5|6", "root": "t3947:m5", "cmd": "sqlite3 x.db <<EOF\n.shell ${c:-r}m -rf ~\nEOF"}
+{"id": "T9|m5|7", "root": "t3947:m5", "cmd": "x='!rm -rf ~'; ed -s /dev/null <<< \"$x\""}
+{"id": "T9|m5|8", "root": "t3947:m5", "cmd": "python3 < <(printf '%s\\n' 'import os; os.system(\"rm -rf ~\")')"}
+{"id": "T9|m5|9", "root": "t3947:m5", "cmd": "cat <(printf '%s\\n' x) | node"}
+{"id": "T9|m5|10", "root": "t3947:m5", "cmd": "exec 3< <(printf '%s\\n' 'rm -rf ~'); sh <&3"}
+{"id": "T9|m5|11", "root": "t3947:m5", "cmd": "{ ed -s /dev/null; } < <(printf '%s\\n' '!rm -rf ~')"}
+{"id": "T9|m5|12", "root": "t3947:m5", "cmd": "bash /dev/stdin < <(printf '%s\\n' 'rm -rf ~')"}
+{"id": "T9|m5|13", "root": "t3947:m5", "cmd": "ex -s +'!rm -rf ~' +q x.txt"}
+{"id": "T9|m5|14", "root": "t3947:m5", "cmd": "vim -es -c '!rm -rf ~' -c q"}
+{"id": "T9|m5|15", "root": "t3947:m5", "cmd": "vim -es --cmd '!rm -rf ~' -c q /dev/null"}
+{"id": "T9|m5|16", "root": "t3947:m5", "cmd": "make --eva='x:;rm -rf ~' x"}
+{"id": "T9|m5|17", "root": "t3947:m5", "cmd": "make -E'x:;rm -rf ~' x"}
+{"id": "T9|m5|18", "root": "t3947:m5", "cmd": "psql -c'\\! rm -rf ~'"}
+{"id": "T9|m5|19", "root": "t3947:m5", "cmd": "mysql -e'system rm -rf ~'"}
+{"id": "T9|m5|20", "root": "t3947:m5", "cmd": "sqlite3 :memory: '.shell rm -rf ~'"}
+{"id": "T9|m5|21", "root": "t3947:m5", "cmd": "sqlite3 -cmd '.system rm -rf ~' :memory: .quit"}
+{"id": "T9|m5|22", "root": "t3947:m5", "cmd": "gdb -batch --eval-command='shell rm -rf ~'"}
+{"id": "T9|m5|23", "root": "t3947:m5", "cmd": "dc -e'!rm -rf ~'"}
+{"id": "T9|m5|24", "root": "t3947:m5", "cmd": "dc --expression='!rm -rf ~'"}
+{"id": "T9|m5|25", "root": "t3947:m5", "cmd": "expect -c 'exec rm -rf ~'"}
+{"id": "T9|m5|26", "root": "t3947:m5", "cmd": "crontab <(echo '* * * * * rm -rf ~')"}
+{"id": "T9|m5|27", "root": "t3947:m5", "cmd": "at now < <(echo 'rm -rf ~')"}
+{"id": "T9|m6|1", "root": "t3947:m6", "cmd": "mv x .git/HEAD"}
+{"id": "T9|m6|2", "root": "t3947:m6", "cmd": "truncate -s0 .git/index"}
+{"id": "T9|m6|3", "root": "t3947:m6", "cmd": "cp /dev/null .git/index"}
+{"id": "T9|m6|4", "root": "t3947:m6", "cmd": "echo x | tee .git/HEAD"}
+{"id": "T9|m6|5", "root": "t3947:m6", "cmd": "sed -i s/a/b/ .git/HEAD"}
+{"id": "T9|m6|6", "root": "t3947:m6", "cmd": "ln -sf x .git/HEAD"}
+{"id": "T9|m6|7", "root": "t3947:m6", "cmd": "install x .git/index"}
+{"id": "T9|m6|8", "root": "t3947:m6", "cmd": "mv x sub/.git/HEAD"}
