@@ -40,12 +40,15 @@ thật (2026-11-05: Codex CLI 0.147.0 có trên máy dev nhưng chạy nó tốn
 thừa hưởng model của phiên). Chỉ skill/agent khung cài (trừ skill bị `.claude/commands/` che); ghi như file harness:
 chưa có → chép, còn đúng hash lần trước → cập nhật, dự án đã sửa → `kept-own`/`.xtemplates-new`; không ghi/đọc xuyên
 symlink; hash ở `codex_files` của `.xtemplates/manifest.json`; `--plan` liệt kê ở `codex_harness` (kèm `reason` khi bỏ
-qua). `--force-harness` **không** áp cho tệp Codex. Lần đầu sinh mà dự án đã tự làm gương: gương trùng bản sinh từ
-`.claude/` hiện có (trước bước harness) hoặc — với skill — trùng hash manifest harness lần cài trước thì cập nhật tại chỗ;
-gương lạ → `.xtemplates-new`. Agent chỉ nhận frontmatter YAML phẳng (`khoá: giá trị` một dòng, giá trị trơn hoặc nháy
-không thoát); khối `|`/`>`, khoá lồng, nháy có thoát, chú thích cuối dòng… → bỏ qua kèm cảnh báo nêu dòng, giữ bản cũ.
-Sửa skill/agent ở `.claude/` thì chạy lại `install.py --harness codex`. Repo khung: `python3 scripts/install.py .
---sync-codex` (mọi tệp dưới `.agents/`, `.codex/` phải do bộ sinh tạo; tệp thừa chỉ báo, không xoá).
+qua). `--force-harness` **không** áp cho tệp Codex — gương dự án tự có không bị ghi đè. Ngoại lệ duy nhất: lần đầu sinh
+mà dự án đã tự làm gương và gương CHẮC CHẮN là bản khung đã cài theo manifest harness (skill: trùng hash nguồn khung đã
+ghi; agent: nguồn `.md` chưa sửa so với hash đã ghi và gương trùng bản sinh từ nó) thì cập nhật tại chỗ; gương trùng bản
+dự án tự sửa/skill riêng → `.xtemplates-new`. Agent chỉ nhận frontmatter YAML phẳng (`khoá: giá trị` một dòng, giá trị
+trơn hoặc nháy không thoát; `name`/`description`/`effort` trơn có kiểu YAML như `null`, `true`, số, ngày phải đặt trong
+nháy); khối `|`/`>`, khoá lồng, nháy có thoát, chú thích cuối dòng, ngắt dòng lạ… → bỏ qua kèm cảnh báo nêu dòng, giữ
+bản cũ. Sửa skill/agent ở `.claude/` thì chạy lại `install.py --harness codex`. Repo khung: `python3 scripts/install.py .
+--sync-codex` (tệp ĐÃ track dưới `.agents/`, `.codex/` phải do bộ sinh tạo — thừa thì exit 1; tệp chưa track như
+`.DS_Store`, `.codex/config.toml` cục bộ chỉ cảnh báo; không xoá gì).
 
 **Tin cậy:** hook dự án chỉ chạy sau khi người tin cậy bằng `/hooks` (theo hash — đổi `hooks.json` phải tin cậy lại);
 chưa tin cậy thì Codex bỏ qua cả lớp `.codex/`. **Giới hạn:** chỉ `PreToolUse` (không Stop hook — vòng "chạy đến khi

@@ -1359,8 +1359,23 @@ FM_SPECIAL_RE = re.compile(r"[\[\]{}&*!%@`#,]|[-?:](?:\s|$)")  # chỉ báo YAML
 FM_QUOTED_RE = {'"': re.compile(r'"([^"]*)"'), "'": re.compile(r"'([^']*)'")}
 
 
-def _fm_value(raw: str) -> str:
-    v = raw.strip()
+# Giá trị trơn mà bộ đọc YAML (1.2 core, cả dạng 1.1 của PyYAML) đọc thành null/bool/số/ngày, không phải chuỗi — ở
+# `FM_TEXT_KEYS` thì từ chối (trong nháy vẫn là chuỗi).
+FM_TEXT_KEYS = frozenset({"name", "description", "effort"})
+FM_TYPED_RE = re.compile(
+    r"null|Null|NULL|~|true|True|TRUE|false|False|FALSE"
+    r"|y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF"
+    r"|[-+]?(?:[0-9][0-9_]*(?::[0-5]?[0-9])*(?:\.[0-9_]*)?|\.[0-9_]+)(?:[eE][-+]?[0-9]+)?"
+    r"|0x[0-9a-fA-F_]+|0o[0-7_]+|0b[01_]+|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN)"
+    r"|[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:[Tt ].*)?"
+)
+# Chỉ dấu cách và tab là khoảng trắng YAML 1.2 (NBSP, U+3000 là nội dung, giữ nguyên); ngắt dòng YAML 1.1 (U+0085,
+# U+2028/2029), `\r` lẻ và ký tự điều khiển khác: bộ đọc khác nhau hiểu khác nhau → từ chối.
+FM_BAD_CHAR_RE = re.compile("[\x00-\x08\x0a-\x1f\x7f\x85  ]")
+
+
+def _fm_value(raw: str, text_key: bool) -> str:
+    v = raw.strip(" \t")
     if v[:1] in ("|", ">"):
         raise ValueError("khối `|`/`>`")
     if v[:1] in ('"', "'"):
@@ -1374,28 +1389,38 @@ def _fm_value(raw: str) -> str:
         return m[1]
     if FM_SPECIAL_RE.match(v):
         raise ValueError("giá trị bắt đầu bằng ký tự YAML đặc biệt")
-    if re.search(r"\s#", v):
+    if re.search(r"[ \t]#", v):
         raise ValueError("chú thích ` #` cuối giá trị")
+    if text_key and FM_TYPED_RE.fullmatch(v):
+        raise ValueError("giá trị trơn có kiểu YAML (null/bool/số/ngày), không phải chuỗi — đặt trong nháy")
     return v
+
+
+def _fm_pair(line: str, meta: dict[str, str]) -> tuple[str, str] | None:
+    """(khoá, giá trị) của một dòng không trống; chú thích cả dòng → None; ngoài tập con phẳng → ValueError(lý do)."""
+    if FM_BAD_CHAR_RE.search(line):
+        raise ValueError("ký tự điều khiển hoặc ngắt dòng lạ (`\\r` lẻ, U+0085, U+2028/2029…)")
+    if line.startswith("#"):
+        return None
+    if line[0] in " \t":
+        raise ValueError("thụt lề")
+    m = FM_LINE_RE.fullmatch(line)
+    if m is None:
+        raise ValueError("không phải `khoá: giá trị` một dòng")
+    if m[1] in meta:
+        raise ValueError(f"khoá `{m[1]}` lặp")
+    return m[1], _fm_value(m[2] or "", m[1] in FM_TEXT_KEYS)
 
 
 def _fm_line(line: str, n: int, meta: dict[str, str]) -> dict[str, str]:
     """Một dòng frontmatter (số dòng `n` tính cả `---` mở) → {khoá: giá trị}; dòng trống/chú thích cả dòng → {}."""
-    if not line.strip() or line.startswith("#"):
+    if not line.strip(" \t"):
         return {}
-    why = "thụt lề" if line[0] in " \t" else ""
-    m = None if why else FM_LINE_RE.fullmatch(line)
-    if not why and m is None:
-        why = "không phải `khoá: giá trị` một dòng"
-    if m is not None and m[1] in meta:
-        why = f"khoá `{m[1]}` lặp"
     try:
-        value = "" if why or m is None else _fm_value(m[2] or "")
+        pair = _fm_pair(line, meta)
     except ValueError as exc:
-        why = str(exc)
-    if why or m is None:
-        raise ValueError(f"frontmatter dòng {n}: {why} (YAML ngoài tập con phẳng)")
-    return {m[1]: value}
+        raise ValueError(f"frontmatter dòng {n}: {exc} (YAML ngoài tập con phẳng)") from None
+    return dict([pair]) if pair else {}
 
 
 def agent_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -1408,7 +1433,7 @@ def agent_frontmatter(text: str) -> tuple[dict[str, str], str]:
         raise ValueError("frontmatter: không có dòng `---` đóng")
     meta: dict[str, str] = {}
     for n, line in enumerate(lines[1:end], 2):
-        meta.update(_fm_line(line.rstrip("\r"), n, meta))
+        meta.update(_fm_line(line.removesuffix("\r"), n, meta))  # đúng một `\r` cuối dòng (CRLF); `\r` khác → từ chối
     body = "\n".join(lines[end + 1 :]).lstrip("\r\n")
     if body.split("\n", 1)[0].rstrip("\r") == "---":
         raise ValueError("frontmatter: thân mở bằng `---` (nhiều tài liệu YAML)")
@@ -1476,18 +1501,29 @@ def codex_render(job: CodexJob, read: Callable[[str], bytes | None]) -> bytes | 
     return CODEX_NO_SOURCE if raw is None else job[2](raw, job[0])
 
 
+def _framework_mirror_hashes(job: CodexJob, recorded: str | None, raw: bytes | None) -> set[str]:
+    """Hash mà gương của `job` mang nếu nó là bản khung đã cài. Chỉ tin manifest harness (`recorded` = hash nguồn khung
+    đã cài): skill (bản sao byte) → chính hash đó; agent → bản sinh từ nguồn `.md` hiện có, chỉ khi nguồn còn đúng
+    `recorded` (chưa bị dự án sửa). Gương trùng bản DỰ ÁN không chứng minh gì (review lượt 2 🟠: `--force-harness`)."""
+    if recorded is None:
+        return set()
+    if job[2] is render_skill:
+        return {recorded}
+    if raw is None or sha256(raw) != recorded:
+        return set()
+    data = job[2](raw, job[0])
+    return {sha256(data)} if isinstance(data, bytes) else set()
+
+
 def codex_baseline(target: Path) -> dict[str, set[str]]:
-    """Hash (hex) chứng minh gương Codex có sẵn là bản khung — đọc TRƯỚC bước harness. Dự án tự làm gương trước khi khung
-    sinh (chưa có `codex_files`): gương trùng bản sinh từ nguồn `.claude/` hiện có, hoặc (skill — bản sao byte) trùng
-    hash manifest harness của nguồn ở lần cài trước, thì coi là của khung và cập nhật tại chỗ (review mục 5). Agent không
-    có dữ kiện thứ hai: manifest chỉ giữ hash `.md`, không dựng lại được TOML cũ."""
+    """Gương Codex có sẵn (dự án tự làm trước khi khung sinh — chưa có `codex_files`) mà là bản khung CHẮC CHẮN thì cập
+    nhật tại chỗ (review mục 5): đích → hash chứng minh (`_framework_mirror_hashes`), đọc TRƯỚC bước harness. Agent:
+    manifest chỉ giữ hash `.md`, nguồn đã đổi thì không dựng lại được TOML cũ → không nhận."""
     files = load_manifest(target)
-    out: dict[str, set[str]] = {}
-    for job in codex_jobs(target):
-        data = codex_render(job, lambda rel: read_regular(target / rel))
-        known = {sha256(data)} if isinstance(data, bytes) else set()
-        out[job[1]] = known | ({files[job[0]]} if job[2] is render_skill and job[0] in files else set())
-    return out
+    return {
+        job[1]: _framework_mirror_hashes(job, files.get(job[0]), read_regular(target / job[0]))
+        for job in codex_jobs(target)
+    }
 
 
 def _mirror_hash(dst: Path, known: set[str]) -> str | None:
@@ -1606,13 +1642,37 @@ def sync_codex(target: Path) -> int:
     for rel in changed:
         (SRC / rel).parent.mkdir(parents=True, exist_ok=True)
         (SRC / rel).write_bytes(files[rel])
-    extras = codex_extras(SRC, files)
     log(f"✓ --sync-codex: {len(files)} tệp sinh, {len(changed)} tệp ghi lại")
     for rel in blocked:
         log(f"  ✗ bỏ qua symlink {rel} (không ghi qua liên kết)")
-    if extras:
-        log(f"  ✗ thừa (không do bộ sinh tạo — xoá tay nếu đã bỏ ở .claude/): {', '.join(extras)}")
-    return 1 if blocked or extras else 0
+    return 1 if report_codex_extras(codex_extras(SRC, files)) or blocked else 0
+
+
+def git_tracked(root: Path, paths: tuple[str, ...]) -> set[str] | None:
+    """Tệp git theo dõi dưới `paths` của repo `root` (`git ls-files`, bỏ biến vị trí git của tiến trình gọi — hook
+    `pre-commit` đặt `GIT_INDEX_FILE`…); không phải repo git / không chạy được git → None."""
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_ENV}
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z", "--", *paths], capture_output=True, timeout=30, env=env
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return {p.decode("utf-8", "replace") for p in r.stdout.split(b"\0") if p} if r.returncode == 0 else None
+
+
+def report_codex_extras(extras: list[str]) -> bool:
+    """Báo tệp thừa dưới `.agents/`, `.codex/` của repo khung; True khi có tệp thừa ĐÃ track (sẽ lên repo — exit 1).
+    Tệp chưa track (`.DS_Store`, `.codex/config.toml` cục bộ, metadata skill của máy dev) chỉ cảnh báo. Không phải repo
+    git → không phân biệt được, coi mọi tệp thừa như đã track (thận trọng)."""
+    tracked = git_tracked(SRC, CODEX_ROOTS) if extras else set()
+    hard = [rel for rel in extras if tracked is None or rel in tracked]
+    soft = [rel for rel in extras if rel not in hard]
+    if hard:
+        log(f"  ✗ thừa (không do bộ sinh tạo — xoá tay nếu đã bỏ ở .claude/): {', '.join(hard)}")
+    if soft:
+        log(f"  ⚠ tệp chưa track dưới .agents/, .codex/ (cục bộ, không lên repo — bỏ qua): {', '.join(soft)}")
+    return bool(hard)
 
 
 # Gói sản phẩm (`--pack <id>`, ADR-0068 lát B/C): `framework/templates/packs/<id>/` gồm `pack.json` (schema 1, `id` = tên

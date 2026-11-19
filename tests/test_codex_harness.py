@@ -64,6 +64,24 @@ def stored(data: bytes) -> str:
     return install.hash_label(install.sha256(data))
 
 
+def git_env() -> dict[str, str]:
+    """Môi trường git không trỏ nhầm repo/index (test chạy trong git hook `pre-commit` có `GIT_INDEX_FILE`…)."""
+    env = {k: v for k, v in os.environ.items() if k not in install.GIT_LOCATION_ENV}
+    return env | {"GIT_CONFIG_NOSYSTEM": "1"}
+
+
+def committed_codex_files(root: Path) -> list[str]:
+    """Tệp dưới `.agents/`, `.codex/` mà git theo dõi (`git ls-files`, danh sách đối số, không shell). `root` không phải
+    repo git (bản zip) → quét cây, bỏ `__pycache__` — chặt hơn chứ không bỏ kiểm."""
+    r = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--", ".agents", ".codex"], capture_output=True, env=git_env()
+    )
+    if r.returncode == 0:
+        return sorted(p.decode("utf-8") for p in r.stdout.split(b"\0") if p)
+    found = (p for d in (".agents", ".codex") for p in (root / d).rglob("*") if p.is_symlink() or not p.is_dir())
+    return sorted(p.relative_to(root).as_posix() for p in found if "__pycache__" not in p.parts)
+
+
 def run_main(*argv: str) -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     with redirect_stdout(out), redirect_stderr(err):
@@ -84,12 +102,22 @@ class CodexHarnessSyncTest(unittest.TestCase):
                 problems.append(f"thiếu {rel}")
             elif path.read_bytes() != data:
                 problems.append(f"khác {rel}")
-        for folder in (".agents", ".codex"):  # cả cây: `.codex/hooks/` sót từ `/import` cũng là thừa (ADR-0082)
-            for path in sorted((ROOT / folder).rglob("*")):
-                rel = path.relative_to(ROOT).as_posix()
-                if "__pycache__" not in path.parts and (path.is_symlink() or not path.is_dir()) and rel not in want:
-                    problems.append(f"thừa {rel}")
+        problems += [f"thừa {rel}" for rel in committed_codex_files(ROOT) if rel not in want]
         self.assertEqual(problems, [], f"tệp Codex lệch nguồn .claude/ — sinh lại: {install.CODEX_SYNC}")
+
+    def test_committed_files_ignore_untracked_local_files(self):
+        """Review lượt 2 🟢: tệp chưa track hợp lệ ở máy dev (`.DS_Store`, `.codex/config.toml` cục bộ, metadata skill
+        `agents/openai.yaml`) không làm test đồng bộ đỏ; tệp ĐÃ track mà bộ sinh không tạo thì có. Ngoài repo git → quét
+        cây (mọi tệp dưới `.agents/`, `.codex/` trừ `__pycache__`)."""
+        repo = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+        for rel in (".agents/skills/x/SKILL.md", ".codex/hooks.json", ".codex/__pycache__/a.pyc", "README.md"):
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text("x\n", encoding="utf-8")
+        scanned = [".agents/skills/x/SKILL.md", ".codex/hooks.json"]
+        self.assertEqual(committed_codex_files(repo), scanned)  # chưa phải repo git: quét cây
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, env=git_env())
+        subprocess.run(["git", "-C", str(repo), "add", ".codex/hooks.json"], check=True, env=git_env())
+        self.assertEqual(committed_codex_files(repo), [".codex/hooks.json"])
 
     def test_generator_covers_every_framework_skill_and_agent(self):
         want = sorted(install.codex_framework_files())
@@ -216,6 +244,44 @@ class AgentTomlTest(unittest.TestCase):
                 install.agent_toml(text, "s")
         self.assertIn("UTF-8", install.render_agent(b"\xff\xfe", "s"))
 
+    def test_typed_plain_values_rejected_for_text_keys(self):
+        """Review lượt 2 🟢: giá trị TRƠN có kiểu YAML (null, bool — cả dạng YAML 1.1 —, số, ngày) ở `name`/`description`/
+        `effort` không phải chuỗi → từ chối; trong nháy vẫn là chuỗi; khoá khác (`maxTurns: 120`) không xét kiểu."""
+        typed = (
+            *("null", "Null", "NULL", "~", "true", "True", "TRUE", "false", "False", "FALSE"),
+            *("yes", "No", "ON", "off", "y", "N"),
+            *("0", "120", "-3", "+7", "1.5", "1.0e3", "1e3", "-2.5E-4", ".5", "1_000", "0x1F", "0o17", "0b101"),
+            *(".inf", "-.Inf", "+.INF", ".nan", ".NaN", ".NAN", "1:20", "2026-11-19", "2026-11-19T10:00:00Z"),
+        )
+        for key in ("name", "description", "effort"):
+            for value in typed:
+                fields = {"name": "a", "description": "d", "effort": "low"} | {key: value}
+                text = "---\n" + "".join(f"{k}: {v}\n" for k, v in fields.items()) + "---\nb\n"
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, "có kiểu YAML"):
+                    install.agent_toml(text, "s")
+        doc = tomllib.loads(install.agent_toml("---\nname: \"null\"\ndescription: '120'\nmaxTurns: 120\n---\nb", "s"))
+        self.assertEqual((doc["name"], doc["description"]), ("null", "120"))
+        for plain in ("v1.2", "1.2.3", "0x", "yes-no", "trueish", "10 phút", ".5x", "ON/OFF"):
+            with self.subTest(plain=plain):
+                doc = tomllib.loads(install.agent_toml(f"---\nname: a\ndescription: {plain}\n---\nb", "s"))
+                self.assertEqual(doc["description"], plain)
+
+    def test_whitespace_and_line_breaks(self):
+        """Review lượt 2 🟢: chỉ cắt dấu cách/tab hai đầu (YAML 1.2 chỉ coi hai ký tự này là khoảng trắng) — NBSP, U+3000
+        là nội dung, giữ nguyên; ký tự ngắt dòng YAML 1.1 (U+0085, U+2028, U+2029), `\\r` lẻ và ký tự điều khiển khác →
+        từ chối (bộ đọc YAML 1.1 tách dòng ở đó: nghĩa khác nhau tuỳ bộ đọc); CRLF cuối dòng vẫn nhận."""
+        text = "---\r\nname: a\t\r\ndescription: \t nbsp giữ　  #x\t\r\n---\r\nb"
+        doc = tomllib.loads(install.agent_toml(text, "s"))
+        self.assertEqual((doc["name"], doc["description"]), ("a", " nbsp giữ　  #x"))
+        for bad in ("d\x85x", "d x", "d x", "a\rb", "d\x01", "d\x0bx", "d\x7f"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "dòng 3: ký tự điều khiển hoặc ngắt dòng"):
+                install.agent_toml(f"---\nname: a\ndescription: {bad}\n---\nb", "s")
+        for line in ("# chú thích name: b", " ", " "):
+            with self.subTest(line=line), self.assertRaisesRegex(ValueError, "dòng 4: "):
+                install.agent_toml(f"---\nname: a\ndescription: d\n{line}\n---\nb", "s")
+        with self.assertRaisesRegex(ValueError, "dòng 2: ký tự điều khiển"):  # chỉ một `\r` cuối dòng là CRLF
+            install.agent_toml("---\nname: a\r\r\ndescription: d\n---\nb", "s")
+
     def test_rejects_yaml_outside_flat_subset(self):
         """Fail-closed (review reviewer-alt 🔴): YAML hợp lệ nhưng ngoài tập con phẳng mà bộ đọc hiểu chắc → lỗi nêu dòng và
         lý do, không sinh TOML sai nghĩa. Kỳ vọng viết tay: từng ca nêu đoạn lý do phải có."""
@@ -328,6 +394,50 @@ class CodexMirrorInstallTest(unittest.TestCase):
         self.assertEqual(planned[".agents/skills/gate/SKILL.md"], "updated")
         self.assertEqual(self.install("--harness", "codex")[0], 0)
         self.assertEqual(mirror.read_bytes(), (SKILLS / "gate" / "SKILL.md").read_bytes())
+        self.assertFalse(mirror.with_name("SKILL.md.xtemplates-new").exists())
+
+    def project_mirror(self, own_skill: bool) -> tuple[Path, bytes]:
+        """Dự án đã cài khung; `.claude/skills/review/SKILL.md` là bản DỰ ÁN (tự sửa; `own_skill` = skill riêng trùng tên
+        skill khung mới — manifest harness không có tệp này) và gương `.agents/skills/review/SKILL.md` chép đúng bản đó."""
+        self.assertEqual(self.install()[0], 0)
+        own = "---\nname: review\ndescription: bản dự án\n---\nquy trình riêng\n".encode()
+        (self.target / ".claude" / "skills" / "review" / "SKILL.md").write_bytes(own)
+        if own_skill:
+            manifest = self.target / install.MANIFEST
+            doc = json.loads(manifest.read_text(encoding="utf-8"))
+            del doc[".claude/skills/review/SKILL.md"]
+            manifest.write_text(json.dumps(doc), encoding="utf-8")
+        mirror = self.target / ".agents" / "skills" / "review" / "SKILL.md"
+        mirror.parent.mkdir(parents=True)
+        mirror.write_bytes(own)
+        return mirror, own
+
+    def test_force_harness_never_overwrites_project_mirror(self):
+        """Review lượt 2 🟠: `--force-harness --harness codex` thay `.claude/` bằng bản khung, nhưng gương trùng bản DỰ ÁN
+        (không phải bản khung theo manifest harness) không được ghi đè — ra `.xtemplates-new`, giữ nguyên gương."""
+        for own_skill in (False, True):
+            with self.subTest(own_skill=own_skill):
+                self.target = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+                mirror, own = self.project_mirror(own_skill)
+                rc, out, err = self.install("--plan", "--force-harness", "--harness", "codex")
+                self.assertEqual(rc, 0, err)
+                planned = {e["path"]: e["action"] for e in json.loads(out)["codex_harness"]}
+                self.assertEqual(planned[".agents/skills/review/SKILL.md"], "updated-new")
+                self.assertEqual(self.install("--force-harness", "--harness", "codex")[0], 0)
+                self.assertEqual(mirror.read_bytes(), own)
+                fresh = (SKILLS / "review" / "SKILL.md").read_bytes()
+                self.assertEqual(mirror.with_name("SKILL.md.xtemplates-new").read_bytes(), fresh)
+                self.assertEqual((self.target / ".claude" / "skills" / "review" / "SKILL.md").read_bytes(), fresh)
+
+    def test_own_skill_named_like_new_framework_skill_kept(self):
+        """Không `--force-harness`: skill riêng trùng tên skill khung mới — bước harness để `.claude/` của dự án (bản khung
+        ra `.xtemplates-new`), gương vẫn trùng nguồn nên giữ nguyên (`kept`)."""
+        mirror, own = self.project_mirror(own_skill=True)
+        rc, out, _ = self.install("--plan", "--harness", "codex")
+        planned = {e["path"]: e["action"] for e in json.loads(out)["codex_harness"]}
+        self.assertEqual(planned[".agents/skills/review/SKILL.md"], "kept")
+        self.assertEqual(self.install("--harness", "codex")[0], 0)
+        self.assertEqual(mirror.read_bytes(), own)
         self.assertFalse(mirror.with_name("SKILL.md.xtemplates-new").exists())
 
 
@@ -460,43 +570,67 @@ class CodexInstallCasesTest(unittest.TestCase):
         self.assertEqual(self.recorded(), before)  # nguồn vắng: giữ hash cũ để lần sau còn cập nhật được
 
     def test_existing_mirror_of_old_framework_updated_in_place(self):
-        """Review 🟢 mục 5: dự án tự làm gương `.agents/skills` trước khi khung sinh (chưa có `codex_files`). Gương trùng
-        bản khung CHẮC CHẮN — trùng nguồn `.claude/` của dự án trước bước harness, hoặc (skill) trùng hash manifest harness
-        lần cài trước — thì cập nhật tại chỗ; gương lạ vẫn `.xtemplates-new`."""
+        """Review 🟢 mục 5 + lượt 2 🟠: dự án tự làm gương trước khi khung sinh (chưa có `codex_files`). Gương chỉ được coi
+        là bản khung khi NGUỒN là bản khung theo manifest harness: skill — gương trùng hash manifest của nguồn; agent —
+        nguồn `.md` trước bước harness còn đúng hash manifest và gương trùng bản sinh từ nguồn đó. Gương trùng bản DỰ ÁN
+        (nguồn tự sửa / không có trong manifest) không chứng minh gì → `.xtemplates-new`."""
         claude, agents_dir = self.target / ".claude", self.target / ".agents" / "skills"
-        old_gate = b"---\nname: gate\ndescription: b\xe1\xba\xa3n khung c\xc5\xa9\n---\nc\xc5\xa9\n"
-        (claude / "skills" / "gate" / "SKILL.md").write_bytes(old_gate)  # nguồn trước bước harness
+        old_gate = "---\nname: gate\ndescription: bản khung cũ\n---\ncũ\n".encode()  # bản khung cũ, dự án chưa sửa
         old_review = "---\nname: reviewer\ndescription: cũ\n---\nthân cũ\n"
-        (claude / "agents" / "reviewer.md").write_text(old_review, encoding="utf-8")
-        old_adr = b"ban khung adr cu\n"  # bản khung lần cài trước (hash ở manifest harness); dự án đã sửa nguồn
-        (claude / "skills" / "adr" / "SKILL.md").write_text("dự án sửa adr\n", encoding="utf-8")
+        old_adr = b"ban khung adr cu\n"  # bản khung lần cài trước; dự án đã sửa nguồn
+        own_research = "---\nname: researcher\ndescription: dự án sửa\n---\nriêng\n"
+        sources = {
+            "skills/gate/SKILL.md": old_gate,
+            "skills/adr/SKILL.md": "dự án sửa adr\n".encode(),
+            "skills/review/SKILL.md": "skill review của dự án\n".encode(),  # không có trong manifest
+            "agents/reviewer.md": old_review.encode(),
+            "agents/researcher.md": own_research.encode(),
+            "agents/executor-deep.md": b"khung cu khong frontmatter\n",  # đúng hash manifest nhưng không sinh được
+        }
+        for rel, data in sources.items():
+            (claude / rel).write_bytes(data)
+        (claude / "agents" / "executor.md").unlink()  # nguồn vắng trước bước harness, manifest vẫn ghi
+        recorded = {
+            "skills/gate/SKILL.md": old_gate,
+            "skills/adr/SKILL.md": old_adr,
+            "agents/reviewer.md": old_review.encode(),
+            "agents/researcher.md": b"ban khung cu\n",
+            "agents/executor-deep.md": sources["agents/executor-deep.md"],
+            "agents/executor.md": b"ban khung cu\n",
+        }
         manifest = self.target / install.MANIFEST
         manifest.parent.mkdir(parents=True)
-        manifest.write_text(json.dumps({".claude/skills/adr/SKILL.md": stored(old_adr)}), encoding="utf-8")
+        manifest.write_text(json.dumps({f".claude/{k}": stored(v) for k, v in recorded.items()}), encoding="utf-8")
         mirrors = {
             ".agents/skills/gate/SKILL.md": old_gate,
             ".agents/skills/adr/SKILL.md": old_adr,
-            ".agents/skills/review/SKILL.md": "gương của dự án\n".encode(),
+            ".agents/skills/review/SKILL.md": sources["skills/review/SKILL.md"],
             ".codex/agents/reviewer.toml": install.agent_toml(old_review, ".claude/agents/reviewer.md").encode(),
+            ".codex/agents/researcher.toml": install.agent_toml(own_research, ".claude/agents/researcher.md").encode(),
+            ".codex/agents/executor.toml": b"# cu\n",
+            ".codex/agents/executor-deep.toml": b"# cu\n",
         }
         for rel, data in mirrors.items():
             (self.target / rel).parent.mkdir(parents=True, exist_ok=True)
             (self.target / rel).write_bytes(data)
-        files = [{"path": f".claude/{p}", "action": "updated"} for p in ("skills/gate/SKILL.md", "agents/reviewer.md")]
+        forced = ("skills/gate/SKILL.md", "skills/review/SKILL.md", *(f"agents/{n}.md" for n in AGENT_NAMES))
+        files = [{"path": f".claude/{p}", "action": "copied"} for p in forced]  # như `--force-harness`
         planned = {e["path"]: e["action"] for e in install.codex_plan(self.target, files, ["codex"])}
-        want = {".agents/skills/gate/SKILL.md": "updated", ".agents/skills/adr/SKILL.md": "updated"}
-        want |= {".agents/skills/review/SKILL.md": "updated-new", ".codex/agents/reviewer.toml": "updated"}
+        updated = (".agents/skills/gate/SKILL.md", ".agents/skills/adr/SKILL.md", ".codex/agents/reviewer.toml")
+        kept_new = (".agents/skills/review/SKILL.md", *(f".codex/agents/{n}.toml" for n in AGENT_NAMES[:3]))
+        want = {rel: "updated" for rel in updated} | {rel: "updated-new" for rel in kept_new}
         self.assertEqual({rel: planned[rel] for rel in want}, want)
         baseline = install.codex_baseline(self.target)  # cài thật: đọc trước bước harness
-        shutil.copy2(SKILLS / "gate" / "SKILL.md", claude / "skills" / "gate" / "SKILL.md")  # bước harness cập nhật
-        shutil.copy2(AGENTS / "reviewer.md", claude / "agents" / "reviewer.md")
-        self.assertIn("updated 3 · updated-new 1", self.run_codex(baseline))  # gate, adr, reviewer · review (lạ)
+        for rel in forced:  # bước harness `--force-harness` ghi bản khung
+            shutil.copy2(ROOT / ".claude" / rel, claude / rel)
+        self.assertIn("updated 3 · updated-new 4", self.run_codex(baseline))
         self.assertEqual((agents_dir / "gate" / "SKILL.md").read_bytes(), (SKILLS / "gate" / "SKILL.md").read_bytes())
         self.assertEqual((agents_dir / "adr" / "SKILL.md").read_text(encoding="utf-8"), "dự án sửa adr\n")
         toml = tomllib.loads((self.target / ".codex" / "agents" / "reviewer.toml").read_text(encoding="utf-8"))
         self.assertTrue(toml["developer_instructions"].startswith(BODY_HEAD["reviewer"]))
-        self.assertEqual((agents_dir / "review" / "SKILL.md").read_text(encoding="utf-8"), "gương của dự án\n")
-        self.assertTrue((agents_dir / "review" / "SKILL.md.xtemplates-new").is_file())
+        for rel in kept_new:
+            self.assertEqual((self.target / rel).read_bytes(), mirrors[rel])  # bản dự án giữ nguyên
+            self.assertTrue((self.target / f"{rel}.xtemplates-new").is_file())
         self.assertFalse((agents_dir / "gate" / "SKILL.md.xtemplates-new").exists())
 
     def test_unreadable_source_is_none(self):
@@ -580,6 +714,31 @@ class SyncCodexTest(unittest.TestCase):
             self.assertIn(rel, line)
         self.assertNotIn("__pycache__", line)
         self.assertTrue(extra.is_file())  # không tự xoá
+
+    def test_sync_untracked_extras_warn_tracked_extras_fail(self):
+        """Review lượt 2 🟢: ở repo git, tệp thừa CHƯA track (`.DS_Store`, `.codex/config.toml` cục bộ, metadata skill) chỉ
+        cảnh báo, exit 0; tệp thừa ĐÃ track (sẽ lên repo) → exit 1. Không xoá gì."""
+        git = ["git", "-C", str(self.src)]
+        subprocess.run([*git, "init", "-q"], check=True, env=git_env())
+        self.assertEqual(self.sync()[0], 0)
+        local = (".DS_Store", ".codex/config.toml", ".agents/skills/gate/agents/openai.yaml")
+        for rel in (".agents/.DS_Store", ".codex/config.toml", ".agents/skills/gate/agents/openai.yaml"):
+            (self.src / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.src / rel).write_text("x\n", encoding="utf-8")
+        rc, err = self.sync()
+        self.assertEqual(rc, 0, err)
+        self.assertIn("chưa track", err)
+        self.assertTrue(all(rel in err for rel in local))
+        self.assertNotIn("✗ thừa", err)
+        subprocess.run([*git, "add", ".codex/config.toml"], check=True, env=git_env())
+        rc, err = self.sync()
+        self.assertEqual(rc, 1)
+        tracked = next(ln for ln in err.splitlines() if "✗ thừa" in ln)
+        self.assertIn(".codex/config.toml", tracked)
+        self.assertNotIn(".DS_Store", tracked)
+        self.assertTrue((self.src / ".codex" / "config.toml").is_file())
+        with mock.patch.object(install.subprocess, "run", side_effect=OSError("không có git")):
+            self.assertIsNone(install.git_tracked(self.src, install.CODEX_ROOTS))
 
     def test_sync_refuses_wrong_target_other_flags_and_broken_sources(self):
         rc, err = self.sync(target=self.outside)
