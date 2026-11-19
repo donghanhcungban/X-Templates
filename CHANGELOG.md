@@ -252,6 +252,16 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `.git-credentials`/`.netrc`; tên lệnh glob ở mọi thư mục và tên trần theo tệp ở thư mục đang đứng. Ca bench
   `aud419-ctl-sh-c-commit-clean` đổi thành chặn (commit lồng). Test: `tests/test_guard_signoff12.py`, ca
   `guard-t3952-*`, họ `T12|*` của `d503_invariant.jsonl`.
+- T-3954 (D-503, D-509, lô A cổng ký lần 11 — đợt sửa cuối): guard chặn sed sửa tại chỗ khi `i` nằm giữa cụm cờ
+  (`-Ei`, `-ni`), ghi đè dotfile qua `$HOME`/`${HOME}`/`"$HOME"` và qua `sponge`/`vim -es`/`dos2unix`/trình nén, curl
+  cụm cờ trước `-X` (`-sSfXPUT`) và `curlie` tới REST GitHub, `echo`/`printf` biến bí mật qua ống tới khâu mạng (cả trong
+  `{ }`/`for`/`if`), tuỳ chọn chung của npm/pnpm trước `x`/`exec`/`dlx`, API chạy tiến trình gọi qua bí danh (JS/Python/
+  Bun Shell), `$@`/`$*` rỗng ở đích xoá. Thêm: `json.tool IN OUT`, `bun exec`, autossh/mosh/`kubectl|oc run|debug`,
+  `pwsh -c|-File|-EncodedCommand`, biến `*PAGER`/`BROWSER`/`GH_EDITOR`/`npm_config_script_shell`/`TAR_OPTIONS`/
+  `NODE_OPTIONS` mang lệnh, stdin mờ chạy như lệnh (`perl -ne system`, `os.system(sys.stdin.read())`), lối thoát psql
+  `\w |`/sqlite3 `.read |`/vim/gdb/lldb/mongosh/`less +!`/`wget --use-askpass`/`rsync --rsync-path`/`git bisect run`,
+  `pdm --project`, `gcloud billing projects unlink`, đích ghi glob, `python3 - release-sign`. `PAGER='sh -c …'` nay chặn
+  (AUD-SEC-420 chỉ còn cho chương trình trơn); `KNOWN_GAPS` `getattr(os, 'sys'+'tem')` đóng. Dự án đích: cài lại khung.
 - T-3951 (D-503, D-508, phát hiện cổng ký lần 10): guard chặn `>&TỆP`/`1>&TỆP` vào hàng rào (đọc như `&>`); lệnh
   xoá/ghi có biến chưa đặt rơi vào `/`, `/*`, mục cấp một của `/`, home (`rm -rf "$TMPDIR"/*`, `rm -rf "$OUT"/etc`,
   `tee "$X/"*`) và tiền tố ngoài gốc trước mở rộng (`rm -rf "/home/$USER/x"`); tuỳ chọn đổi thư mục của trình chạy (`uv
