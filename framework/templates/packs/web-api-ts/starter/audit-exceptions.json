@@ -1,15 +1,4 @@
 {
   "schema": 1,
-  "exceptions": [
-    {
-      "ghsa": "GHSA-fc5q-39xc-vjpf",
-      "cve": "CVE-2026-112366",
-      "package": "picomatch",
-      "severity": "high",
-      "reason": "ReDoS (picomatch <= 4.0.7), chưa có bản vá upstream (npm latest 4.0.7). Chỉ vào qua devDependency vitest (vite, tinyglobby, fdir); mẫu glob do repo tự viết, không nhận từ đầu vào ngoài; không nằm trong dependencies chạy production.",
-      "owner": "chủ dự án",
-      "approved_by": "chủ dự án (D-504)",
-      "expires": "2026-12-18"
-    }
-  ]
+  "exceptions": []
 }

@@ -247,6 +247,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `pnpm audit:exceptions` ngay sau `pnpm audit`, trước khi cài phụ thuộc (`PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false`,
   vì pnpm 12 mặc định cài trước `pnpm <script>`) — ngoại lệ có hạn nay được máy kiểm hạn. README gói bỏ câu "không kèm
   workflow CI mẫu". Dự án đích: cài lại gói (`install.py --pack web-api-ts`) để nhận workflow mới.
+- T-3958 (D-512, đường lùi của D-504): GHSA-fc5q-39xc-vjpf (picomatch) bị rút ngày 2026-11-18 — gỡ khỏi
+  `auditConfig.ignoreGhsas` và `audit-exceptions.json` của starter `web-api-ts` (cả hai để rỗng); `pnpm audit
+  --audit-level moderate` không còn báo. Giữ `check-audit-exceptions.ts`, bước CI và test cho ngoại lệ sau này.
+  Dự án đích: gỡ dòng ngoại lệ này nếu đã chép starter.
 - T-3952 (D-503, D-508, lô 4 cổng ký lần 10): guard chặn `git commit` lồng trong shell con/heredoc/trình thông
   dịch/`$(…)`/`npx -c` (commit không qua cổng); commit sau trình chạy/alias đứng một mình nay chạy cổng commit. Chặn
   thêm: khoá push đặt một lần (`-c remote.origin.mirror`, hoa-thường, `GIT_CONFIG_*`, `--config-env`, `export`) và cấu

@@ -608,3 +608,10 @@
 - Chọn: Giữ ruleset false; sửa WF-REVIEW-005/WF-GIT-002 (giữ ID, giữ MUST) thành có điều kiện: thread resolution bắt buộc khi merge_review: required hoặc có người review tay; optional thì pr next + review 1 lần thay thế
 - Lý do (tiêu chí chất lượng cuối): Đúng: ADR-0079 bỏ có chủ ý yêu cầu thread để steward tự merge; bật lại true làm PR xanh chờ người resolve, trái ADR. Blocker vẫn bị chặn bởi pr next + review 1 lần (ADR-0062). Bền: test ghim khoá ruleset khớp merge_review ở cả repo khung và mẫu. Thay D-143 ở khoá này.
 - Đường lùi: Đặt merge_review: required và required_review_thread_resolution: true ở ruleset (test ghim đòi hai khoá đi cùng nhau)
+
+### D-512 · 2026-11-19T05:53:17+00:00 · T-3958: GHSA-fc5q-39xc-vjpf (picomatch, ngoại lệ có hạn D-504) đã bị rút (OSV withdrawn 2026-11-18T15:38:56Z). Gỡ ngoại lệ thế nào?
+
+- Phương án: (1) Gỡ id khỏi ignoreGhsas (để danh sách rỗng) và audit-exceptions.json (exceptions rỗng); giữ check-audit-exceptions.ts, bước CI và test cho ngoại lệ sau này · (2) Xoá hẳn pnpm-workspace.yaml, audit-exceptions.json cùng máy kiểm · (3) Giữ ngoại lệ tới hạn 2026-12-18
+- Chọn: Gỡ id khỏi ignoreGhsas (để danh sách rỗng) và audit-exceptions.json (exceptions rỗng); giữ check-audit-exceptions.ts, bước CI và test cho ngoại lệ sau này
+- Lý do (tiêu chí chất lượng cuối): Đúng: advisory bị rút nên pnpm audit không còn báo (kiểm cục bộ pnpm 12.16.1: No known vulnerabilities, exit 0 với danh sách rỗng); giữ ngoại lệ chết làm sổ sai và audit:exceptions vẫn phải gánh. Đường lùi: cơ chế kiểm hạn giữ nguyên cho ngoại lệ sau. Phương án 2 bỏ máy kiểm hạn (BASE-DEP-004), phương án 3 giữ ngoại lệ không còn lý do.
+- Đường lùi: Thêm lại GHSA vào ignoreGhsas và dòng ngoại lệ (cve, lý do, người duyệt, hạn) nếu advisory được khôi phục

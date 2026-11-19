@@ -1,5 +1,6 @@
 """Ngoại lệ quét phụ thuộc npm của gói web-api-ts (BASE-DEP-004, D-504): mỗi GHSA bị `pnpm audit` bỏ qua phải có dòng
-ngoại lệ chưa hết hạn, mỗi dòng ngoại lệ phải đang được bỏ qua, và job CI giữ ngưỡng `--audit-level moderate`."""
+ngoại lệ chưa hết hạn, mỗi dòng ngoại lệ phải đang được bỏ qua, và job CI giữ ngưỡng `--audit-level moderate`. Danh sách
+hiện rỗng (GHSA-fc5q-39xc-vjpf bị rút 2026-11-18, T-3958); cơ chế và test giữ cho ngoại lệ sau này."""
 
 from __future__ import annotations
 
