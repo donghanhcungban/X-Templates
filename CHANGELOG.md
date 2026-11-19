@@ -8,6 +8,14 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- Dự án mới dùng `web-api-ts` có giao diện ghi chú tiếng Việt, PostgreSQL và bản dev trên loopback.
+  Từ gốc dự án, `pnpm build` và `xt.py deploy run --env dev` dựng ứng dụng, thử luồng nghiệp vụ và ghi receipt
+  sau khi kiểm digest qua HTTP. `deploy rollback --env dev` dùng lại ảnh trước đã lưu. Dữ liệu và tài khoản thử
+  thuộc từng checkout. Dự án đã cài gói cần đối chiếu starter do mình sở hữu trước khi nhận các lệnh mới.
+- `/factory` hướng dẫn agent biến ý tưởng thành một luồng MVP có thể duyệt trên trình duyệt. CI gói tạo repo bằng
+  `--new`, tạo ghi chú qua UI rồi đăng nhập lại ở phiên mới để xác nhận dữ liệu đã lưu. Tiêu chí pilot yêu cầu
+  bằng chứng của bản chạy và kết quả kiểm trình duyệt. Các khả năng này thuộc giai đoạn 1 của ADR-0075/0077.
+
 - Harness cho Codex CLI sinh từ `.claude/` ([ADR-0082](docs/adr/0082-codex-harness-generated.md), D-519, T-3966):
   `install.py <dự-án> --harness codex` ngoài `.codex/hooks.json` (hook `PreToolUse` gọi `xt_adapter.py`, một guard) nay
   sinh `.agents/skills/<tên>/SKILL.md` (bản sao byte của skill khung trong `.claude/skills/`) và

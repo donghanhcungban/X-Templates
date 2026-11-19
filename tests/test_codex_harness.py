@@ -142,7 +142,9 @@ class CodexHarnessSyncTest(unittest.TestCase):
             *(f".codex/agents/{n}.toml" for n in AGENT_NAMES),
         ]
         self.assertEqual(want, sorted(expected))
-        self.assertEqual((len(SKILL_NAMES), len(AGENT_NAMES)), (16, 5))
+        # sàn, không ghim số: thêm skill ở `.claude/skills` (vd `factory`, #683) không phải sửa test — chỉ chặn bộ liệt kê rỗng/hụt
+        self.assertGreaterEqual(len(SKILL_NAMES), 16)
+        self.assertGreaterEqual(len(AGENT_NAMES), 5)
 
     def test_repo_hooks_json_uses_repo_adapter_and_only_pretooluse(self):
         doc = json.loads((ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8"))
