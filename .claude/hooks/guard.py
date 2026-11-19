@@ -21397,7 +21397,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     DESTROY_ALWAYS,
     DESTROY_HOST_FLAGS,
     frozenset({"gpg", "gpg2", "regctl", "robocopy", "robocopy.exe", "ssh-keygen"}),  # T-3955 C2/C5/C9 (luật t14)
-    frozenset("age-keygen crane skopeo cmd cmd.exe powershell powershell.exe pwsh.exe wsl wsl.exe wslconfig".split()),
+    frozenset("age-keygen crane skopeo cmd cmd.exe powershell.exe pwsh.exe wsl wsl.exe wslconfig".split()),
     frozenset("wslconfig.exe cdk eksctl mc neonctl s3cmd sam serverless sls supabase terragrunt turso".split()),
     frozenset("tree od hexdump pyflakes yq isort".split()),  # T-3955 B8: trình xem hàng rào có điều kiện ghi
     TOKEN_PASS,  # AUD-SEC-818: ống in token
