@@ -615,3 +615,10 @@
 - Chọn: Ghi nợ 🟠 chấp nhận có hạn 2027-01-21 (ADR-0062), sửa ở 3.35.0 bằng cách lấy auditConfig từ chính pnpm
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: danh sách ignoreGhsas hiện rỗng và do chủ dự án/agent tự viết, dạng lách là cố ý che giấu; pnpm audit vẫn chạy và báo lỗ hổng thật; không tạo vòng sửa thứ 15 (D-509 chốt một đợt sửa cuối, ADR-0062 ghi nợ 🟠 sau review một lần). Sửa đúng cách cần đổi bộ đọc sang pnpm config, đáng làm kỹ ở 3.35.0.
 - Đường lùi: Sửa ngay: thêm kiểm dòng kế/alias/khoá thoát vào check-audit-exceptions.ts và UNREAD_FORMS của test, đóng AUD-DEP-037
+
+### D-515 · 2026-11-19T09:40:34+00:00 · Review #673 (reviewer-alt, lần 2): /complete không có bước nào chạy lại doctor sau khi đặt delivery_phase: harden nên 'nâng khung ở ranh giới pha' của ADR-0081 và LOOP-HARNESS-020 không xảy ra trong lượt đổi pha (Bước 0 chạy doctor khi còn build). Sửa trước khi ký GO hay ghi nợ?
+
+- Phương án: (1) Ghi nợ 🟠 chấp nhận có hạn 2026-12-02 (ADR-0062), sửa ở 3.34.1: thêm 'chạy lại doctor' vào Bước 1 của /complete và cắt chữ chỗ khác (skill đang 6137/6144 byte) · (2) Sửa ngay: PR riêng, bản 3.34.1 trước khi nâng 4 dự án đích · (3) Hoàn nguyên ghim khung ở pha build (revert ADR-0081 phần doctor)
+- Chọn: Ghi nợ 🟠 chấp nhận có hạn 2026-12-02 (ADR-0062), sửa ở 3.34.1: thêm 'chạy lại doctor' vào Bước 1 của /complete và cắt chữ chỗ khác (skill đang 6137/6144 byte)
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: lỗi là thiếu một lời nhắc, không phải hành vi nguy hiểm; doctor --drift vẫn báo mọi độ chậm ở cả hai pha và chậm MAJOR vẫn được nhắc, nên dự án build không mất đường biết có bản mới. Tag v3.34.0 đã gắn trên ef146b0 và 4 dự án đích đang nâng lên đúng bản này; sửa skill cần PR, CI, bản 3.34.1 — không chặn chữ ký GO vì chữ ký tách khỏi tag (D-179) và không đổi mã chạy. Một vòng sửa nữa sau D-509 không được lợi hơn ghi nợ có hạn ngắn.
+- Đường lùi: Sửa ngay trong 3.34.1: Bước 1 của /complete thêm doctor, cắt byte ở chỗ khác, CHANGELOG, bản nâng lại cho dự án đích
