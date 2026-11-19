@@ -289,7 +289,7 @@ C2_DENY = (
     ("cmd.exe /c rd /s /q C:\\Users\\me\\proj", "WIPE_OUTSIDE"),
     ("cmd.exe /c del /s /q C:\\Users\\me\\x", "WIPE_OUTSIDE"),
     ("powershell.exe -c 'Remove-Item -Recurse -Force C:\\Users\\me'", "WIPE_OUTSIDE"),
-    ('pwsh -Command "rm -r -fo C:\\x"', "WIPE_OUTSIDE"),
+    ('pwsh.exe -Command "rm -r -fo C:\\x"', "WIPE_OUTSIDE"),  # `pwsh` Linux: luật T-3954 B4
     ("robocopy C:\\a C:\\b /MIR", "WIPE_OUTSIDE"),
     ("cmd.exe /c robocopy a b /PURGE", "WIPE_OUTSIDE"),
     ("powershell.exe -EncodedCommand ZQBjAGgAbwA=", "BUDGET"),

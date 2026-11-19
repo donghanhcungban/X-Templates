@@ -2946,8 +2946,9 @@ class GuardDebt430Test(unittest.TestCase):
             )
         )
         self.assert_budget(("GIT_PAGER=cat git log -- s.sh; bash s.sh",), (), "AUD-SEC-415")
-        # #430 từng chặn (luật `*PAGER`, gỡ ở AUD-SEC-420): không TTY thì git không mở pager
-        self.assert_pass(("export PAGER='sh -c x'; git log -p -- s.sh; bash s.sh",))
+        # #430 từng chặn (luật `*PAGER`, gỡ ở AUD-SEC-420): không TTY thì git không mở pager. T-3954 B5 (D-509): giá trị
+        # là lệnh shell (`sh -c …`, metachar) chặn lại — chương trình trơn (`cat`, `less -R`) vẫn qua như trên
+        self.assertEqual(decide("export PAGER='sh -c x'; git log -p -- s.sh; bash s.sh")["decision"], "deny")
 
     def test_aud_sec_421_script_getopt(self):
         """AUD-SEC-421 🟠: đúng 4 lệnh hàng sổ (util-linux 2.39.3 nạp `.bashrc` thật) + biến thể getopt."""

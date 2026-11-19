@@ -8365,7 +8365,7 @@ class GuardExecEnvMoreTest(unittest.TestCase):
     )
     ALLOW = (
         "PAGER=cat git log",
-        "PAGER='gh pr merge 5 #' git log",  # không TTY: git không mở pager (AUD-SEC-420)
+        "PAGER='less -R' git log",  # không TTY: git không mở pager (AUD-SEC-420); giá trị lệnh shell: T-3954 B5 chặn
         "GIT_PAGER= git log -1",
         "GIT_EDITOR=true git commit --amend --no-edit",
         "python3 -c 'print(1)'",

@@ -3,7 +3,7 @@ title: File harness: PLAN · PROGRESS · BLUEPRINT · evidence · state
 kind: module
 prefix: LOOP-HARNESS
 applies_to: [all]
-updated: 2026-11-18
+updated: 2026-11-19
 ---
 
 # File harness: PLAN · PROGRESS · BLUEPRINT · evidence · state
@@ -301,7 +301,7 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   trường (`env`, `printenv`, `set`, `export -p`, `declare -p`) → chặn (C1); in tệp đó ra transcript (`cat|head|sed|grep …`,
   trừ `.pub`/`.example`/`.sample`/`.template`, `grep -c|-l|-q`, stdout ra tệp) → chặn (C3; giới hạn chọn chặt:
   thân thay lệnh không biết có bị ghi ra tệp hay in, nên `echo "$(cat .env)" > out.txt` vẫn chặn). Interop WSL: `wsl --unregister` → DESTROY;
-  `cmd /c`, `powershell|pwsh -c|-File|-EncodedCommand` là shell mờ (BUDGET) trừ lệnh đọc đứng một mình; `rd /s`, `del
+  `cmd /c`, `powershell.exe|pwsh.exe -c|-File|-EncodedCommand` (bản Linux: luật T-3954 B4) là shell mờ (BUDGET) trừ lệnh đọc đứng một mình; `rd /s`, `del
   /s|/q`, `Remove-Item`, `rm -r`, `robocopy /MIR|/PURGE` → WIPE_OUTSIDE (C2). Huỷ thêm (C4, DESTROY): `terragrunt|cdk
   destroy`, `sls remove`, `sam|eksctl|neonctl delete`, `turso … destroy`, `rclone sync|purge|delete`, `s3cmd del`, `mc rm`,
   `firebase …:delete`, đồng bộ có cờ xoá (`gsutil rsync -d`, `gcloud storage rsync --delete-unmatched…`, `azcopy sync
@@ -315,6 +315,27 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   …/packages/…` → DESTROY (C9). Trình xem/kiểm chỉ đọc trên hàng rào (`tree`, `xxd`, `od`, `hexdump`, `bat`, `pyflakes`,
   `yq` không `-i`, `black|isort --check|--diff`) cho qua (B8); `gh secret list` không còn DESTROY (B11). Fuzz cổng ký sau dùng gốc ngoài /tmp (fz6–fz9 từng dùng gốc
   dưới /tmp nên `..` của gốc bị coi là thư mục tạm, che vài ca — C3).
+- **Lô A cổng ký 11 — đợt sửa cuối** (T-3954, D-503, D-509): sed đọc cờ như getopt (`-Ei`, `-ni`, `-sEi`: `i` ở mọi
+  vị trí là sửa tại chỗ; cả `gsed`); đích home quy `$HOME`/`${HOME}`/`"$HOME"` về `~` trước luật dotfile, công cụ sửa tại
+  chỗ ngoài bảng (`sponge` không `-a`, `vim -es`, `ed`, `dos2unix`, trình nén không `-c`/`-k`) vào dotfile → chặn; curl
+  đọc cụm cờ ngắn theo bảng cờ nhận giá trị (`-sSfXPUT`), `curlie` như httpie; khâu ống in biến bí mật (`echo`/`printf`
+  `$GH_TOKEN`, `$API_KEY`…) trước khâu mạng, kể cả mở đầu lệnh ghép (`{`, `do`, `then`) → chặn; tuỳ chọn chung của
+  npm/pnpm trước `x`/`exec`/`dlx`; script GẮN TÊN KHÁC cho API chạy tiến trình (destructure/gán `require("child_process")`,
+  `from os import`, `import subprocess as`, tham chiếu không gọi, `getattr(os…)`, Bun Shell) → mọi chuỗi và danh sách
+  chuỗi quét như lệnh (lời gọi trực tiếp giữ luật cũ: chuỗi khác là dữ liệu); `$@`/`$*` rỗng ở đích xoá; `python -m
+  json.tool IN OUT` ghi OUT; `bun exec` như `sh -c`; autossh/mosh/`kubectl|oc run|debug|exec` quét như máy xa; `pwsh`/
+  `powershell` (`-c`: câu xoá dịch sang `rm -rf`, câu ngoài danh sách chỉ đọc → BUDGET; `-File`/`-EncodedCommand` →
+  BUDGET; `*.exe` thuộc T-3955); biến chạy lệnh `*PAGER`/`BROWSER`/`GH_EDITOR` có giá trị không phải chương trình + cờ
+  trơn, `npm_config_script_shell` không phải shell, `TAR_OPTIONS` có cờ nhận lệnh, `NODE_OPTIONS` nạp `data:`/URL →
+  BUDGET (`PAGER=less`, `PAGER=sh` trơn qua — AUD-SEC-419/420); script nội tuyến chạy stdin MỜ (`cat f | perl -ne
+  system`, `os.system(sys.stdin.read())`, `< f`) → BUDGET (thân heredoc/echo đã quét thì không); lối thoát: psql `\w |`,
+  sqlite3 `.read '|…'`, vim `:terminal`/`jobstart()`/`:python3`…, gdb `python`/`guile`, lldb `-o 'platform shell …'`,
+  mongosh `require("child_process")`, `less +'!…'`, `wget --use-askpass`, `rsync --rsync-path`, `git bisect run`;
+  `pdm --project D` như `-p D`; `gcloud billing projects unlink` → DESTROY; đích ghi glob `[…]`/`?` mở theo tệp có thật;
+  `python3 - release-sign` (script từ stdin) → GO_SIGN. **Giới hạn** (hạn xét lại 2027-01-21): `kubectl run … -- 'lệnh có
+  khoảng'` là argv một từ (vô hại); cụm `*` ở đối số công cụ ngoài bảng không mở (danh sách `for`); che giấu nhiều bước
+  qua tên hàm tính lúc chạy không gắn tên (`globals()[…]`) và lối thoát công cụ ngoài danh sách vẫn ngoài mô hình.
+  Test: `tests/test_guard_signoff13.py`, ca `guard-t3954-*`, họ `T13|*` của `d503_invariant.jsonl`.
 - **`merge-check` so giờ sổ review cục bộ với giờ GitHub** (AUD-XFEAT-019, D-104): review chặn chỉ có ở sổ cục bộ được
   tính khi ghi sau dấu đã đăng mới nhất ở cùng head; đồng hồ máy chậm hơn GitHub thì review chặn ghi ngay sau một dấu sạch
   bị coi là cũ hơn. Lớp đỡ: `pr reviewed` đăng ngay kết luận (dấu đã đăng là nguồn của `merge-check`/steward/guard).
