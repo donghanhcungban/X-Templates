@@ -801,6 +801,26 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 - `release-check` chặn phát hành và để trống vân tay Git trong JSON khi lỗi đọc Git, HEAD đổi trong lúc kiểm, hoặc index
   có `assume-unchanged`/`skip-worktree` che tệp tracked. Dùng checkout đầy đủ, sạch cho cổng phát hành.
+- T-3955 (D-503, D-509, cổng ký lần 11 — lô B chặn oan, lô C lọt một bước): `git push` không refspec/theo `HEAD`
+  sau `pull --rebase`/`rebase <upstream>`/`merge`/`reset`/`stash` cùng lệnh cho qua (hồi quy của T-3951: chỉ lệnh đổi
+  nhánh — `switch`, `checkout <nhánh>`, `rebase <upstream> <nhánh>`, `stash branch`, `gh pr checkout` — làm push theo
+  `HEAD` bị chặn; push không refspec do cấu hình hiệu lực và luật nhánh chính xét); `$TÊN_BÍ_MẬT`/`$(cat .env)` trong nháy
+  đơn, `$'…'` hay `\$` là chữ (message commit/tag, thân `gh`); ở máy xa (`ssh`, `kubectl exec`) `sudo` là trình bọc và
+  heuristic BUDGET của máy dev không áp — chỉ giá trị không tính được ở tên/đối số lệnh có luật huỷ bị chặn; nối thêm vào
+  `~/.ssh/known_hosts`; trình xem/kiểm chỉ đọc trên hàng rào (`tree`, `xxd`, `bat`, `yq`, `pyflakes`, `black --check`);
+  `gh secret list` không còn DESTROY. Chặn thêm: bí mật vào mọi lệnh `gh` và message `git commit|tag|notes` (`$(cat
+  .env)`, `$(env)`, `-F .env`, `< .env`, tệp chứng thực `~/.aws/credentials`, `~/.kube/config`, `*.tfstate`…); in tệp bí
+  mật theo danh sách `Read(…)` của settings (`cat .env`, khoá SSH riêng, `~/.npmrc`); URL gói có token ở userinfo
+  (`pip|npm install "git+https://x:$GH_TOKEN@…"`); interop WSL (`wsl --unregister`, `cmd /c rd /s`, `powershell -c
+  Remove-Item`, `robocopy /MIR`; `cmd /c`/`powershell -c` khác là shell mờ); huỷ IaC/kho đối tượng/CSDL dịch vụ
+  (`terragrunt|cdk destroy`, `sls remove`, `rclone sync|purge`, `gsutil rsync -d`, `azcopy sync --delete-destination=true`,
+  `supabase db reset --linked`…); ghi đè khoá riêng (`ssh-keygen -f ~/.ssh/…`, `openssl -out`, `age-keygen -o`), `gpg
+  --delete-secret-keys`; `chmod|chown|setfacl -R` trên `/`, `~`, `.`… hay ngoài gốc; `crontab -r`/nguồn rỗng; `git
+  read-tree -u --reset`, `checkout-index -f`, `rm -f`, `reset --merge`, `switch -C main` (như `reset --hard`), `reflog
+  expire --expire=now`, `gc --prune=now`; `npm unpublish`, `gem yank`, `skopeo|crane delete`, `gh release delete-asset`,
+  `gh api -X DELETE …/packages/…`. Bổ sung cho T-3951/T-3952: push không refspec theo hành vi trên; F8 ở máy xa đổi như
+  trên. Đổi tên định danh dễ kích CodeQL (`AUTHREF_VAR_RE`, `AUTHREF_NAME_RE`, `AUTHREF_ROUTE_WHY`). **Dự án đích:** cài
+  lại khung (`install.py`) để nhận guard mới — áp cho cả T-3951/T-3952.
 
 ## [3.33.0] - 2026-11-08
 
