@@ -3,14 +3,15 @@
 > Giai đoạn hiện tại: G8 Vận hành & tiến hoá (khung 3.34.0, pha `harden` — D-136) · Cập nhật: 2026-11-19
 
 ## Đang làm
-- 2026-11-19 **3.34.0 đã phát hành** (tag `v3.34.0` = `ef146b0`, agent ký GO-NO-GO §5 ở #674): harden ADR-0080 xong 14 đợt (D-494…D-509; guard mặc định chặn D-503; giới hạn đã biết ở `harness-files.md`, có hạn 2027-01-21). Audit delta 13 nhóm ở `fe5f1e8e` (SEC/TEST/DOC/HAR `rút gọn` — phần chưa rà ghi ở bảng nhóm của sổ); 🔴/🟠 mở 0; 🟠 chấp nhận AUD-DEP-037 (D-514), AUD-HAR-440 (D-515, hạn 2026-12-02).
+- 2026-11-19 **3.34.0 đã phát hành** (tag `v3.34.0` = `ef146b0`, agent ký GO-NO-GO §5 ở #674): harden ADR-0080 xong 14 đợt (D-494…D-509; guard mặc định chặn D-503; giới hạn đã biết ở `harness-files.md`, có hạn 2027-01-21). Audit delta 13 nhóm ở `fe5f1e8e` (SEC/TEST/DOC/HAR `rút gọn` — phần chưa rà ghi ở bảng nhóm của sổ); 🔴/🟠 mở 0; 🟠 chấp nhận AUD-DEP-037 (D-514).
 - ADR-0081 (D-511, #673) đã triển khai: `compose` không `--scale` giữ quy mô cũ (không đọc được → lỗi, AUD-HAR-437), chưa có thì S; `doctor` ở build không cảnh báo chậm MINOR/PATCH ([đo dự án đích](research/2026-11-19-target-project-speed.md)). Nâng khung kèm `actions/setup-python` 3.15.2 ở CI dự án gọi `xt.py` (ADR-0078).
 - 2026-11-11 **ADR-0075** xưởng đầu-cuối ([PLAN-factory-e2e](docs/autopilot/PLAN-factory-e2e.md), T-3841…T-3866; T-3845 `install.py --new`, `doctor --offline`; kế: lệnh triển khai, receipt bền — [ADR-0077](docs/adr/0077-deployment-receipts.md)). AUD-DOC-273/274: [báo cáo pilot](docs/ops/ARTIFACT-PILOT-2026-11-08.md) còn kiểm artifact trên VPS.
 - Dự án đích ([registry](docs/ops/registry.json)): X-Company #114, xboss #747, dhcb #1506 đã nâng 3.34.0; hotel-manager #159 mở, chờ chủ dự án xử lý check đỏ có từ trước (`dep-audit` Next 16.x, ngoại lệ zod quá hạn, test `expected 410 to be 200`, `schema-compat`). Còn mở: AUD-TEST-061 (CodeQL); fixture host Codex/Gemini.
 - D-457: PLAN factory-A/BE đã lưu kho. `LOOP-ORCH-020`: chỉ tăng agent khi có số. 10 nhóm `cong-cu` chờ phân loại ([TARGETS](docs/ops/TARGETS.md)). Hoãn: T-1690/T-1691 (quét lại SEC-091…099); rà `seeker19110/stored` chờ chủ repo (hạn xét 2026-12-31).
 
 ## Tiếp theo
-1. hotel-manager #159: sau khi chủ dự án xử lý check đỏ → merge, rồi cập nhật `registry.json`/TARGETS (còn 3.32.0). Bản kế (3.34.1/3.35.0): AUD-HAR-440 (`/complete` chạy lại `doctor` sau `harden`), đo lại trọng số shard `test 3/4` hay quá 10 phút (AUD-CI-035).
+1. Đợt 16 xong (D-516, #676–#678): CI `test` 6 shard (2m54s–5m02s, trước bị huỷ ở 10 phút), `test-select` chọn theo lớp (1 tệp `.md`: 331 → 47–81 lớp), `/complete` chạy lại `doctor` sau `harden`. **Đính chính (D-517):** 12 phút mỗi commit ở checkout chính là do 4 tệp chưa track `.codex/agents/*.toml` không ánh xạ được (cả 697 lớp, AUD-HAR-443); commit trong worktree dưới gốc dự án không qua cổng commit (AUD-HAR-442 🟠 mở) — đợt 17: T-3964, T-3965. Sau đó: nới guard cho lệnh chỉ-đọc dạng ghép khi đã tách `guard.py` (D-142); nợ AUD-TEST-131.
+1b. hotel-manager #159: sau khi chủ dự án xử lý check đỏ → merge, rồi cập nhật `registry.json`/TARGETS (còn 3.32.0).
 2. **3.35.0**: đề xuất stored XT-H-117…139 (research 2026-11-10/16/18); tách `guard.py` (>22 000 dòng) thành module theo họ luật (D-142) để executor song song không xung đột; đưa `pre-push.sh` (kiểm bẫy trước push) vào repo; kiểm máy PROGRESS không lạc hậu (AUD-HAR-436); nợ test AUD-TEST-125…127.
 3. Hạn: 2026-12-02 bỏ `pull_request_target` khỏi `pr-review.yml`; 2026-12-31 rà stored; **2027-01-21** xét lại hàng rào guard + đánh giá sandbox Bash opt-in (D-331/D-332, ADR-0072) và các chấp nhận AUD-SEC-406/931/943/955/965.
 4. Việc của người: import lại `.github/rulesets/main.json` (ruleset sống thiếu `pack-npm-audit`; tắt resolve thread là chủ ý ADR-0079); xoá stash `d497-dup`, `d498-dup-x9`; `XT_STEWARD_TOKEN`, Dependabot security updates (RUNBOOK-PR-STEWARD §1).
@@ -31,5 +32,5 @@
 - Coverage cục bộ < 100 % khi `coverage` cài ở site người dùng: hook chạy `python3 -I` nên tiến trình con không được đo — CI là cổng coverage (đo 2026-11-05).
 
 ## Bàn giao phiên
-- Mốc `main` `769d70ca`. Xét PR xanh theo số tăng dần. Phiên "tiếp tục": đọc sổ `docs/ops/AUDIT-STATUS.md` (🔴/🟠 mở 0), PLAN-harden-2026-11-17 (T-3957 xong), CHANGELOG [3.34.0].
+- Mốc `main` `6e78b971`. Xét PR xanh theo số tăng dần. Phiên "tiếp tục": đọc sổ `docs/ops/AUDIT-STATUS.md` (🔴/🟠 mở 0), PLAN-harden-2026-11-17 (T-3957 xong), CHANGELOG [3.34.0].
 - Container mới: `scripts/dev-task.sh setup`; trước khi đẩy `gate-fast`, CI là cổng đầy đủ. Subagent dùng scratch riêng dưới `/home/liend` (không `/tmp`: tmpfs, mất khi khởi động lại). Gate cục bộ: `coverage` và `pip` phải ở site-packages của `python3` (hook chạy `python3 -I`) — venv 3.15 đầu PATH; G7 cần `fetch --unshallow --tags`; `release-check` chạy ở worktree sạch (`.agents/`, `.codex/` chưa commit làm hàng `tree` đỏ).

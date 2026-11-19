@@ -12,7 +12,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   chạy khi thân lớp nhắc tên tệp đổi, có glob khớp tên đó (`GO-NO-GO*.md` không còn khớp mọi `.md`), hoặc nhắc tên một
   lớp cùng tệp đang chạy (lớp cha, lớp phụ trợ — bắc cầu); cả tệp chạy khi phần ngoài lớp khớp, tệp import module đổi,
   trùng tên `test_<tên>.py`, chính tệp test đổi, không parse được, hoặc phần ngoài lớp nhắc tên một lớp đã trúng. Có
-  tệp liên quan mà lọc ra 0 lớp thì chạy mọi lớp của các tệp đó và báo stderr (không có đường "0 lớp mà xanh"). Đo ở
+  tệp liên quan mà cả lượt lọc ra 0 lớp thì chạy mọi lớp của các tệp đó và báo stderr (xét chung cả lượt, AUD-TEST-131). Đo ở
   repo khung: sửa một tệp `.md` chọn 47–81 lớp (trước: 331–375), `fintech.md` chạy 55 s. Không ánh xạ được vẫn chạy cả
   bộ; CI là cổng đầy đủ nên chọn sót ở cổng commit bị CI bắt (T-3962, D-516). Chế độ in tệp (không `--unittest`) dùng
   cùng luật glob chặt hơn: test chỉ có `GO-NO-GO*.md` không còn được chọn cho `PROGRESS.md` (tệp không ánh xạ được →
