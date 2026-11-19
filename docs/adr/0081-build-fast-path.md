@@ -1,7 +1,7 @@
 # ADR-0081: Đường nhanh pha build — quy mô mặc định S và ghim phiên bản khung
 
 - **Trạng thái:** Đã chấp nhận ngày 2026-11-19 (D-511).
-- **Trạng thái triển khai:** Mã và test trong PR của ADR này; dự án đích nhận khi nâng khung sau bản cắt kế.
+- **Trạng thái triển khai:** Mã và test ở #673, phát hành ở 3.34.0 (tag `v3.34.0`, 2026-11-19). Dự án đích nhận khi nâng khung: X-Company #114, xboss #747, dhcb #1506 đã nâng 3.34.0; hotel-manager #159 chờ chủ dự án xử lý check đỏ có từ trước. Nâng kèm bước CI `actions/setup-python` 3.15.2 (ADR-0078) ở workflow gọi `xt.py`. Nợ: AUD-HAR-440 (`/complete` chưa chạy lại `doctor` sau khi đặt `harden`, D-515).
 
 ## Bối cảnh
 
