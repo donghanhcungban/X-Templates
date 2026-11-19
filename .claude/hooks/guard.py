@@ -5837,7 +5837,25 @@ class _ReuseCmd(NamedTuple):
 
 def _reuse_live_why(cmd: str) -> str:
     """`_reuse_why`, trừ bản ráp vòng glob (T-3942 F1, `_scan_last_arg`): luật đã xét trên lệnh gốc."""
-    return "" if SPLICE_SCAN.get() else _reuse_why(cmd)
+    if SPLICE_SCAN.get() or REMOTE_SCAN.get() and not _runs_file(cmd):
+        return ""
+    return _reuse_why(cmd)
+
+
+def _runs_file(cmd: str) -> bool:
+    """T-3955 B4: lệnh ở máy xa có lệnh đơn chạy tệp theo tên (shell/trình thông dịch/`source`/`make`, tên có `/`) —
+    chỉ khi đó tệp vừa ghi rồi nhắc lại mới là "ghi rồi chạy" (`mv a b && ln -s b c` thì không)."""
+    for c in split_commands(tokenize(cmd)):
+        n = normalize(c)
+        name = n[0] if n else ""
+        if (
+            name in INTERPRETERS
+            or name in ("source", ".", "make")
+            or INTERP_RE.fullmatch(name)
+            or "/" in "".join(c[:1])
+        ):
+            return True
+    return False
 
 
 def _reuse_why(cmd: str) -> str:
@@ -7985,9 +8003,39 @@ def _strip_prefixes(argv: List[str], dirs: Optional[List[str]] = None) -> List[s
         elif posixpath.basename(head) in WRAPPERS:
             a.pop(0)
             _skip_wrapper_args(posixpath.basename(head), a)
+        elif REMOTE_SCAN.get() and posixpath.basename(head) in ("sudo", "doas"):
+            a.pop(0)  # T-3955 B3: luật sudo là chính sách máy dev; ở máy xa quét lệnh sau nó
+            _skip_sudo_args(a)
         else:
             break
     return a
+
+
+# T-3955 B3: đang quét lệnh ở máy xa/container (F8) — `sudo`/`doas` là trình bọc; luật chỉ của máy dev không áp.
+REMOTE_SCAN: contextvars.ContextVar[bool] = contextvars.ContextVar("REMOTE_SCAN", default=False)
+SUDO_VALUE_FLAGS = frozenset("-u -g -C -D -h -p -r -t -U -T -R".split()) | {
+    "--user",
+    "--group",
+    "--close-from",
+    "--chdir",
+    "--host",
+    "--prompt",
+    "--role",
+    "--type",
+    "--other-user",
+    "--command-timeout",
+    "--chroot",
+}
+
+
+def _skip_sudo_args(a: List[str]) -> None:
+    """Bỏ tuỳ chọn của `sudo`/`doas` (kèm giá trị viết tách: `-u app`; dính `-uapp` là một từ) tới lệnh thật."""
+    while a and a[0][:1] == "-":
+        opt = a.pop(0)
+        if opt == "--":
+            return
+        if opt in SUDO_VALUE_FLAGS and a:
+            a.pop(0)
 
 
 # ADR-0076 lát 4 (P0 tiền tố, T-3764; D-415/D-430): tiền tố mà các bộ đọc của guard không đọc như bash → BUDGET, mắt
@@ -13063,7 +13111,7 @@ def _gh_publish(args: List[str]) -> Tuple[str, str]:
     """Bảng đối ngoại/huỷ của một cách đọc `gh` (`GH_ASK`, `GH_DESTROY` — tới ba tên: nhóm lồng `repo deploy-key`;
     `GH_DESTROY_FLAGS`)."""
     names = {tuple(args[:k]) for k in (1, 2, 3)}
-    destroy = bool(names & GH_DESTROY) or _gh_flag_destroys(args)
+    destroy = bool(names & GH_DESTROY) and args[:2] != ["secret", "list"] or _gh_flag_destroys(args)  # T-3955 B11
     return ("ask", DESTROY_ASK if destroy else EXTERNAL_ASK) if destroy or names & GH_ASK else ("", "")
 
 
@@ -15017,8 +15065,10 @@ def _go_reader(n: List[str], argv: List[str]) -> bool:
 HOME_DOTFILE_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".kube"})
 HOME_DOTFILE_FILES = frozenset({".netrc", ".gitconfig", ".npmrc"})
 HOME_RC = frozenset({".bashrc", ".zshrc", ".profile", ".bash_profile", ".zprofile"})
+HOME_APPEND_OK = frozenset({".ssh/known_hosts"})
 HOME_DOTFILE_WHY = (
     "ghi đè/xoá khoá hay cấu hình hệ thống/home qua Bash ({}) — không đảo ngược được; chỉ nối thêm `>>` vào rc"
+    " hay `~/.ssh/known_hosts`"
 )
 
 
@@ -15031,6 +15081,8 @@ def _home_dotfile(x: str) -> str:
     home = posixpath.normpath(os.path.expanduser("~"))
     rel = p[len(home) + 1 :] if p.startswith(home + "/") else ""
     first = rel.split("/", 1)[0]
+    if rel in HOME_APPEND_OK:  # T-3955 B5: `ssh-keyscan … >> ~/.ssh/known_hosts` — nối thêm như rc
+        return "rc"
     if first in HOME_DOTFILE_DIRS or rel in HOME_DOTFILE_FILES:
         return "secret"
     return "rc" if rel in HOME_RC else ""
@@ -15072,7 +15124,31 @@ def _fence_reader(n: List[str]) -> bool:
     if any(FENCE_FIX_RE.fullmatch(a) for a in n[1:]):
         return False
     py = bool(SCRIPT_LANG_RE.fullmatch(head)) and n[1:2] == ["-m"] and n[2:3] != [] and n[2] in FENCE_PY_MODULES
-    return head in FENCE_CHECKERS or py
+    return head in FENCE_CHECKERS or py or _fence_viewer(head, n[1:])
+
+
+# T-3955 B8: trình xem/kiểm chỉ đọc khi không có cờ/đối số ghi tệp (`tree -o f`, `xxd -r`/`xxd in out`, `yq -i`,
+# `black`/`isort` không `--check|--diff`).
+FENCE_VIEW_WRITES: Dict[str, "re.Pattern[str]"] = {
+    "tree": re.compile(r"-o.*|--output.*"),
+    "xxd": re.compile(r"-r\w*|-revert"),
+    "od": re.compile(r"(?!)"),
+    "hexdump": re.compile(r"(?!)"),
+    "bat": re.compile(r"--pager.*"),
+    "batcat": re.compile(r"--pager.*"),
+    "pyflakes": re.compile(r"(?!)"),
+    "yq": re.compile(r"-[a-zA-Z]*i[a-zA-Z]*|--inplace.*"),
+}
+FENCE_CHECK_ONLY = {"black": ("--check", "--diff"), "isort": ("--check-only", "--check", "--diff")}
+
+
+def _fence_viewer(head: str, args: List[str]) -> bool:
+    if head in FENCE_CHECK_ONLY:
+        return any(a in FENCE_CHECK_ONLY[head] for a in args)
+    rx = FENCE_VIEW_WRITES.get(head)
+    if rx is None or any(rx.fullmatch(a) for a in args):
+        return False
+    return head != "xxd" or len(_positionals(args)) < 2  # `xxd in out` ghi `out`
 
 
 FENCE_ARGV_SKIP = frozenset("cd pushd popd echo printf test [ [[ true false : export local declare readonly".split())
@@ -16820,8 +16896,8 @@ def _bare_git_config_ask(
     AUD-SEC-449: thư mục chạy không biết (`cd "$X"`, `git -C "$X"`) → thử như D-106 ở mọi thư mục đã biết của quyết
     định (`dirs`: gốc, thư mục bắt đầu, đích `cd` đã giải) — repo trần nào trong đó có khoá nguy hiểm thì chặn; gốc dự
     án có `.git` nên `cd "$X" && git status` vẫn qua."""
-    if n[:1] != ["git"] or not n[1:2] or n[1] in ("init", "clone", "config"):
-        return ""
+    if n[:1] != ["git"] or not n[1:2] or n[1] in ("init", "clone", "config") or REMOTE_SCAN.get():
+        return ""  # T-3955 B6: ở máy xa, repo trần của hệ tệp máy dev không liên quan
     known = cwd is not None and _git_dir(argv, cwd) is not None
     bases = [cwd] if known else sorted({*dirs, *([cwd] if cwd else [])})
     return next((a for b in bases if b and (a := _bare_git_config_from(argv, b, env))), "")
@@ -21063,6 +21139,10 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     DESTROY_STMT_FLAGS,  # AUD-HAR-420: client CSDL phá dữ liệu
     DESTROY_ALWAYS,
     DESTROY_HOST_FLAGS,
+    frozenset({"gpg", "gpg2", "regctl", "robocopy", "robocopy.exe", "ssh-keygen"}),  # T-3955 C2/C5/C9 (luật t14)
+    frozenset("age-keygen crane skopeo cmd cmd.exe powershell powershell.exe pwsh.exe wsl wsl.exe wslconfig".split()),
+    frozenset("wslconfig.exe cdk eksctl mc neonctl s3cmd sam serverless sls supabase terragrunt turso".split()),
+    frozenset("tree od hexdump pyflakes yq isort".split()),  # T-3955 B8: trình xem hàng rào có điều kiện ghi
     TOKEN_PASS,  # AUD-SEC-818: ống in token
     TOKEN_FILTERS,
     BASH_BUILTINS,  # T-3945: mức che theo builtin (`_shadow_head`, D-506)
@@ -21121,7 +21201,49 @@ def _subst_secrets(args: List[str], root: str) -> List[str]:
     """File bí mật đọc trong thay lệnh của đối số (`printf %s "$(cat .env)" >/dev/tcp/…`, `curl -d "\\`cat .env\\`"`)."""
     line = " ".join(args)  # thay lệnh không nháy bị tách thành nhiều token (`` echo `cat .env` ``)
     bodies = _dollar_scripts(line) + _backtick_scripts(line) if "$(" in line or "`" in line else []
-    return [w for body in bodies for w in tokenize(body) if _is_secret_file(w, root)]
+    live = _live_subst_bodies() if bodies else None
+    out: List[str] = []
+    for words in (tokenize(body) for body in bodies):
+        if live is not None and tuple(words) not in live:
+            continue  # T-3955 B2: `'$(cat .env)'` trong nháy đơn là chữ (tài liệu), không chạy
+        out += [w for w in words if _is_send_authfile(w, root)]
+        out += [" ".join(c)[:60] for c in split_commands(words) if _env_dumper(c)]  # T-3955 C1: `"$(env)"`
+    return out
+
+
+def _live_subst_bodies() -> Optional[Set[Tuple[str, ...]]]:
+    """Thân thay lệnh chạy thật (ngoài nháy đơn) của mọi tầng đang đọc, đã tách token; ngoài quyết định → None."""
+    cmds = SHADOW.get()
+    return {words for c in cmds for words in _subst_bodies_raw(c)} if cmds else None
+
+
+@functools.lru_cache(maxsize=256)
+def _subst_bodies_raw(cmd: str) -> FrozenSet[Tuple[str, ...]]:
+    return frozenset(tuple(tokenize(b)) for b in _dollar_scripts(cmd) + _backtick_scripts(cmd))
+
+
+# T-3955 C1 (4): tệp chứng thực mà luật GỬI ra ngoài/đăng lên GitHub xét thêm ngoài `classify_path(...) == "secret"` và
+# `CRED_FILE_RE` — `~/.aws/credentials`, `~/.docker/config.json`, `~/.kube/config`, `*.tfstate`, `.dev.vars`, `secrets.*`.
+SEND_AUTHFILE_RE = re.compile(
+    r"(?:^|/)(?:\.aws/credentials|\.docker/config\.json|\.kube/config|\.dev\.vars|secrets\.[\w.-]+)$"
+    r"|\.tfstate(?:\.backup)?$"
+)
+AUTHFILE_SAFE_SUFFIXES = (".pub", ".example", ".sample", ".template", ".bak")
+
+
+def _is_send_authfile(path: str, root: str) -> bool:
+    if path.endswith(AUTHFILE_SAFE_SUFFIXES):
+        return False
+    return _is_secret_file(path, root) or bool(CRED_FILE_RE.search(path) or SEND_AUTHFILE_RE.search(path))
+
+
+def _env_dumper(c: List[str]) -> bool:
+    """Lệnh in môi trường (mọi biến, gồm bí mật): `env`/`printenv` (cả `printenv X`), `set`, `export -p`, `declare
+    -p|-x`/`typeset -p` không tên — chung cho nhánh ống và thay lệnh của luật gửi bí mật."""
+    head = posixpath.basename(c[0]) if c else ""
+    if head in ("set", "export", "declare", "typeset"):
+        return all(a[:1] == "-" for a in c[1:]) and (head != "set" or len(c) == 1)
+    return head == "env" and not normalize(c) or head == "printenv"
 
 
 def _socat_files(n: List[str]) -> List[str]:
@@ -21673,12 +21795,13 @@ GITHUB_HOSTS = frozenset(
     {"github.com", "api.github.com", "uploads.github.com", "codeload.github.com", "gist.github.com", "ghcr.io"}
     | {"raw.githubusercontent.com", "objects.githubusercontent.com"}
 )
-SECRET_VAR_RE = re.compile(r"\$\{?!?([A-Za-z_][A-Za-z0-9_]*)")
-SECRET_NAME_RE = re.compile(r"[A-Za-z0-9_]*(?:TOKEN|_KEY|SECRET|PASSWORD|PASSWD|_PAT)", re.I)
+AUTHREF_VAR_RE = re.compile(r"\$\{?!?([A-Za-z_][A-Za-z0-9_]*)")
+AUTHREF_NAME_RE = re.compile(r"[A-Za-z0-9_]*(?:TOKEN|_KEY|SECRET|PASSWORD|PASSWD|_PAT)", re.I)
 HTTP_SENDERS = frozenset({"http", "https", "xh", "xhs"})
+PKG_URL_TOOLS = frozenset({"pip", "pip3", "uv", "pipx", "poetry", "npm", "pnpm", "yarn", "bun", "go", "cargo", "gem"})
 T12_GIT_MSG_SUBS = frozenset({"commit", "tag", "notes", "commit-tree"})
 BARE_HOST_RE = re.compile(r"([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?::\d+)?(?:/|$)")
-TOKEN_ROUTE_WHY = "token/bí mật `${}` gửi tới máy chủ ngoài GitHub hoặc ghi vào artefact (`{}`) — token chỉ đi tới host của nó (T-3952)"
+AUTHREF_ROUTE_WHY = "token/bí mật `${}` gửi tới máy chủ ngoài GitHub hoặc ghi vào artefact (`{}`) — token chỉ đi tới host của nó (T-3952)"
 
 
 # Dịch vụ trút dữ liệu phổ biến (paste, webhook bắt request, đường hầm, OAST, webhook chat): bí mật bất kỳ tới đó → chặn.
@@ -21695,7 +21818,24 @@ def _exfil_hosts(hosts: List[str]) -> bool:
 
 
 def _authref_hits(text: str) -> List[str]:
-    return [m[1] for m in SECRET_VAR_RE.finditer(text) if SECRET_NAME_RE.fullmatch(m[1])]
+    """Tên biến bí mật nhắc trong `text` (từ đã bỏ nháy) mà ở chữ lệnh của MỘT tầng đang đọc là mở rộng thật (T-3955
+    B2): `'$GH_TOKEN'`, `\\$NPM_TOKEN` là chữ — không gửi giá trị. Gọi ngoài quyết định (không tầng nào) → mọi tên."""
+    hits = [m[1] for m in AUTHREF_VAR_RE.finditer(text) if AUTHREF_NAME_RE.fullmatch(m[1])]
+    live = [_expanded_names(c) for c in SHADOW.get()] if hits else []
+    if not live or None in live:
+        return hits
+    names = frozenset(itertools.chain.from_iterable(x or () for x in live))
+    return [h for h in hits if h in names]
+
+
+@functools.lru_cache(maxsize=256)
+def _expanded_names(cmd: str) -> Optional[FrozenSet[str]]:
+    """Tên biến ở vị trí mở rộng thật của `cmd` (ngoài nháy đơn/`$'…'`, không thoát `\\$`); None = guard không đọc
+    chắc ngữ cảnh nháy (coi mọi tên là mở rộng)."""
+    view = _CodeView(cmd)
+    if view.why:
+        return None
+    return frozenset(m[1] for m in AUTHREF_VAR_RE.finditer(cmd) if view.kind[m.start()] != "q")
 
 
 def _github_host(host: str) -> bool:
@@ -21752,9 +21892,9 @@ def _authref_route_rule(argv: List[str], n: List[str]) -> Tuple[str, str]:
         bad = bad or _exfil_hosts(hosts) or bool(_userinfo_authref(args))
     elif name == "git":
         bad = _git_authref_bad(n, args, gh_tok)
-    else:
-        bad = name == "gh" and _gh_authref_bad(n, args)
-    return ("deny", TOKEN_ROUTE_WHY.format(refs[0], name)) if bad else ("", "")
+    else:  # T-3955 B7: URL gói có bí mật ở userinfo — lưu vào lockfile/cache/log của trình quản lý gói
+        bad = name == "gh" and _gh_authref_bad(n, args) or name in PKG_URL_TOOLS and bool(_userinfo_authref(args))
+    return ("deny", AUTHREF_ROUTE_WHY.format(refs[0], name)) if bad else ("", "")
 
 
 # F10: lệnh con huỷ/xoá hạ tầng của CLI đám mây/PaaS (cùng mã DESTROY như `kubectl delete`/`terraform destroy`); tiền
@@ -22015,7 +22155,7 @@ REMOTE_EXEC_ROOT = "/xt-remote-exec-root-unknown"
 REMOTE_EXEC_MARK = "lệnh chạy ở máy xa/container bị chặn"
 DB_HOST_FLAG = {"sqlcmd": "-S", "mongosh": "--host", "mongo": "--host"}
 LIMA_VALUE_FLAGS = ("--workdir", "--shell", "--tty")
-RemoteScript = Tuple[str, str, bool]  # (lệnh, gốc giả, CSDL không nêu host là máy xa)
+RemoteScript = Tuple[str, str, bool, bool]  # (lệnh, gốc giả, CSDL không nêu host là máy xa, cách đọc đúng ngữ nghĩa)
 
 
 def _ctr_exec_inner(c: List[str], n: List[str]) -> Tuple[List[str], bool]:
@@ -22039,13 +22179,13 @@ def _remote_exec_scripts(tokens: List[str]) -> List[RemoteScript]:
         if n[:1] == ["ssh"]:
             host, remote = _ssh_target(n[1:])
             remote = remote if not _is_loopback(host.rsplit("@", 1)[-1]) else []
-            out += [
-                (s, REMOTE_EXEC_ROOT, True) for s in dict.fromkeys([" ".join(remote), _join_tokens(remote)]) if remote
-            ]
+            # ssh nối đối số bằng dấu cách cho shell máy xa (cách đọc đúng); bản trích lại từng từ chỉ thêm chặn chắc
+            pair = dict.fromkeys([" ".join(remote), _join_tokens(remote)]) if remote else {}
+            out += [(s, REMOTE_EXEC_ROOT, True, k == 0) for k, s in enumerate(pair)]
         elif n:
             inner, fresh = _ctr_exec_inner(c, n)
             root = REMOTE_EXEC_ROOT if n[:1] == ["kubectl"] else CONTAINER_ROOT  # cụm (có thể prod) như máy xa
-            out += [(_shell_c_script(inner) or _join_tokens(inner), root, not fresh)] if inner else []
+            out += [(_shell_c_script(inner) or _join_tokens(inner), root, not fresh, True)] if inner else []
     return out
 
 
@@ -22079,16 +22219,44 @@ def _remote_data_destroy(script: str) -> str:
     return ""
 
 
+# T-3955 B4: ở máy xa guard không áp heuristic BUDGET của máy dev (biến shell máy xa, `$(…)` ở đối số lệnh lành); chỉ
+# chặn khi giá trị không tính được rơi vào TÊN lệnh hay đối số (cờ/đích) của lệnh có luật huỷ — trừ đích cache/tạm.
+REMOTE_DYN_DESTROY = frozenset(
+    {"rm", "find", "shred", "unlink", "rsync", "dd", "mkfs", "truncate", "chmod", "chown", "chgrp", "eval", "source"}
+    | {".", "kubectl", "docker", "podman", "terraform", "tofu", "pulumi", "helm", "aws", "gcloud", "az", "crontab"}
+    | set(DESTROY_ALWAYS)
+    | set(DESTROY_STMT_FLAGS)
+    | set(CLOUD_DESTROY_WORDS)
+)
+REMOTE_DYN_WHY = "giá trị không tính được ở tên/cờ/đích của lệnh có luật huỷ ở máy xa (`{}`) — nêu giá trị nguyên văn"
+
+
+def _remote_dyn_destroy(script: str) -> str:
+    for c in split_commands(tokenize(script)):
+        n = normalize(c)
+        name = n[0] if n else ""
+        dyn = [a for a in n[1:] if ("$" in a or "`" in a) and not _cache_path(a)]
+        if "$" in name or "`" in name or dyn and posixpath.basename(name) in REMOTE_DYN_DESTROY:
+            return REMOTE_DYN_WHY.format(" ".join(c)[:80])
+    return ""
+
+
 def _remote_exec_scan(tokens: List[str], depth: int, asks: List[str], budget: ScanBudget) -> str:
-    for script, root, remote_db in _remote_exec_scripts(tokens):
+    for script, root, remote_db, exact in _remote_exec_scripts(tokens):
         if depth >= MAX_NEST:
             asks.append(f"{NEST_ASK} — guard không quét hết lệnh ở máy xa/container")
             break
-        sub = bash_decision(script, root, None if root == REMOTE_EXEC_ROOT else root, depth + 1, budget)
+        mark = REMOTE_SCAN.set(True)
+        try:
+            sub = bash_decision(script, root, None if root == REMOTE_EXEC_ROOT else root, depth + 1, budget)
+        finally:
+            REMOTE_SCAN.reset(mark)
         d = decide(sub)
         local_wipe = d.code == "WIPE_OUTSIDE" and (root == CONTAINER_ROOT or _cache_wipe(script))
-        why = d.reason if policy_action(d) == "deny" and not local_wipe else ""
+        loose = not exact and d.code in UNSURE_CODES  # bản trích lại: `'$X …'` là một từ — không phải lệnh máy xa chạy
+        why = d.reason if policy_action(d) == "deny" and not local_wipe and not loose else ""
         why = why or (_remote_data_destroy(script) if remote_db else "")
+        why = why or (_remote_dyn_destroy(script) if exact and root == REMOTE_EXEC_ROOT else "")
         asks += [f"{REMOTE_EXEC_MARK} (T-3952): {why[:300]}"] if why else []
     return ""
 
