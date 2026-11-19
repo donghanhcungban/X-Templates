@@ -8,6 +8,14 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- `xt.py test-select --unittest` (cổng commit `gate-fast`, khoá `test_fast`) chọn test theo **lớp** thay vì theo tệp: lớp
+  chạy khi thân lớp nhắc tên tệp đổi, có glob khớp tên đó (`GO-NO-GO*.md` không còn khớp mọi `.md`), hoặc nhắc tên một
+  lớp cùng tệp đang chạy (lớp cha, lớp phụ trợ — bắc cầu); cả tệp chạy khi phần ngoài lớp khớp, tệp import module đổi,
+  trùng tên `test_<tên>.py`, chính tệp test đổi hoặc không parse được. Đo ở repo khung: sửa một tệp `.md` chọn 47–81
+  lớp (trước: 331–375), `fintech.md` chạy 55 s; `xt.py` gần như không đổi (563/591). Không ánh xạ được vẫn chạy cả bộ;
+  CI là cổng đầy đủ nên chọn sót ở cổng commit bị CI bắt (T-3962, D-516). Dự án đích: nhận khi chạy lại `install.py`;
+  chế độ in tệp (không `--unittest`) như cũ.
+
 - CI repo khung: job `test` chia 6 shard (trước: 4), `test-main` 4 shard (trước: 3); trần 10 phút mỗi job giữ nguyên.
   Tổng trọng số 2 605 s chia 4 là 651 s mỗi shard, vượt trần — shard 3/4 bị huỷ ở #672 và #674 (AUD-CI-035, T-3961,
   D-516). Dự án đích: không đổi (CI mẫu không chia shard).
