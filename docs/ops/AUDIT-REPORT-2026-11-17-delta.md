@@ -133,3 +133,15 @@ Theo yêu cầu của người dùng (kiểm toàn diện một lần để sử
 D-508 áp dụng: họ (c) mở rộng (payload che bằng biến/`getattr`/template JS) chấp nhận có hạn (AUD-SEC-943); xoá trong container cục bộ chấp nhận (AUD-SEC-955); còn lại sửa. AUD-SEC-060 (🟢 mở từ trước, ghi đè dotfile `~`/`/etc`) được nâng mức và đóng.
 
 Đợt 13: T-3951 (#665) và T-3952 (#666). Số ca lọt: EV 1 484 → 0, BR 140 → 0 (lô 3); F1 229 → 0, F2 161 → 0, F4 368 → 0, F5 434 → 0, F6 230 → 0, F7 276 → 0, F8 414 → 0, F9 115 → 0, F10 506 → 0, F11 115 → 0 (lô 4, 4 660 biến thể); hồi quy tốc độ p50/p95 1,005×/1,006× nền; 170 lệnh lành phổ biến 0 bị chặn. Hai sự cố CI trên đường: CodeQL `py/clear-text-logging-sensitive-data` vì tên định danh chứa `secret` (đổi tên, không đổi hành vi) và BASE-GATE-005 cấm ngưỡng CPU cứng ở `test_guard_d503_invariant` (bỏ phép đo). Cổng ký lần 11 chạy sau #666 với phạm vi hẹp (các họ vừa sửa, họ INCONCLUSIVE, một lô chặn oan).
+
+## Cổng ký lần 11 (ứng viên `4d8c403f`, sau đợt 13) và xác nhận cuối (`fee39e61`)
+
+Phạm vi hẹp theo D-509 (3 lô reviewer-alt: A ma trận các họ vừa sửa + họ INCONCLUSIVE của cổng ký 10; B chặn oan/tốc độ/test/tài liệu; C đối kháng một bước do lỡ tay). Guard-only với gốc ngoài `/tmp` và bash thật trong sandbox; không có sự cố. Không lô nào thấy hồi quy an toàn so với `a20ba307`.
+
+| Lô | Kết luận | Phát hiện |
+|---|---|---|
+| A họ vừa sửa + INCONCLUSIVE (~66 000 quyết định) | CÓ PHÁT HIỆN | 🔴 AUD-SEC-956…962 (sed `-Ei`, `$HOME`, `curl -sX`/`curlie`, token qua echo/printf, npm/pnpm tuỳ chọn chung, bí danh API, `$@`/`$*`) · 🟠 AUD-SEC-963 (json.tool, bun exec, autossh/mosh, pwsh, móc môi trường, stdin chạy như lệnh, lối thoát shell) · 🟢 AUD-SEC-964 |
+| B chặn oan/tốc độ/test/tài liệu (719 idiom, 12 254 ca) | CÓ PHÁT HIỆN | 🟠 AUD-SEC-966 (`git pull --rebase && git push` — hồi quy #665), 967, 968, 969, 970, 971 · 🟢 AUD-TEST-122, AUD-HAR-434 |
+| C đối kháng một bước (~3 500 quyết định) | CÓ PHÁT HIỆN | 🔴 AUD-SEC-972 (bí mật vào artefact GitHub), AUD-SEC-973 (`wsl.exe --unregister`) · 🟠 AUD-SEC-974…977 · 🟢 AUD-SEC-978 |
+
+Theo quyết định của người dùng (D-509) đây là đợt sửa cuối: #669 (T-3954) và #668 (T-3955) đã sửa các mục trên. Lô xác nhận cuối trên `fee39e61` (703 idiom lành, 6 525 ca tốc độ, 60 lệnh nguy hiểm một dòng): 60/60 vẫn bị chặn, 6 lệnh bắt buộc qua đều qua, tốc độ p50 13,1 ms, p95 46,6 → 50,4 ms; tìm hai 🟠 chặn oan do chính diff (AUD-SEC-981 chữ trong nháy qua ống, AUD-SEC-982 `--rsync-path` ở máy xa) → T-3956, cùng PR với sổ này để tiết kiệm một lượt CI. Còn lại là giới hạn đã biết có hạn 2027-01-21 (AUD-SEC-965) và 🟢 mở AUD-SEC-980, AUD-SEC-983; AUD-TEST-123 (test phụ thuộc mạng làm đỏ cổng commit) đóng cùng PR này bằng `isolate_network`. Cắt 3.34.0 ngay sau PR này.

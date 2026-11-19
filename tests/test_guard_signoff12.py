@@ -30,7 +30,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("XT_GUARD_PHASE", "harden")
 sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
+sys.path.insert(0, str(ROOT / "tests"))
 import guard
+from nonet import isolate_network
 
 J = "".join
 H = chr(126)
@@ -63,6 +65,9 @@ def decide(cmd: str, cwd: Path | None = None) -> dict:
 
 
 class Base(unittest.TestCase):
+    def setUp(self) -> None:
+        isolate_network(self)  # AUD-TEST-123: không gọi gh thật qua merge-check (kết quả không phụ thuộc mạng)
+
     def assert_deny(self, cmds: tuple[str, ...], cwd: Path | None = None) -> None:
         for cmd in cmds:
             with self.subTest(cmd=cmd):
