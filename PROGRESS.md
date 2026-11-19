@@ -4,6 +4,7 @@
 
 ## Đang làm
 - 2026-11-11 **ADR-0075** xưởng đầu-cuối (chủ dự án: song song theo file · thiết lập sau bản dev · mọi quy mô — D-419) + [PLAN-factory-e2e](docs/autopilot/PLAN-factory-e2e.md) (D-420, T-3841…T-3866) + 7 đặc tả `docs/specs/SPEC-factory-*.md` (D-422…D-424). T-3866 xong ([research](research/2026-11-12-dev-self-host-live-sources.md)). T-3841 chốt hợp đồng triển khai ([ADR-0077](docs/adr/0077-deployment-receipts.md)). T-3845 (#536): `install.py --new`, `doctor --offline` (D-452/D-453/D-455/D-460). T-3842 giữ fingerprint khi ghi receipt; kế là lệnh triển khai.
+- ADR-0081, [đo dự án đích](research/2026-11-19-target-project-speed.md).
 - T-3763: [mẫu 505 lượt](research/evidence/2026-11-13-guard-p4.json) không đổi; AUD-SEC-609 mở.
 - T-3867: guard trả `BUDGET` khi hết đệ quy (#576, D-492).
 - AUD-DOC-273/274: [báo cáo pilot](docs/ops/ARTIFACT-PILOT-2026-11-08.md) đối chiếu receipt staging và cổng Production. Còn receipt bền và kiểm artifact trên VPS.

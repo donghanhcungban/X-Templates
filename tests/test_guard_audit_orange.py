@@ -18,7 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("XT_GUARD_PHASE", "harden")
 sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/git_fixture.py
 import guard
+from git_fixture import default_exec_path_fixed
 
 PHRASE = "Khi chạy thật đã quy" + "ết"  # dựng cụm: lệnh của phiên này không mang nguyên cụm
 LEDGER = "docs/autopilot/DECISIONS.md"
@@ -277,7 +279,8 @@ class AutocorrectExecPathTest(AuditOrangeCase):
             self.assert_allowed(("git pusj --force origin main",))
             with mock.patch.dict(os.environ, {"GIT_EXEC_PATH": "/nonexistent"}):  # biến gỡ được: cần có ở cả hai
                 self.assert_denied({"git pusj --force origin main": "UNRESOLVED_TARGET"})
-        self.assert_allowed(("git status", "git submodule status", "git push origin feat/x"))
+        with default_exec_path_fixed(guard):  # không phụ thuộc uid chạy test (root ghi được exec-path)
+            self.assert_allowed(("git status", "git submodule status", "git push origin feat/x"))
 
     def test_changeable_exec_path_denied(self):
         with mock.patch.object(guard, "_git_exec_path", return_value=str(self.bin)):  # thư mục tạm: agent ghi được

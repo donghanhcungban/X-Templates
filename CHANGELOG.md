@@ -104,6 +104,20 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- ADR-0081 (D-511, đường nhanh pha build): `xt.py compose` không `--scale` giữ quy mô của blueprint đã ghép ở `--out`,
+  chưa có thì **S** (trước: luôn M) và in một dòng stderr nói rõ nguồn; `doctor` ở `delivery_phase: build` không còn
+  cảnh báo khi bản khung đã cài chậm MINOR/PATCH (chậm MAJOR vẫn cảnh báo; harden và `doctor --drift` như cũ).
+  `composition.md` §Chọn quy mô hỏi theo hiện trạng; `/autopilot`, `/complete`, `/blueprint` cập nhật theo. Số đo:
+  [research 2026-11-19](research/2026-11-19-target-project-speed.md). **Dự án đích:** chạy lại `install.py` (nhận
+  `xt.py`, skill); dự án đang ở M/L không đổi gì — ghép lại không `--scale` giữ quy mô cũ; script gọi `compose` mà
+  dựa vào mặc định M phải truyền `--scale M`.
+
+- `autonomy-bench` (D-510): ghim tiền đề "exec-path mặc định của git không đổi được" khi chấm corpus guard, như đã
+  ghim `merge-check` — chạy bằng root (container phiên cloud) không còn báo `false_red` ở ca đối chứng
+  `aud805-ctl-submodule`; đường ngoài exec-path mặc định vẫn xét thật. Test guard hết phụ thuộc uid và token `gh` của
+  máy chạy (`tests/git_fixture.default_exec_path_fixed`, `tests/test_guard_signoff12.py` ghim verdict merge-check).
+  Dự án đích: không đổi.
+
 - `loop status` (AUD-HAR-412, D-500): pha harden không còn đòi audit theo mốc — `milestone_audit: signoff` (audit delta
   dồn về cổng ký, ADR-0080) thay cho `now`; pha build giữ `g7`; `topo: review`/`audit` ở harden ghi "gom về cổng ký".
   README mảng 11 bước 10, `/autopilot` bước 5, `/complete` bước 4, `audit.md` §1, mẫu PLAN đổi theo. Skill review/gate

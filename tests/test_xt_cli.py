@@ -656,12 +656,40 @@ class FrameworkCommandsTest(TmpDirCase):
         self.assertEqual(labels, ["01-baseline/security", "08-backend/api", "08-backend/cli-only"])
 
     def test_compose_to_stdout(self):
-        rc, out, _ = run_main("--framework", self.fw, "compose", "--profile", "web-app", "--industry", "fintech")
+        cmd = ("--framework", self.fw, "compose", "--profile", "web-app", "--industry", "fintech")
+        rc, out, _ = run_main(*cmd, "--scale", "M")
         self.assertEqual(rc, 0)
         self.assertIn("`BE-API-001`", out)
         self.assertIn("`IND-FIN-001`", out)
         self.assertNotIn("BE-CLI-001", out)
         self.assertNotIn("BE-API-999", out)
+        # ADR-0081: vắng `--scale` và chưa có blueprint → sàn S (MUST của module về SHOULD), stderr nói rõ nguồn
+        rc, out, err = run_main(*cmd)
+        self.assertEqual(rc, 0)
+        self.assertIn("scale: S\n", out)
+        self.assertNotIn("`BE-API-001`", out)
+        self.assertIn("`IND-FIN-001`", out)
+        self.assertIn("ℹ quy mô S (mặc định: lên M khi đã có người dùng thật", err)
+
+    def test_compose_without_scale_keeps_composed_scale(self):
+        # ADR-0081: ghép lại không `--scale` giữ quy mô của bản ở `--out` (không ngầm hạ M xuống S); frontmatter hỏng hay
+        # quy mô lạ → coi như chưa có bản → S
+        target = self.tmp / "BLUEPRINT.md"
+        cmd = ("--framework", self.fw, "compose", "--profile", "web-app", "--out", target)
+        self.assertEqual(run_main(*cmd, "--scale", "M")[0], 0)
+        rc, _, err = run_main(*cmd)
+        self.assertEqual(rc, 0)
+        self.assertIn("ℹ quy mô M (giữ theo bản đã ghép) — ADR-0081", err)
+        self.assertIn("scale: M\n", target.read_text(encoding="utf-8"))
+        self.assertEqual(xt.compose_scale("L", str(target)), "L")  # truyền vào thì thắng, không in gì
+        for broken in ("---\nscale: X\n---\n", "không frontmatter\n", b"\xff\xfe"):
+            if isinstance(broken, bytes):
+                target.write_bytes(broken)
+            else:
+                target.write_text(broken, encoding="utf-8")
+            with self.subTest(broken=broken):
+                self.assertEqual(xt._old_scale(target), "")
+        self.assertEqual(xt._old_scale(self.tmp / "khong-co.md"), "")
 
     def test_blueprint_status_prints_bad_lines(self):
         bp = self.tmp / "BP.md"
@@ -672,7 +700,9 @@ class FrameworkCommandsTest(TmpDirCase):
 
     def test_compose_to_file_then_recompose_keeps_state(self):
         target = self.tmp / "BLUEPRINT.md"
-        rc, out, _ = run_main("--framework", self.fw, "compose", "--profile", "web-app", "--out", target)
+        rc, out, _ = run_main(
+            "--framework", self.fw, "compose", "--profile", "web-app", "--scale", "M", "--out", target
+        )
         self.assertEqual(rc, 0)
         self.assertIn(f"✓ Đã ghi {target}", out)
         target.write_text(
@@ -717,7 +747,9 @@ class FrameworkCommandsTest(TmpDirCase):
 
     def test_compose_full_keeps_one_file_and_stdout_notes_backlog(self):
         target = self.tmp / "BP.md"
-        rc, _, _ = run_main("--framework", self.fw, "compose", "--profile", "web-app", "--full", "--out", target)
+        rc, _, _ = run_main(
+            "--framework", self.fw, "compose", "--profile", "web-app", "--scale", "M", "--full", "--out", target
+        )
         self.assertEqual(rc, 0)
         self.assertIn("`PRF-WEB-001` **SHOULD**", target.read_text(encoding="utf-8"))
         self.assertNotIn("backlog:", target.read_text(encoding="utf-8"))
@@ -747,10 +779,10 @@ class FrameworkCommandsTest(TmpDirCase):
         self.assertIn("⚠ 1 mục đổi yêu cầu (`— Cũ (rev …)`), chưa làm lại: PRF-WEB-001", out)
         rc, out, _ = run_main("blueprint-status", str(target), "--json")
         self.assertEqual(json.loads(out)["stale"], ["PRF-WEB-001"])
-        rc, out, err = run_main("--framework", self.fw, "compose", "--profile", "web-app", "--full")
+        rc, out, err = run_main("--framework", self.fw, "compose", "--profile", "web-app", "--scale", "M", "--full")
         self.assertEqual((rc, err), (0, ""))
         self.assertIn("`PRF-WEB-001` **SHOULD**", out)
-        rc, out, err = run_main("--framework", self.fw, "compose", "--profile", "web-app")
+        rc, out, err = run_main("--framework", self.fw, "compose", "--profile", "web-app", "--scale", "M")
         self.assertEqual(rc, 0)
         self.assertNotIn("PRF-WEB-001", out)
         self.assertIn("2 mục SHOULD/MAY không in", err)

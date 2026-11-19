@@ -162,6 +162,7 @@ DEFAULT_FRAMEWORK = (SCRIPT_DIR.parent / "framework").resolve()
 KINDS = {"method", "index", "module", "baseline", "profile", "industry", "standard", "template", "research", "progress"}
 LEVELS = ("MUST", "SHOULD", "MAY")
 SCALES = ("S", "M", "L")
+DEFAULT_SCALE = "S"  # ADR-0081: `compose` không `--scale` và chưa có blueprint → sàn S; M/L là lựa chọn ghi rõ
 # Trần MUST hiệu lực ở quy mô M cho mỗi module/chuẩn; phần vượt là MUST@L — ADR-0004.
 MAX_MUST_AT_M = 4
 # Mục thiết yếu (ADR-0030): module khai `essential: [<ID>@<fact>, …]`; `compose --feature <fact>` đưa mục MUST@L đó lên
@@ -5511,7 +5512,10 @@ def latest_framework_tag() -> Optional[Tuple[int, int, int]]:
 
 def _doctor_version(base: Path) -> List[Finding]:
     """Khung đã cài (`.xtemplates/VERSION`) cũ hơn bản phát hành mới nhất → cảnh báo chạy lại `install.py`
-    (LOOP-HARNESS-020, D-040). Chỉ ở dự án đích; nhãn không phải SemVer hay không đọc được tag → bỏ qua (fail-open)."""
+    (LOOP-HARNESS-020, D-040). Chỉ ở dự án đích; nhãn không phải SemVer hay không đọc được tag → bỏ qua (fail-open).
+    ADR-0081: `delivery_phase: build` ghim khung — chậm bản MINOR/PATCH không phải cảnh báo (⚠ là việc của phiên: từng
+    chiếm 16–22 % commit nhánh chính ở dự án đích); vẫn báo khi chậm MAJOR, và báo đủ ở harden (`/complete` nâng ở ranh
+    giới pha). `doctor --drift` báo mọi độ chậm ở cả hai pha."""
     try:
         label = (base / ".xtemplates" / "VERSION").read_text(encoding="utf-8")
     except OSError:
@@ -5522,6 +5526,8 @@ def _doctor_version(base: Path) -> List[Finding]:
         return []
     installed = (int(m[1]), int(m[2]), int(m[3]))
     if installed > latest or (installed == latest and not m[4]):  # 3.0.0-rc1 < 3.0.0
+        return []
+    if installed[0] == latest[0] and _phase_in_tree(base) == "build":
         return []
     have, want = ".".join(map(str, installed)) + (m[4] or ""), ".".join(map(str, latest))
     msg = (
@@ -7291,7 +7297,32 @@ def compose_write(
     }
 
 
+def _old_scale(path: Path) -> str:
+    """`scale:` của blueprint đã ghép trước; file không có/không đọc được/giá trị lạ → ""."""
+    try:
+        scale = str(parse_frontmatter(path.read_text(encoding="utf-8"))[0].get("scale") or "")
+    except (OSError, UnicodeDecodeError, FrontmatterError):
+        return ""
+    return scale if scale in SCALES else ""
+
+
+def compose_scale(given: Optional[str], out: Optional[str]) -> str:
+    """Quy mô của lần ghép (ADR-0081): `--scale` truyền vào thắng; vắng → giữ quy mô của bản đã ghép ở `--out` (ghép lại
+    không ngầm hạ M/L xuống S); chưa có bản nào → `DEFAULT_SCALE`. Vắng `--scale` thì in một dòng stderr nói rõ nguồn."""
+    if given:
+        return given
+    old = _old_scale(Path(out)) if out else ""
+    why = (
+        "giữ theo bản đã ghép"
+        if old
+        else "mặc định: lên M khi đã có người dùng thật (`--scale M`), thường ở `/complete`"
+    )
+    print(f"ℹ quy mô {old or DEFAULT_SCALE} ({why}) — ADR-0081", file=sys.stderr)
+    return old or DEFAULT_SCALE
+
+
 def cmd_compose(args: argparse.Namespace) -> int:
+    args.scale = compose_scale(args.scale, args.out)
     src = (args.framework, args.profile, args.industry or [], args.scale, args.include_may)
     feats = args.feature or []
     if args.out:
@@ -17105,11 +17136,25 @@ def _bench_guard_payload(mode: str, inp: Dict[str, Any], root: Path) -> Dict[str
     return {"tool_name": "Bash", "tool_input": {"command": str(inp["command"])}, "cwd": str(root)}
 
 
+def _bench_pin_exec_path(guard: Any) -> None:
+    """Ghim tiền đề của corpus như `merge-check` (D-510): exec-path MẶC ĐỊNH của git là nơi tiến trình không đổi được.
+    Chạy bằng root (container phiên cloud) thì `_agent_can_change` đúng với mọi đường nên guard — đúng thiết kế — không
+    tin exec-path và ca đối chứng `git submodule` (AUD-SEC-805) đỏ theo uid của máy chạy bench. Chỉ đường nằm trong
+    exec-path mặc định được ghim; đường khác (PATH, `GIT_EXEC_PATH`, thư mục tạm) vẫn xét thật; không đọc được
+    exec-path thì không ghim gì."""
+    real = getattr(guard, "_bench_real_can_change", guard._agent_can_change)
+    guard._bench_real_can_change = real
+    raw = str(guard._git_exec_path())
+    base = os.path.realpath(raw) + os.sep if raw else "\0"
+    guard._agent_can_change = lambda path: not os.path.realpath(path).startswith(base) and bool(real(path))
+
+
 def _bench_guard(inp: Dict[str, Any], env: BenchEnv) -> Dict[str, Any]:
     """Lệnh/tool → guard như hook PreToolUse: bộ luật, lỗi giữa chừng → `_failure_decision`, rồi chính sách mặc định
     (`apply_policy`, ADR-0018) hoặc `strict` (ask = chặn). `merge-check` là kết quả ghi trong ca (không gọi GitHub);
     ca không ghi → như merge-check lỗi mạng."""
     guard = env.module("guard")
+    _bench_pin_exec_path(guard)
     verdict = inp.get("merge_check")
     guard.merge_check = lambda selector, root: dict(verdict if isinstance(verdict, dict) else BENCH_MERGE_CHECK_DOWN)
     mode = str(inp.get("tool") or "bash")
@@ -20507,7 +20552,11 @@ def build_parser() -> argparse.ArgumentParser:
     pc = sub.add_parser("compose")
     pc.add_argument("--profile", required=True)
     pc.add_argument("--industry", action="append")
-    pc.add_argument("--scale", choices=SCALES, default="M")
+    pc.add_argument(
+        "--scale",
+        choices=SCALES,
+        help=f"vắng: giữ quy mô của bản đã ghép ở --out, chưa có thì {DEFAULT_SCALE} (ADR-0081)",
+    )
     pc.add_argument("--include-may", action="store_true")
     pc.add_argument(
         "--add",
