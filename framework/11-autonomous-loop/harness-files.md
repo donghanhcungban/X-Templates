@@ -330,7 +330,7 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   BUDGET (`PAGER=less`, `PAGER=sh` trơn qua — AUD-SEC-419/420); script nội tuyến chạy stdin MỜ (`cat f | perl -ne
   system`, `os.system(sys.stdin.read())`, `< f`) → BUDGET (thân heredoc/echo đã quét thì không); lối thoát: psql `\w |`,
   sqlite3 `.read '|…'`, vim `:terminal`/`jobstart()`/`:python3`…, gdb `python`/`guile`, lldb `-o 'platform shell …'`,
-  mongosh `require("child_process")`, `less +'!…'`, `wget --use-askpass`, `rsync --rsync-path`, `git bisect run`;
+  mongosh `require("child_process")`, `less +'!…'`, `wget --use-askpass`, `rsync --rsync-path` (đầu kia `host:` → luật máy xa, T-3956), `git bisect run`;
   `pdm --project D` như `-p D`; `gcloud billing projects unlink` → DESTROY; đích ghi glob `[…]`/`?` mở theo tệp có thật;
   `python3 - release-sign` (script từ stdin) → GO_SIGN. **Giới hạn** (hạn xét lại 2027-01-21): `kubectl run … -- 'lệnh có
   khoảng'` là argv một từ (vô hại); cụm `*` ở đối số công cụ ngoài bảng không mở (danh sách `for`); che giấu nhiều bước
