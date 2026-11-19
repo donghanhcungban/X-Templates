@@ -431,7 +431,7 @@ class DevTaskRealSuiteShardTest(DevTaskProject):
         (self.tmp / "tests").symlink_to(ROOT / "tests", target_is_directory=True)
         self.yaml(test_list=listing, test_weights=weights)
         want = xt.unittest_class_ids(ROOT, "tests", None)
-        got = self.shards(4)  # N của job `test`; N khác đã kiểm trong tiến trình (ShardPlanTest)
+        got = self.shards(6)  # N của job `test`; N khác đã kiểm trong tiến trình (ShardPlanTest)
         flat = [t for s in got for t in s]
         self.assertEqual(sorted(flat), want)
         self.assertEqual(len(flat), len(set(flat)))
