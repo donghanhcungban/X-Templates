@@ -866,6 +866,19 @@ class DoctorVersionTest(DoctorCase):
             self.assertNotIn("version", [f.code for f in self.findings(deep=False)])  # loop init: không gọi mạng
         latest.assert_not_called()
         self.write(".xtemplates/VERSION", "3.0.0-rc1\n")  # pre-release cũ hơn bản cùng số (SemVer §11)
+        # ADR-0081: pha build ghim khung — chậm trong cùng MAJOR không phải cảnh báo (chậm MAJOR vẫn báo, ca 2.0.0 ở trên);
+        # harden báo đủ để `/complete` nâng ở ranh giới pha
+        self.assertEqual(xt._phase_in_tree(self.base), "build")
+        self.assertEqual((msgs((3, 0, 0)), msgs((3, 4, 1))), ([], []))
+        xt_yaml = self.base / "xt.yaml"
+        text = xt_yaml.read_text(encoding="utf-8").replace("delivery_phase: build", "delivery_phase: harden")
+        xt_yaml.write_text(text, encoding="utf-8")
+        self.assertEqual(len(msgs((3, 4, 1))), 1)
+        xt_yaml.write_text(text.replace("delivery_phase: harden", "delivery_phase: lạ"), encoding="utf-8")
+        self.assertEqual(len(msgs((3, 4, 1))), 1)  # giá trị lạ → không coi là build, vẫn báo
+        xt_yaml.write_text(text.replace("delivery_phase: harden\n", ""), encoding="utf-8")
+        self.assertEqual(len(msgs((3, 4, 1))), 1)  # vắng khoá → vẫn báo
+        xt_yaml.write_text(text, encoding="utf-8")
         got = msgs((3, 0, 0))
         self.assertEqual(len(got), 1)
         self.assertIn("khung đã cài 3.0.0-rc1 cũ hơn", got[0])

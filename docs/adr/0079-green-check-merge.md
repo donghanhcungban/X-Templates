@@ -1,7 +1,7 @@
 # ADR-0079: Merge tự động theo check và ưu tiên số PR tăng dần
 
 - **Trạng thái:** Đã chấp nhận ngày 2026-11-14 (D-486).
-- **Trạng thái triển khai:** Đã triển khai — merge ở #558; `WF-REVIEW-005`/`WF-GIT-002` theo `merge_review` ở D-511
+- **Trạng thái triển khai:** Đã triển khai — merge ở #558; `WF-REVIEW-005`/`WF-GIT-002` theo `merge_review` ở D-512
   (cập nhật 2026-11-19, T-3958).
 
 ## Bối cảnh

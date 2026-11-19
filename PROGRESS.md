@@ -4,6 +4,7 @@
 
 ## Đang làm
 - 2026-11-19 **3.34.0 sắp cắt**: harden ADR-0080 xong 14 đợt (D-494…D-509; guard mặc định chặn D-503; giới hạn đã biết ở `harness-files.md`, có hạn 2027-01-21). Audit delta 13 nhóm ở `fe5f1e8e` (TEST/HAR lần đầu; SEC/TEST/DOC/HAR `rút gọn` — phần chưa rà ghi ở bảng nhóm của sổ); 🔴/🟠 mở 0. Còn: PR cắt bản (VERSION, CHANGELOG, GO-NO-GO §5 — agent ký theo #625), tag qua `release-tag.yml`, PR nâng 4 dự án đích.
+- ADR-0081 (D-511, #673): đường nhanh pha build — `compose` không `--scale` giữ quy mô cũ (không đọc được → lỗi, AUD-HAR-437), chưa có thì S; `doctor` ở build không cảnh báo chậm MINOR/PATCH ([đo dự án đích](research/2026-11-19-target-project-speed.md)). Chủ dự án: triển khai sau khi cắt bản xong.
 - 2026-11-11 **ADR-0075** xưởng đầu-cuối ([PLAN-factory-e2e](docs/autopilot/PLAN-factory-e2e.md), T-3841…T-3866; T-3845 `install.py --new`, `doctor --offline`; kế: lệnh triển khai, receipt bền — [ADR-0077](docs/adr/0077-deployment-receipts.md)). AUD-DOC-273/274: [báo cáo pilot](docs/ops/ARTIFACT-PILOT-2026-11-08.md) còn kiểm artifact trên VPS.
 - Dự án đích ([registry](docs/ops/registry.json)): cả 4 ở 3.32.0, tạm dừng theo yêu cầu tới sau tag 3.34.0. Còn mở: AUD-TEST-061 (CodeQL); fixture host Codex/Gemini.
 - D-457: PLAN factory-A/BE đã lưu kho. `LOOP-ORCH-020`: chỉ tăng agent khi có số. 10 nhóm `cong-cu` chờ phân loại ([TARGETS](docs/ops/TARGETS.md)). Hoãn: T-1690/T-1691 (quét lại SEC-091…099); rà `seeker19110/stored` chờ chủ repo (hạn xét 2026-12-31).
@@ -30,5 +31,5 @@
 - Coverage cục bộ < 100 % khi `coverage` cài ở site người dùng: hook chạy `python3 -I` nên tiến trình con không được đo — CI là cổng coverage (đo 2026-11-05).
 
 ## Bàn giao phiên
-- Mốc `main` `fe5f1e8e`. Xét PR xanh theo số tăng dần. Phiên "tiếp tục": đọc sổ `docs/ops/AUDIT-STATUS.md` (🔴/🟠 mở 0), PLAN-harden-2026-11-17 (T-3957 xong), CHANGELOG [3.34.0].
+- Mốc `main` `d8831571`. Xét PR xanh theo số tăng dần. Phiên "tiếp tục": đọc sổ `docs/ops/AUDIT-STATUS.md` (🔴/🟠 mở 0), PLAN-harden-2026-11-17 (T-3957 xong), CHANGELOG [3.34.0].
 - Container mới: `scripts/dev-task.sh setup`; trước khi đẩy `gate-fast`, CI là cổng đầy đủ. Subagent dùng scratch riêng dưới `/home/liend` (không `/tmp`: tmpfs, mất khi khởi động lại). Gate cục bộ: `coverage` và `pip` phải ở site-packages của `python3` (hook chạy `python3 -I`) — venv 3.15 đầu PATH; G7 cần `fetch --unshallow --tags`; `release-check` chạy ở worktree sạch (`.agents/`, `.codex/` chưa commit làm hàng `tree` đỏ).

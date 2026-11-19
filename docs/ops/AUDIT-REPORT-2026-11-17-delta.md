@@ -157,4 +157,4 @@ Theo quyết định của người dùng (D-509) đây là đợt sửa cuối:
 | l3 | TEST (lần đầu) | `INCONCLUSIVE` (4 mục con chưa rà) | 🟢 N1–N4 (giờ tường, regex ngưỡng cứng, 38 input trùng, scope 🟢); 71 module riêng xanh, chuỗi 33 module + test_hooks một tiến trình xanh (1 475 test) |
 | l4 | HAR (lần đầu) · DOC | `INCONCLUSIVE` (HAR `harness-files.md:252–387`, DOC `DECISIONS*.md`, vài file) | 🟠 `PROGRESS.md` lạc hậu 26 PR · 🟢 trạng thái ADR 0075–0079, `orchestration-and-subagents.md:65`, `harness-files.md:93`, AUD-HAR-430 còn `mở`; 28/28 URL ngoài, liên kết, CHANGELOG, số liệu sạch; `harness-files.md` 55/56 khớp hành vi |
 
-Sửa gộp T-3958 (D-511, D-512) và `PROGRESS.md` trong PR cắt bản; bảng nhóm cập nhật `fe5f1e8e` (ARCH/CODE/DEP/CI/XFEAT `đã quét`; SEC/TEST/DOC/HAR `rút gọn`, chỗ chưa rà ghi ở cột Ghi chú). Còn 🟢 mở: AUD-HAR-436, AUD-TEST-125…127, AUD-SEC-985, AUD-DEP-036.
+Sửa gộp T-3958 (D-512, D-513) và `PROGRESS.md` trong PR cắt bản; bảng nhóm cập nhật `fe5f1e8e` (ARCH/CODE/DEP/CI/XFEAT `đã quét`; SEC/TEST/DOC/HAR `rút gọn`, chỗ chưa rà ghi ở cột Ghi chú). Còn 🟢 mở: AUD-HAR-436, AUD-TEST-125…127, AUD-SEC-985, AUD-DEP-036.

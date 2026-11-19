@@ -8,7 +8,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [3.34.0] - 2026-11-19
 
-Bản harden (ADR-0080): guard mặc định chặn theo danh sách đóng (D-503…D-509) sau 11 cổng ký và audit delta 13 nhóm; giới hạn đã biết ghi ở `framework/11-autonomous-loop/harness-files.md` (có hạn 2027-01-21). **Dự án đích:** cài lại khung (`install.py`) để nhận guard, hook, workflow và gói mới; kiểm lại ruleset (mẫu `required_review_thread_resolution: false` theo `merge_review`, D-511) và, với gói `web-api-ts`, CI chạy `pnpm audit:exceptions`.
+Bản harden (ADR-0080): guard mặc định chặn theo danh sách đóng (D-503…D-509) sau 11 cổng ký và audit delta 13 nhóm; giới hạn đã biết ghi ở `framework/11-autonomous-loop/harness-files.md` (có hạn 2027-01-21). **Dự án đích:** cài lại khung (`install.py`) để nhận guard, hook, workflow và gói mới; kiểm lại ruleset (mẫu `required_review_thread_resolution: false` theo `merge_review`, D-512) và, với gói `web-api-ts`, CI chạy `pnpm audit:exceptions`; ADR-0081 (D-511): `compose` không `--scale` ra **S** (trước: M) và `doctor` ở pha build không báo khung chậm MINOR/PATCH — script dựa vào mặc định M phải truyền `--scale M`.
 
 ### Added
 
@@ -108,11 +108,29 @@ Bản harden (ADR-0080): guard mặc định chặn theo danh sách đóng (D-50
 
 ### Changed
 
-- `WF-REVIEW-005`, `WF-GIT-002` (T-3958, D-511; giữ ID và mức MUST): thread resolution của ruleset thành có điều kiện —
+- `WF-REVIEW-005`, `WF-GIT-002` (T-3958, D-512; giữ ID và mức MUST): thread resolution của ruleset thành có điều kiện —
   bật `required_review_thread_resolution: true` khi `merge_review: required` hoặc có người review tay; với
   `merge_review: optional` (mặc định, ADR-0079) để `false`, blocker do `pr next` + review 1 lần chặn. Khớp ruleset
   repo khung và mẫu `ruleset-main.json` (đã `false` từ #558); `tests/test_ci.py` ghim khoá đi cùng `merge_review`.
   Dự án đích: ghép lại blueprint theo hai ID; dự án đặt `merge_review: required` bật lại khoá ở ruleset sống.
+
+- ADR-0081 (D-511, đường nhanh pha build): `xt.py compose` không `--scale` giữ quy mô của blueprint đã ghép ở `--out`,
+  chưa có thì **S** (trước: luôn M) và in một dòng stderr nói rõ nguồn; `doctor` ở `delivery_phase: build` không còn
+  cảnh báo khi bản khung đã cài chậm MINOR/PATCH (chậm MAJOR vẫn cảnh báo; harden và `doctor --drift` như cũ).
+  `composition.md` §Chọn quy mô hỏi theo hiện trạng; `/autopilot`, `/complete`, `/blueprint` cập nhật theo. Số đo:
+  [research 2026-11-19](research/2026-11-19-target-project-speed.md). **Dự án đích:** chạy lại `install.py` (nhận
+  `xt.py`, skill); dự án đang ở M/L không đổi gì — ghép lại không `--scale` giữ quy mô cũ; script gọi `compose` mà
+  dựa vào mặc định M phải truyền `--scale M`. Bản đã ghép mà quy mô không đọc được (`scale:` hỏng hay lạ) → `compose`
+  thoát 2 và đòi `--scale` thay vì ngầm hạ về S (AUD-HAR-437; bộ đọc dùng chung với cổng, hiểu `scale: m  # ghi chú` và
+  nháy); `LOOP-HARNESS-020` ghi ngoại lệ pha build của `doctor` (AUD-HAR-438); gói ngành fintech/healthcare/government
+  ghi "quy mô khi vận hành thật L" thay cho "mặc định L" (AUD-DOC-302).
+
+- `autonomy-bench` (D-510): ghim tiền đề "exec-path mặc định của git không đổi được" khi chấm corpus guard, như đã
+  ghim `merge-check` — chạy bằng root (container phiên cloud) không còn báo `false_red` ở ca đối chứng
+  `aud805-ctl-submodule`; đường ngoài exec-path mặc định vẫn xét thật. Test guard hết phụ thuộc uid và token `gh` của
+  máy chạy (`tests/git_fixture.default_exec_path_fixed`, `tests/test_guard_signoff12.py` ghim verdict merge-check).
+  Dự án đích: không đổi.
+
 - `loop status` (AUD-HAR-412, D-500): pha harden không còn đòi audit theo mốc — `milestone_audit: signoff` (audit delta
   dồn về cổng ký, ADR-0080) thay cho `now`; pha build giữ `g7`; `topo: review`/`audit` ở harden ghi "gom về cổng ký".
   README mảng 11 bước 10, `/autopilot` bước 5, `/complete` bước 4, `audit.md` §1, mẫu PLAN đổi theo. Skill review/gate
@@ -251,7 +269,7 @@ Bản harden (ADR-0080): guard mặc định chặn theo danh sách đóng (D-50
   `pnpm audit:exceptions` ngay sau `pnpm audit`, trước khi cài phụ thuộc (`PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false`,
   vì pnpm 12 mặc định cài trước `pnpm <script>`) — ngoại lệ có hạn nay được máy kiểm hạn. README gói bỏ câu "không kèm
   workflow CI mẫu". Dự án đích: cài lại gói (`install.py --pack web-api-ts`) để nhận workflow mới.
-- T-3958 (D-512, đường lùi của D-504): GHSA-fc5q-39xc-vjpf (picomatch) bị rút ngày 2026-11-18 — gỡ khỏi
+- T-3958 (D-513, đường lùi của D-504): GHSA-fc5q-39xc-vjpf (picomatch) bị rút ngày 2026-11-18 — gỡ khỏi
   `auditConfig.ignoreGhsas` và `audit-exceptions.json` của starter `web-api-ts` (cả hai để rỗng); `pnpm audit
   --audit-level moderate` không còn báo. Giữ `check-audit-exceptions.ts`, bước CI và test cho ngoại lệ sau này.
   Dự án đích: gỡ dòng ngoại lệ này nếu đã chép starter.

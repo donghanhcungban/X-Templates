@@ -13,7 +13,7 @@ Giao thức vòng lặp: `<FW>/11-autonomous-loop/README.md`; audit: `/audit` (`
 2. Đọc `delivery_phase` trong `xt.yaml`; `<XT> blueprint-status BLUEPRINT.md --strict --json` (MUST mở); `<XT> loop status` (vòng build còn `continue` → quay lại `/autopilot`; vòng harden `budget`/gắn phiên khác → `loop attach` hoặc PLAN kế + `loop init` — **không làm lát ngoài vòng sống**); có sổ giai đoạn (`<XT> stage status`, ADR-0058): giai đoạn ≥ 2 (1: máy khoá — dừng, báo), PLAN khai đúng `<XT> stage status`.
 
 ## Bước 1 — vào pha harden (một PR, một lần)
-Còn `build` → PR đặt `delivery_phase: harden`, khai khoá sàn M/L (`format_check`, `coverage`, kiểm kiểu, `e2e` — `<XT> floor` liệt kê) và `attack`/`perf` (ADR-0042; chưa có công cụ → để rỗng kèm lý do) trong `xt.yaml`. PR đụng `xt.yaml` luôn tính harden (D-137). `pr next` áp chính sách của nhánh đích theo `LOOP-STOP-022` và ADR-0079; sàn Gate áp lại ở pha harden.
+Còn `build` → PR đặt `delivery_phase: harden`, `compose --scale` đích (ADR-0081), khoá sàn M/L (`format_check`, `coverage`, kiểm kiểu, `e2e` — `<XT> floor` liệt kê) và `attack`/`perf` (ADR-0042; chưa có công cụ → để rỗng kèm lý do) trong `xt.yaml`. PR đụng `xt.yaml` luôn tính harden (D-137). `pr next` áp chính sách của nhánh đích theo `LOOP-STOP-022` và ADR-0079.
 
 ## Bước 2 — sổ việc
 Có `docs/ops/AUDIT-STATUS.md` → dùng sổ đang có, **không audit lại ở đây**; chưa có → `/audit full` (xác minh đối kháng 🔴/🟠 → sổ, D-NNN).
