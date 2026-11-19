@@ -191,7 +191,8 @@ B_DENY = (
     (f"gdb -batch -ex 'python import os; os.system(\"{RM} ~\")'", BU),
     (f"lldb -o 'platform shell {RM} ~'", BU),
     (f"less +'!{RM} ~' x", RD),
-    (f"rsync --rsync-path='{RM} ~' a host:b", RD),
+    (f"rsync --rsync-path='{RM} ~' a host:b", "REMOTE_EXEC"),  # T-3956 F2: chạy ở máy xa
+    (f"rsync --rsync-path='{RM} ~' a b", RD),  # rsync cục bộ: luật cục bộ
     ("pdm --project ~ run rm -rf x", WO),
     ("gcloud billing projects unlink proj", "DESTROY"),
     ("gzip .claud[e]/settings.json", HB),

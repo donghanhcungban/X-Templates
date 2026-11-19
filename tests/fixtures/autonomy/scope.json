@@ -698,6 +698,12 @@
     "AUD-SEC-939",
     "AUD-SEC-946"
    ]
+  },
+  {
+   "reason": "Thời gian quyết định của guard khi quét lệnh máy xa dài (F8: ssh/kubectl/docker exec, hạn giờ chung D-505) — thuộc tính hiệu năng, không phải cho/chặn của một lệnh để mô phỏng bằng corpus; đỡ bằng tests.test_guard_signoff14 (cpu_budget, không ngưỡng cứng) và tests.test_guard_exec_class",
+   "ids": [
+    "AUD-SEC-969"
+   ]
   }
  ]
 }
