@@ -152,3 +152,9 @@
 
 - [x] `T-3964` 🟠 AUD-HAR-442: commit trong worktree cùng repo chạy cổng của dự án trên worktree đó — Gate: `python3 -m unittest tests.test_hooks.CommitGateWorktreeTest` (files: .claude/hooks/pre-bash-guard.sh, tests/test_hooks.py)
 - [ ] `T-3965` 🟢 AUD-HAR-443 (hoãn, D-518: bản đầu sai tiền đề, rút khỏi #680): commit là `git commit` đứng một mình (trường mới của guard.py) → loại tệp chưa track khỏi tập tệp đổi — Gate: `python3 -m unittest tests.test_commit_gate` (files: .claude/hooks/guard.py, .claude/hooks/pre-bash-guard.sh, scripts/dev-task.sh, tests/)
+
+## Đợt 18 — harness Codex sinh từ `.claude/` (ADR-0082, D-519)
+> Chủ repo 2026-11-19: tệp dính tài khoản cá nhân vào `.gitignore` (#682), tệp harness thì tích hợp. Tệp `/import` cũ không commit (guard cũ, đường tuyệt đối).
+
+- [ ] `T-3966` Bộ sinh harness Codex trong `install.py` (`--harness codex`, `--sync-codex`), tệp sinh ở repo khung, test so byte — Gate: `python3 -m unittest tests.test_codex_harness` (files: scripts/install.py, tests/test_codex_harness.py, .agents/, .codex/, framework/templates/harness/README.md)
+- [ ] `T-3967` 🟠 AUD-SEC-987: guard xếp `.agents/skills/*`, `.codex/agents/*`, `.codex/hooks.json` vào nhóm năng lực cần duyệt ở dự án đích — Gate: `python3 -m unittest tests.test_hooks.CapabilityCodexPathsTest` (files: .claude/hooks/guard.py, tests/)
