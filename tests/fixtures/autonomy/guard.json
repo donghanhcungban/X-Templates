@@ -24985,7 +24985,7 @@
   {"id": "guard-t3954-b-deny-35", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "gdb -batch -ex 'python import os; os.system(\"rm -rf ~\")'"}, "expect": {"allowed": false, "code": "BUDGET"}},
   {"id": "guard-t3954-b-deny-36", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "lldb -o 'platform shell rm -rf ~'"}, "expect": {"allowed": false, "code": "BUDGET"}},
   {"id": "guard-t3954-b-deny-37", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "less +'!rm -rf ~' x"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
-  {"id": "guard-t3954-b-deny-38", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "rsync --rsync-path='rm -rf ~' a host:b"}, "expect": {"allowed": false, "code": "RULE_DENY"}},
+  {"id": "guard-t3954-b-deny-38", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "rsync --rsync-path='rm -rf ~' a host:b"}, "expect": {"allowed": false, "code": "REMOTE_EXEC"}},
   {"id": "guard-t3954-b-deny-39", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "pdm --project ~ run rm -rf x"}, "expect": {"allowed": false, "code": "WIPE_OUTSIDE"}},
   {"id": "guard-t3954-b-deny-40", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "gcloud billing projects unlink proj"}, "expect": {"allowed": false, "code": "DESTROY"}},
   {"id": "guard-t3954-b-deny-41", "origin": "audit", "refs": ["D-503", "D-509", "AUD-SEC-951"], "input": {"command": "gzip .claud[e]/settings.json"}, "expect": {"allowed": false, "code": "HOOK_BYPASS"}},
