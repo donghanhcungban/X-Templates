@@ -1528,6 +1528,7 @@ class ReasonCodeLockTest(unittest.TestCase):
     # Mã có nhiều dấu (review #407 R1: ≥ 3 dấu WIPE_OUTSIDE chưa khoá): mỗi DẤU một lệnh thật sinh đúng dấu đó.
     MARKER_EXAMPLES = (
         ("WIPE_OUTSIDE", "rm -r ."),  # xoá đệ quy gốc dự án
+        ("WIPE_OUTSIDE", "chmod -R u+w /srv/app"),  # đổi quyền đệ quy ngoài gốc (T-3955 C6)
         ("WIPE_OUTSIDE", "echo x > ~/.ssh/authorized_keys"),  # ghi đè/xoá khoá hay cấu hình (T-3951 A11)
         ("WIPE_OUTSIDE", 'echo x | tee "$OUT"/*'),  # rỗng khi biến chưa đặt (T-3951 A2)
         ("WIPE_OUTSIDE", 'echo x | tee "/home/$USER/x"'),  # tiền tố ngoài gốc trước biến (T-3951 A2)

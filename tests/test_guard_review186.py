@@ -561,7 +561,9 @@ class Review3Test(unittest.TestCase):
                 "cat <> .autopilot/verified.json": "EVIDENCE_HANDWRITE",
             }
         )
-        self.assertAllowed(("exec 3>&1", "exec >/tmp/log 2>&1", "exec 3<> /tmp/fifo", "cat < .env"))
+        self.assertAllowed(
+            ("exec 3>&1", "exec >/tmp/log 2>&1", "exec 3<> /tmp/fifo", "cat < README.md")
+        )  # T-3955 C3: `cat < .env` in bí mật
 
     def test_guard_r3_more_interpreters_denied(self):
         self.assertDenied(
