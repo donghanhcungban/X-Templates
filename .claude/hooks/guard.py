@@ -21146,6 +21146,7 @@ _GATE_BRANCHED: FrozenSet[str] = frozenset(
     # không thuộc tập: `_strip_prefixes` bỏ chúng trước khi lấy tên nên cổng không bao giờ gặp chúng làm tên lệnh.
     + "m4 mkfs for alias mktemp".split()
     + "doctl heroku http https xh xhs stripe twilio sendmail msmtp ssmtp swaks mail mailx mutt s-nail man".split()  # T-3952
+    + "autossh curlie sponge dos2unix unix2dos mac2unix compress pigz".split()  # T-3954 (R2, R3, B3)
     # T-3951: tên luật đọc-chỉ của `_fence_reader`/`FD_DATA_OK` (thuộc `GATE_PASSIVE`)
     + "actionlint bandit codespell flake8 pylint pyright yamllint column comm fmt fold nl paste".split()
 ).union(
