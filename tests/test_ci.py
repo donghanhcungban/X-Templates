@@ -391,6 +391,28 @@ class MergeGateStubTest(unittest.TestCase):
         template = ROOT / "framework" / "templates" / "ruleset-main.json"
         self.assertEqual(required_checks(template), ["quality", "gitleaks"])
 
+    def test_thread_resolution_follows_merge_review(self):
+        """WF-REVIEW-005/WF-GIT-002 (ADR-0079): `merge_review: required` → ruleset bật thread resolution; mặc định
+        `optional` → `false` (cổng thread thay bằng `pr next` + review 1 lần). Ghim cả repo khung và mẫu dự án đích."""
+        pairs = (
+            (RULESET, xt._xt_keys(ROOT)),
+            (ROOT / "framework" / "templates" / "ruleset-main.json", xt._xt_keys(ROOT / "framework" / "templates")),
+        )
+        for ruleset, keys in pairs:
+            with self.subTest(ruleset=ruleset.name):
+                rules = json.loads(ruleset.read_text(encoding="utf-8"))["rules"]
+                params = next(r for r in rules if r["type"] == "pull_request")["parameters"]
+                review = keys.get("merge_review", "optional")
+                self.assertIn(review, ("optional", "required"))
+                self.assertIs(params["required_review_thread_resolution"], review == "required")
+        wording = {
+            "code-review.md": "`merge_review: required` thì ruleset có `required_review_thread_resolution: true`",
+            "git-and-branching.md": "resolve thread khi `merge_review: required`",
+        }
+        for doc, phrase in wording.items():
+            with self.subTest(doc=doc):
+                self.assertIn(phrase, (ROOT / "framework" / "10-workflow" / doc).read_text(encoding="utf-8"))
+
 
 class PullRequestTargetTest(unittest.TestCase):
     """ADR-0036 §Lý do: ngoài `pr-review.yml` không workflow nào trong `.github/workflows` dùng `pull_request_target`."""

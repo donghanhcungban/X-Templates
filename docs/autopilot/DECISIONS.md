@@ -601,3 +601,10 @@
 - Chọn: Một đợt sửa cuối (đợt 14) cho mọi 🔴/🟠 một bước có thể do lỡ tay và chặn oan phổ biến, rồi KHÔNG chạy thêm cổng ký fuzz toàn diện: kiểm bằng cổng máy + một lô chặn oan hồi quy, ký GO; họ lối thoát shell/che giấu cố ý ghi giới hạn đã biết (hạn 2027-01-21 cùng đánh giá sandbox ADR-0072)
 - Lý do (tiêu chí chất lượng cuối): Người dùng chọn phương án 1 (2026-11-19). Đúng và an toàn: mọi lỗ một bước dễ lỡ tay và chặn oan phổ biến vẫn được sửa; hàng rào thật cho dạng cố ý là sandbox (ADR-0072); 11 vòng cho thấy fuzz mở rộng không hội tụ nên dừng ở kiểm hồi quy.
 - Đường lùi: Mở lại các AUD chấp nhận thành mở và sửa ở đợt sau
+
+### D-511 · 2026-11-19T05:50:07+00:00 · T-3958: ruleset main (repo khung + mẫu) để required_review_thread_resolution false từ #558 (ADR-0079), trái chữ WF-REVIEW-005/WF-GIT-002 (true, chặn merge). Sửa ruleset hay sửa yêu cầu?
+
+- Phương án: (1) Giữ ruleset false; sửa WF-REVIEW-005/WF-GIT-002 (giữ ID, giữ MUST) thành có điều kiện: thread resolution bắt buộc khi merge_review: required hoặc có người review tay; optional thì pr next + review 1 lần thay thế · (2) Bật lại true ở cả hai ruleset (theo D-143), giữ chữ yêu cầu
+- Chọn: Giữ ruleset false; sửa WF-REVIEW-005/WF-GIT-002 (giữ ID, giữ MUST) thành có điều kiện: thread resolution bắt buộc khi merge_review: required hoặc có người review tay; optional thì pr next + review 1 lần thay thế
+- Lý do (tiêu chí chất lượng cuối): Đúng: ADR-0079 bỏ có chủ ý yêu cầu thread để steward tự merge; bật lại true làm PR xanh chờ người resolve, trái ADR. Blocker vẫn bị chặn bởi pr next + review 1 lần (ADR-0062). Bền: test ghim khoá ruleset khớp merge_review ở cả repo khung và mẫu. Thay D-143 ở khoá này.
+- Đường lùi: Đặt merge_review: required và required_review_thread_resolution: true ở ruleset (test ghim đòi hai khoá đi cùng nhau)

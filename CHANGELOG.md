@@ -104,6 +104,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- `WF-REVIEW-005`, `WF-GIT-002` (T-3958, D-511; giữ ID và mức MUST): thread resolution của ruleset thành có điều kiện —
+  bật `required_review_thread_resolution: true` khi `merge_review: required` hoặc có người review tay; với
+  `merge_review: optional` (mặc định, ADR-0079) để `false`, blocker do `pr next` + review 1 lần chặn. Khớp ruleset
+  repo khung và mẫu `ruleset-main.json` (đã `false` từ #558); `tests/test_ci.py` ghim khoá đi cùng `merge_review`.
+  Dự án đích: ghép lại blueprint theo hai ID; dự án đặt `merge_review: required` bật lại khoá ở ruleset sống.
 - `loop status` (AUD-HAR-412, D-500): pha harden không còn đòi audit theo mốc — `milestone_audit: signoff` (audit delta
   dồn về cổng ký, ADR-0080) thay cho `now`; pha build giữ `g7`; `topo: review`/`audit` ở harden ghi "gom về cổng ký".
   README mảng 11 bước 10, `/autopilot` bước 5, `/complete` bước 4, `audit.md` §1, mẫu PLAN đổi theo. Skill review/gate
