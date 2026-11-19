@@ -22,7 +22,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `.codex/agents/<tên>.toml` (từ `.claude/agents/<tên>.md`: `name`, `description`, `model_reasoning_effort`,
   `developer_instructions`; không ghi `model`). Tệp sinh được ghi nhận ở khoá `codex_files` của `manifest.json` và đi
   theo `.claude/` ở các lần cài sau (kể cả khi `--force-harness` thay nguồn — D-520); tệp dự án sửa khác bản đã ghi nhận,
-  hay gương dự án tự có ở lần cài Codex đầu, được giữ kèm `.xtemplates-new` — riêng gương có sẵn mà hash trùng bản khung
+  hay gương dự án tự có khác đầu ra sinh ở lần cài Codex đầu, được giữ kèm `.xtemplates-new` — riêng gương có sẵn mà hash trùng bản khung
   đã ghi ở manifest harness thì cập nhật tại chỗ; không ghi/đọc xuyên symlink; `--plan` có khoá
   `codex_harness`. Frontmatter agent ngoài dạng phẳng một dòng (block scalar, khối lồng, chuỗi có thoát, giá trị trơn kiểu
   null/bool/số…) → bỏ qua tệp đó kèm cảnh báo, không sinh TOML. Repo khung commit đầu ra của bộ sinh; cờ mới
