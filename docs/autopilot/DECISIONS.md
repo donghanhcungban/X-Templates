@@ -595,6 +595,13 @@
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: mọi lỗi có thể do lỡ tay hoặc chặn oan lệnh phổ biến vẫn được sửa; nhóm (c) cần payload nguy hiểm viết tường minh vào stdin của trình thông dịch rồi che bằng cú pháp — không thể là tai nạn của agent và cùng bản chất với (a)/(b) đã chấp nhận ở D-507; có điều kiện 'sửa nếu gọn' để không bỏ lỡ cách sửa rẻ. Phương án 2 không có điểm dừng (9 vòng); phương án 3 bỏ cả lỗi lỡ tay.
 - Đường lùi: Mở lại họ (c) thành AUD mở và sửa ở đợt sau; không đổi mã
 
+### D-509 · 2026-11-18T23:15:12+00:00 · Cổng ký 11 (4d8c403f): lô A 7 🔴/7 🟠, lô C 2 🔴/4 🟠, lô B 0 🔴/7 🟠 (chặn oan phổ biến: git pull --rebase && git push). 11 vòng chưa hội tụ. Kết thúc harden thế nào để cắt 3.34.0?
+
+- Phương án: (1) Một đợt sửa cuối (đợt 14) cho mọi 🔴/🟠 một bước có thể do lỡ tay và chặn oan phổ biến, rồi KHÔNG chạy thêm cổng ký fuzz toàn diện: kiểm bằng cổng máy + một lô chặn oan hồi quy, ký GO; họ lối thoát shell/che giấu cố ý ghi giới hạn đã biết (hạn 2027-01-21 cùng đánh giá sandbox ADR-0072) · (2) Tiếp tục lặp cổng ký tới khi sạch · (3) Ký GO ngay, ghi mọi phát hiện là giới hạn
+- Chọn: Một đợt sửa cuối (đợt 14) cho mọi 🔴/🟠 một bước có thể do lỡ tay và chặn oan phổ biến, rồi KHÔNG chạy thêm cổng ký fuzz toàn diện: kiểm bằng cổng máy + một lô chặn oan hồi quy, ký GO; họ lối thoát shell/che giấu cố ý ghi giới hạn đã biết (hạn 2027-01-21 cùng đánh giá sandbox ADR-0072)
+- Lý do (tiêu chí chất lượng cuối): Người dùng chọn phương án 1 (2026-11-19). Đúng và an toàn: mọi lỗ một bước dễ lỡ tay và chặn oan phổ biến vẫn được sửa; hàng rào thật cho dạng cố ý là sandbox (ADR-0072); 11 vòng cho thấy fuzz mở rộng không hội tụ nên dừng ở kiểm hồi quy.
+- Đường lùi: Mở lại các AUD chấp nhận thành mở và sửa ở đợt sau
+
 ### D-510 · 2026-11-19T04:23:43+00:00 · Cổng commit đỏ ở phiên cloud chạy root vì hai ca đối chứng git submodule (AUD-SEC-805) phụ thuộc uid của máy chạy test — xử lý thế nào để commit bản nghiên cứu 2026-11-19?
 
 - Phương án: (1) Ghim tiền đề exec-path mặc định không đổi được trong hai ca đối chứng (tests/git_fixture.py default_exec_path_fixed); không đổi guard, không bỏ khẳng định nào · (2) Không commit, giao bản nghiên cứu ngoài repo và chờ người sửa test · (3) Sửa guard để root vẫn tin exec-path mặc định
