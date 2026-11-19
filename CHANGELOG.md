@@ -22,7 +22,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `.codex/agents/<tên>.toml` (từ `.claude/agents/<tên>.md`: `name`, `description`, `model_reasoning_effort`,
   `developer_instructions`; không ghi `model`). Tệp sinh được ghi nhận ở khoá `codex_files` của `manifest.json` và đi
   theo `.claude/` ở các lần cài sau (kể cả khi `--force-harness` thay nguồn — D-520); tệp dự án sửa khác bản đã ghi nhận,
-  hay gương dự án tự có ở lần cài Codex đầu, được giữ kèm `.xtemplates-new` — riêng gương có sẵn mà hash trùng bản khung
+  hay gương dự án tự có khác đầu ra sinh ở lần cài Codex đầu, được giữ kèm `.xtemplates-new` — riêng gương có sẵn mà hash trùng bản khung
   đã ghi ở manifest harness thì cập nhật tại chỗ; không ghi/đọc xuyên symlink; `--plan` có khoá
   `codex_harness`. Frontmatter agent ngoài dạng phẳng một dòng (block scalar, khối lồng, chuỗi có thoát, giá trị trơn kiểu
   null/bool/số…) → bỏ qua tệp đó kèm cảnh báo, không sinh TOML. Repo khung commit đầu ra của bộ sinh; cờ mới
@@ -51,6 +51,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   D-516). Dự án đích: không đổi (CI mẫu không chia shard).
 
 ### Fixed
+
+- Guard bảo vệ harness Codex (AUD-SEC-987, T-3967, ADR-0082): ở dự án đích `.agents/skills/*` và `.codex/agents/*` nay là
+  "năng lực" cần duyệt như `.claude/skills/*`, `.claude/agents/*` (`LOOP-STOP-023`, câu của mục có thêm ba đường; ID và
+  mức giữ nguyên); `.codex/hooks.json` (tệp nối guard cho Codex) được rào như `.claude/settings.json` ở cả repo khung lẫn
+  dự án đích — Bash ghi/xoá/`chmod`/`ln`, `rm -rf .codex`, xargs qua `.codex`/`.agents` bị chặn; Edit theo luật tệp cổng;
+  `install.py --harness codex`, `git add/restore`, đọc tệp và `rm -rf .codex/hooks` vẫn chạy. `merge-check` xếp
+  `.agents/skills/*`, `.codex/hooks.json` vào đường dẫn cổng. **Dự án đích:** chạy lại `install.py` để nhận guard.
 
 - Hook cổng commit (`pre-bash-guard.sh`): commit trong git worktree của **chính repo** (dưới gốc dự án, vd
   `.claude/worktrees/<tên>`, hay ngoài gốc) nay chạy cổng của dự án trên chính worktree đó — trước đây bị coi là repo

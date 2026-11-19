@@ -156,5 +156,7 @@
 ## Đợt 18 — harness Codex sinh từ `.claude/` (ADR-0082, D-519)
 > Chủ repo 2026-11-19: tệp dính tài khoản cá nhân vào `.gitignore` (#682), tệp harness thì tích hợp. Tệp `/import` cũ không commit (guard cũ, đường tuyệt đối).
 
-- [ ] `T-3966` Bộ sinh harness Codex trong `install.py` (`--harness codex`, `--sync-codex`), tệp sinh ở repo khung, test so byte — Gate: `python3 -m unittest tests.test_codex_harness` (files: scripts/install.py, tests/test_codex_harness.py, .agents/, .codex/, framework/templates/harness/README.md)
-- [ ] `T-3967` 🟠 AUD-SEC-987: guard xếp `.agents/skills/*`, `.codex/agents/*`, `.codex/hooks.json` vào nhóm năng lực cần duyệt ở dự án đích — Gate: `python3 -m unittest tests.test_hooks.CapabilityCodexPathsTest` (files: .claude/hooks/guard.py, tests/)
+- [x] `T-3966` Bộ sinh harness Codex trong `install.py` (`--harness codex`, `--sync-codex`), tệp sinh ở repo khung, test so byte — Gate: `python3 -m unittest tests.test_codex_harness` (files: scripts/install.py, tests/test_codex_harness.py, .agents/, .codex/, framework/templates/harness/README.md)
+- [x] `T-3967` 🟠 AUD-SEC-987: guard xếp `.agents/skills/*`, `.codex/agents/*`, `.codex/hooks.json` vào nhóm năng lực cần duyệt ở dự án đích — Gate: `python3 -m unittest tests.test_hooks.CapabilityCodexPathsTest` (files: .claude/hooks/guard.py, tests/)
+- [ ] `T-3968` 🟠 AUD-SEC-988: khôi phục tệp/thư mục hàng rào từ rev/stash (`git checkout <rev> --`, `git restore --source`) → chặn — Gate: `python3 -m unittest tests.test_hooks.FenceRestoreFromRevTest` (files: .claude/hooks/guard.py, tests/)
+- [ ] `T-3969` 🟠 AUD-SEC-989: rào tệp nối guard của Cursor/Copilot/Grok/OpenCode như `.codex/hooks.json` — Gate: `python3 -m unittest tests.test_hooks.FenceAdapterFilesTest` (sau: T-3968; files: .claude/hooks/guard.py, scripts/xt.py, tests/)
