@@ -26,6 +26,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Hook cổng commit (`pre-bash-guard.sh`): commit trong git worktree của **chính repo** (dưới gốc dự án, vd
+  `.claude/worktrees/<tên>`, hay ngoài gốc) nay chạy cổng của dự án trên chính worktree đó — trước đây bị coi là repo
+  lồng/ngoài và ở chính sách mặc định cổng **không chạy** (AUD-HAR-442, T-3964, D-517). Nhận diện: cùng common-dir và
+  liên kết ngược `gitdir` của worktree; repo khác giữ luật cũ (không tự chạy cổng của repo khác, AUD-SEC-015); git
+  không trả lời được mà thư mục trông như worktree → cảnh báo stderr, không chặn. **Dự án đích:** chạy lại
+  `install.py` để nhận hook; commit của agent trong worktree sẽ mất thêm thời gian cổng.
+
 - `/complete` Bước 1: sau khi PR đặt `delivery_phase: harden` được merge, chạy lại `doctor` và nâng khung nếu nó báo
   bản cài cũ — trước đó `doctor` chỉ chạy ở Bước 0 khi còn `build` (pha build không báo chậm MINOR/PATCH, ADR-0081)
   nên "nâng khung ở ranh giới pha" không xảy ra (AUD-HAR-440, T-3963). Dự án đích: nhận khi chạy lại `install.py`.
