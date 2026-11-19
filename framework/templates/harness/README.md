@@ -40,10 +40,11 @@ thật (2026-11-05: Codex CLI 0.147.0 có trên máy dev nhưng chạy nó tốn
 thừa hưởng model của phiên). Chỉ skill/agent khung cài (trừ skill bị `.claude/commands/` che); ghi như file harness:
 chưa có → chép, còn đúng hash lần trước → cập nhật, dự án đã sửa → `kept-own`/`.xtemplates-new`; không ghi/đọc xuyên
 symlink; hash ở `codex_files` của `.xtemplates/manifest.json`; `--plan` liệt kê ở `codex_harness` (kèm `reason` khi bỏ
-qua). `--force-harness` **không** áp cho tệp Codex — gương dự án tự có không bị ghi đè. Ngoại lệ duy nhất: lần đầu sinh
-mà dự án đã tự làm gương và gương CHẮC CHẮN là bản khung đã cài theo manifest harness (skill: trùng hash nguồn khung đã
-ghi; agent: nguồn `.md` chưa sửa so với hash đã ghi và gương trùng bản sinh từ nó) thì cập nhật tại chỗ; gương trùng bản
-dự án tự sửa/skill riêng → `.xtemplates-new`. Agent chỉ nhận frontmatter YAML phẳng (`khoá: giá trị` một dòng, giá trị
+qua). Tệp Codex là sản phẩm sinh từ `.claude/`: tệp trùng đầu ra sinh được ghi nhận vào `codex_files` (như tệp harness
+trùng bản khung) và **đi theo** `.claude/` ở các lần cài sau — kể cả khi `--force-harness` thay nguồn; chỉ tệp KHÁC bản
+đã ghi nhận mới được giữ, bản sinh ra `.xtemplates-new`. Lần cài Codex đầu (chưa ghi nhận): gương dự án tự có được giữ
+kèm `.xtemplates-new` (cả với `--force-harness`), trừ khi CHẮC CHẮN là bản khung đã cài theo manifest harness (skill:
+trùng hash nguồn khung đã ghi; agent: nguồn `.md` chưa sửa và gương trùng bản sinh từ nó) thì cập nhật tại chỗ. Agent chỉ nhận frontmatter YAML phẳng (`khoá: giá trị` một dòng, giá trị
 trơn hoặc nháy không thoát; `name`/`description`/`effort` trơn có kiểu YAML như `null`, `true`, số, ngày phải đặt trong
 nháy); khối `|`/`>`, khoá lồng, nháy có thoát, chú thích cuối dòng, ngắt dòng lạ… → bỏ qua kèm cảnh báo nêu dòng, giữ
 bản cũ. Sửa skill/agent ở `.claude/` thì chạy lại `install.py --harness codex`. Repo khung: `python3 scripts/install.py .

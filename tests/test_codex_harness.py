@@ -73,10 +73,16 @@ def git_env() -> dict[str, str]:
 def committed_codex_files(root: Path) -> list[str]:
     """Tệp dưới `.agents/`, `.codex/` mà git theo dõi (`git ls-files`, danh sách đối số, không shell). `root` không phải
     repo git (bản zip) → quét cây, bỏ `__pycache__` — chặt hơn chứ không bỏ kiểm."""
-    r = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z", "--", ".agents", ".codex"], capture_output=True, env=git_env()
-    )
-    if r.returncode == 0:
+    top = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"], capture_output=True, env=git_env())
+    # Chỉ tin `ls-files` khi gốc git (đường vật lý) đúng là `root`: thư mục con của repo khác (không `.git` riêng) thì
+    # `ls-files` đọc index của repo cha — exit 0, rỗng — và bỏ sót tệp thừa (review lượt 3).
+    if top.returncode == 0 and Path(os.fsdecode(top.stdout.strip())).resolve() == root.resolve():
+        r = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z", "--", ".agents", ".codex"],
+            capture_output=True,
+            env=git_env(),
+            check=True,
+        )
         return sorted(p.decode("utf-8") for p in r.stdout.split(b"\0") if p)
     found = (p for d in (".agents", ".codex") for p in (root / d).rglob("*") if p.is_symlink() or not p.is_dir())
     return sorted(p.relative_to(root).as_posix() for p in found if "__pycache__" not in p.parts)
@@ -118,6 +124,15 @@ class CodexHarnessSyncTest(unittest.TestCase):
         subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, env=git_env())
         subprocess.run(["git", "-C", str(repo), "add", ".codex/hooks.json"], check=True, env=git_env())
         self.assertEqual(committed_codex_files(repo), [".codex/hooks.json"])
+        self.assertEqual(install.git_tracked(repo, install.CODEX_ROOTS), {".codex/hooks.json"})
+        # Review lượt 3 🟢: repo khung LỒNG trong repo cha, không có `.git` riêng — `ls-files` đọc index của repo cha
+        # (exit 0, rỗng) nên không được tin: gốc git khác thư mục → quét cây như khi không có git.
+        child = repo / "khung"
+        for rel in scanned:
+            (child / rel).parent.mkdir(parents=True, exist_ok=True)
+            (child / rel).write_text("x\n", encoding="utf-8")
+        self.assertEqual(committed_codex_files(child), scanned)
+        self.assertIsNone(install.git_tracked(child, install.CODEX_ROOTS))
 
     def test_generator_covers_every_framework_skill_and_agent(self):
         want = sorted(install.codex_framework_files())
@@ -252,6 +267,7 @@ class AgentTomlTest(unittest.TestCase):
             *("yes", "No", "ON", "off", "y", "N"),
             *("0", "120", "-3", "+7", "1.5", "1.0e3", "1e3", "-2.5E-4", ".5", "1_000", "0x1F", "0o17", "0b101"),
             *(".inf", "-.Inf", "+.INF", ".nan", ".NaN", ".NAN", "1:20", "2026-11-19", "2026-11-19T10:00:00Z"),
+            *("2026-11-19t10:00:00", "2026-11-19 10:00:00", "2026-1-9 1:02:03.5 +07:00", "2026-11-19  10:00:00-7"),
         )
         for key in ("name", "description", "effort"):
             for value in typed:
@@ -261,7 +277,8 @@ class AgentTomlTest(unittest.TestCase):
                     install.agent_toml(text, "s")
         doc = tomllib.loads(install.agent_toml("---\nname: \"null\"\ndescription: '120'\nmaxTurns: 120\n---\nb", "s"))
         self.assertEqual((doc["name"], doc["description"]), ("null", "120"))
-        for plain in ("v1.2", "1.2.3", "0x", "yes-no", "trueish", "10 phút", ".5x", "ON/OFF"):
+        not_timestamp = ("2026-11-19 audit agent", "2026-11-19T10:00", "2026-1-9", "2026-11-19 10:00:00 giờ VN")
+        for plain in ("v1.2", "1.2.3", "0x", "yes-no", "trueish", "10 phút", ".5x", "ON/OFF", *not_timestamp):
             with self.subTest(plain=plain):
                 doc = tomllib.loads(install.agent_toml(f"---\nname: a\ndescription: {plain}\n---\nb", "s"))
                 self.assertEqual(doc["description"], plain)
@@ -273,7 +290,7 @@ class AgentTomlTest(unittest.TestCase):
         text = "---\r\nname: a\t\r\ndescription: \t nbsp giữ　  #x\t\r\n---\r\nb"
         doc = tomllib.loads(install.agent_toml(text, "s"))
         self.assertEqual((doc["name"], doc["description"]), ("a", " nbsp giữ　  #x"))
-        for bad in ("d\x85x", "d x", "d x", "a\rb", "d\x01", "d\x0bx", "d\x7f"):
+        for bad in ("d\x85x", "d x", "d x", "a\rb", "d\x01", "d\x0bx", "d\x7f", "d\x80", "d\x9bx", "d\x9f", "d﻿x"):
             with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "dòng 3: ký tự điều khiển hoặc ngắt dòng"):
                 install.agent_toml(f"---\nname: a\ndescription: {bad}\n---\nb", "s")
         for line in ("# chú thích name: b", " ", " "):
@@ -412,9 +429,10 @@ class CodexMirrorInstallTest(unittest.TestCase):
         mirror.write_bytes(own)
         return mirror, own
 
-    def test_force_harness_never_overwrites_project_mirror(self):
-        """Review lượt 2 🟠: `--force-harness --harness codex` thay `.claude/` bằng bản khung, nhưng gương trùng bản DỰ ÁN
-        (không phải bản khung theo manifest harness) không được ghi đè — ra `.xtemplates-new`, giữ nguyên gương."""
+    def test_first_codex_install_with_force_harness_keeps_project_mirror(self):
+        """Review lượt 2 🟠, phạm vi LẦN CÀI CODEX ĐẦU (chưa có `codex_files`): `--force-harness --harness codex` thay
+        `.claude/` bằng bản khung, nhưng gương trùng bản DỰ ÁN (không phải bản khung theo manifest harness) không được ghi
+        đè — ra `.xtemplates-new`, giữ nguyên gương."""
         for own_skill in (False, True):
             with self.subTest(own_skill=own_skill):
                 self.target = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
@@ -428,6 +446,40 @@ class CodexMirrorInstallTest(unittest.TestCase):
                 fresh = (SKILLS / "review" / "SKILL.md").read_bytes()
                 self.assertEqual(mirror.with_name("SKILL.md.xtemplates-new").read_bytes(), fresh)
                 self.assertEqual((self.target / ".claude" / "skills" / "review" / "SKILL.md").read_bytes(), fresh)
+
+    def test_recorded_mirror_follows_claude_after_force_harness(self):
+        """D-520 (review lượt 3 🟠): tệp Codex trùng đầu ra sinh được ghi nhận vào `codex_files` và đi theo `.claude/` ở
+        lần cài sau, kể cả khi `--force-harness` thay nguồn; tệp dự án sửa KHÁC bản đã ghi nhận được giữ + `.xtemplates-new`.
+        Lượt 1 `--harness codex`: gương = bản sinh từ `.claude/` dự án đã sửa → `kept`, ghi nhận. Lượt 2
+        `--force-harness --harness codex`: `.claude/` thành bản khung, gương `review` đi theo (`updated`); gương `adr` mà dự
+        án đã sửa sau lượt 1 → giữ + `.xtemplates-new`."""
+        self.assertEqual(self.install()[0], 0)
+        skills, mirrors = self.target / ".claude" / "skills", self.target / ".agents" / "skills"
+        own = {n: f"---\nname: {n}\ndescription: bản dự án\n---\nriêng {n}\n".encode() for n in ("review", "adr")}
+        for n, data in own.items():
+            (skills / n / "SKILL.md").write_bytes(data)
+            (mirrors / n).mkdir(parents=True)
+            (mirrors / n / "SKILL.md").write_bytes(data)
+        rc, out, err = self.install("--plan", "--harness", "codex")
+        self.assertEqual(rc, 0, err)
+        planned = {e["path"]: e["action"] for e in json.loads(out)["codex_harness"]}
+        self.assertEqual([planned[f".agents/skills/{n}/SKILL.md"] for n in own], ["kept", "kept"])
+        self.assertEqual(self.install("--harness", "codex")[0], 0)
+        recorded = install.codex_recorded(self.target)
+        self.assertEqual([recorded[f".agents/skills/{n}/SKILL.md"] for n in own], [stored(d) for d in own.values()])
+        (mirrors / "adr" / "SKILL.md").write_text("dự án sửa gương sau lượt 1\n", encoding="utf-8")
+        rc, out, err = self.install("--plan", "--force-harness", "--harness", "codex")
+        self.assertEqual(rc, 0, err)
+        planned = {e["path"]: e["action"] for e in json.loads(out)["codex_harness"]}
+        self.assertEqual([planned[f".agents/skills/{n}/SKILL.md"] for n in own], ["updated", "updated-new"])
+        self.assertEqual(self.install("--force-harness", "--harness", "codex")[0], 0)
+        for n in own:
+            self.assertEqual((skills / n / "SKILL.md").read_bytes(), (SKILLS / n / "SKILL.md").read_bytes())
+        self.assertEqual((mirrors / "review" / "SKILL.md").read_bytes(), (SKILLS / "review" / "SKILL.md").read_bytes())
+        self.assertFalse((mirrors / "review" / "SKILL.md.xtemplates-new").exists())
+        self.assertEqual((mirrors / "adr" / "SKILL.md").read_text(encoding="utf-8"), "dự án sửa gương sau lượt 1\n")
+        new = (mirrors / "adr" / "SKILL.md.xtemplates-new").read_bytes()
+        self.assertEqual(new, (SKILLS / "adr" / "SKILL.md").read_bytes())
 
     def test_own_skill_named_like_new_framework_skill_kept(self):
         """Không `--force-harness`: skill riêng trùng tên skill khung mới — bước harness để `.claude/` của dự án (bản khung

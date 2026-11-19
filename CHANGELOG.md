@@ -12,9 +12,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `install.py <dự-án> --harness codex` ngoài `.codex/hooks.json` (hook `PreToolUse` gọi `xt_adapter.py`, một guard) nay
   sinh `.agents/skills/<tên>/SKILL.md` (bản sao byte của skill khung trong `.claude/skills/`) và
   `.codex/agents/<tên>.toml` (từ `.claude/agents/<tên>.md`: `name`, `description`, `model_reasoning_effort`,
-  `developer_instructions`; không ghi `model`). Tệp dự án tự có hoặc đã sửa được giữ (`.xtemplates-new`) — riêng gương
-  có sẵn mà hash trùng bản khung đã ghi ở manifest harness thì cập nhật tại chỗ; không ghi/đọc xuyên symlink;
-  `--force-harness` không áp cho tệp Codex; hash ghi ở khoá `codex_files` của `manifest.json`, `--plan` có khoá
+  `developer_instructions`; không ghi `model`). Tệp sinh được ghi nhận ở khoá `codex_files` của `manifest.json` và đi
+  theo `.claude/` ở các lần cài sau (kể cả khi `--force-harness` thay nguồn — D-520); tệp dự án sửa khác bản đã ghi nhận,
+  hay gương dự án tự có ở lần cài Codex đầu, được giữ kèm `.xtemplates-new` — riêng gương có sẵn mà hash trùng bản khung
+  đã ghi ở manifest harness thì cập nhật tại chỗ; không ghi/đọc xuyên symlink; `--plan` có khoá
   `codex_harness`. Frontmatter agent ngoài dạng phẳng một dòng (block scalar, khối lồng, chuỗi có thoát, giá trị trơn kiểu
   null/bool/số…) → bỏ qua tệp đó kèm cảnh báo, không sinh TOML. Repo khung commit đầu ra của bộ sinh; cờ mới
   `install.py . --sync-codex` sinh lại, `tests.test_codex_harness` so từng byte tệp đã commit dưới `.agents/`, `.codex/`

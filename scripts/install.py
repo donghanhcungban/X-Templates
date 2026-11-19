@@ -1367,11 +1367,15 @@ FM_TYPED_RE = re.compile(
     r"|y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF"
     r"|[-+]?(?:[0-9][0-9_]*(?::[0-5]?[0-9])*(?:\.[0-9_]*)?|\.[0-9_]+)(?:[eE][-+]?[0-9]+)?"
     r"|0x[0-9a-fA-F_]+|0o[0-7_]+|0b[01_]+|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN)"
-    r"|[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:[Tt ].*)?"
+    # timestamp YAML 1.1 (đúng mẫu `timestamp` của đặc tả, như PyYAML): ngày trơn `YYYY-MM-DD`, hoặc ngày + `T`/khoảng
+    # trắng + giờ:phút:giây [+ phần giây] [+ múi giờ]; `2026-11-19 audit agent` là chuỗi
+    r"|[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    r"|[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:[Tt]|[ \t]+)[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]*)?"
+    r"(?:[ \t]*(?:Z|[-+][0-9]{1,2}(?::[0-9]{2})?))?"
 )
 # Chỉ dấu cách và tab là khoảng trắng YAML 1.2 (NBSP, U+3000 là nội dung, giữ nguyên); ngắt dòng YAML 1.1 (U+0085,
-# U+2028/2029), `\r` lẻ và ký tự điều khiển khác: bộ đọc khác nhau hiểu khác nhau → từ chối.
-FM_BAD_CHAR_RE = re.compile("[\x00-\x08\x0a-\x1f\x7f\x85  ]")
+# U+2028/2029), `\r` lẻ, mọi ký tự điều khiển C0/C1 khác và BOM giữa dòng: bộ đọc khác nhau hiểu khác nhau → từ chối.
+FM_BAD_CHAR_RE = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u2028\u2029\ufeff]")  # C0, DEL, C1, LS, PS, BOM
 
 
 def _fm_value(raw: str, text_key: bool) -> str:
@@ -1650,15 +1654,19 @@ def sync_codex(target: Path) -> int:
 
 def git_tracked(root: Path, paths: tuple[str, ...]) -> set[str] | None:
     """Tệp git theo dõi dưới `paths` của repo `root` (`git ls-files`, bỏ biến vị trí git của tiến trình gọi — hook
-    `pre-commit` đặt `GIT_INDEX_FILE`…); không phải repo git / không chạy được git → None."""
+    `pre-commit` đặt `GIT_INDEX_FILE`…); không phải repo git / không chạy được git → None. Chỉ tin `ls-files` khi gốc git
+    (đường vật lý) đúng là `root`: thư mục con của repo khác (không `.git` riêng) thì `ls-files` đọc index của repo cha —
+    exit 0, rỗng — và bỏ sót tệp thừa (review lượt 3) → None."""
     env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_ENV}
+    git = ["git", "-C", str(root)]
     try:
-        r = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "-z", "--", *paths], capture_output=True, timeout=30, env=env
-        )
+        top = subprocess.run([*git, "rev-parse", "--show-toplevel"], capture_output=True, timeout=30, env=env)
+        if top.returncode or Path(os.fsdecode(top.stdout.strip())).resolve() != root.resolve():
+            return None
+        r = subprocess.run([*git, "ls-files", "-z", "--", *paths], capture_output=True, timeout=30, env=env, check=True)
     except (OSError, subprocess.SubprocessError):
         return None
-    return {p.decode("utf-8", "replace") for p in r.stdout.split(b"\0") if p} if r.returncode == 0 else None
+    return {p.decode("utf-8", "replace") for p in r.stdout.split(b"\0") if p}
 
 
 def report_codex_extras(extras: list[str]) -> bool:
