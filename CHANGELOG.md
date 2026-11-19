@@ -52,6 +52,13 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Guard bảo vệ harness Codex (AUD-SEC-987, T-3967, ADR-0082): ở dự án đích `.agents/skills/*` và `.codex/agents/*` nay là
+  "năng lực" cần duyệt như `.claude/skills/*`, `.claude/agents/*` (`LOOP-STOP-023`, câu của mục có thêm ba đường; ID và
+  mức giữ nguyên); `.codex/hooks.json` (tệp nối guard cho Codex) được rào như `.claude/settings.json` ở cả repo khung lẫn
+  dự án đích — Bash ghi/xoá/`chmod`/`ln`, `rm -rf .codex`, xargs qua `.codex`/`.agents` bị chặn; Edit theo luật tệp cổng;
+  `install.py --harness codex`, `git add/restore`, đọc tệp và `rm -rf .codex/hooks` vẫn chạy. `merge-check` xếp
+  `.agents/skills/*`, `.codex/hooks.json` vào đường dẫn cổng. **Dự án đích:** chạy lại `install.py` để nhận guard.
+
 - Hook cổng commit (`pre-bash-guard.sh`): commit trong git worktree của **chính repo** (dưới gốc dự án, vd
   `.claude/worktrees/<tên>`, hay ngoài gốc) nay chạy cổng của dự án trên chính worktree đó — trước đây bị coi là repo
   lồng/ngoài và ở chính sách mặc định cổng **không chạy** (AUD-HAR-442, T-3964, D-517). Nhận diện: cùng common-dir và
