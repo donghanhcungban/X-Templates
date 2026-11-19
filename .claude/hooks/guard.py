@@ -21563,7 +21563,9 @@ def _pipe_leaks(up: List[str], root: str) -> bool:
     if _env_dumper(up) or any(_is_send_authfile(a, root) for a in words[1:]):  # T-3955 C1: `export -p`, tệp chứng thực
         return True
     echo = posixpath.basename(nu[0]) in ("echo", "printf") if nu else False
-    return echo and (_token_echo(nu, False) or any(_authref_hits(a) for a in nu[1:]))
+    # T-3956 F1: chỉ biến mở rộng THẬT (`_authref_hits` đọc ngữ cảnh nháy của mọi tầng; mọi `TOKEN_VARS` khớp tên bí
+    # mật) — `echo 'docs: $GH_TOKEN' | git commit -F -`, `\$GH_TOKEN`, `\${GH_TOKEN}` là chữ
+    return echo and any(_authref_hits(a) for a in nu[1:])
 
 
 # AUD-SEC-818: in biến môi trường mang token GitHub ra transcript — chặn như `gh auth token` (cùng lý do, cùng mã):
@@ -22488,11 +22490,17 @@ def _pager_cmd_scripts(n: List[str]) -> List[str]:
     """Lệnh shell trong giá trị cờ: `man -P '<lệnh>'` (pager chạy qua `sh -c`), `zip -TT '<lệnh>'` (lệnh kiểm tra);
     T-3954 B7: lệnh khởi đầu `less +'!<lệnh>'`, `git bisect run <lệnh…>`."""
     base = posixpath.basename(n[0]) if n else ""
-    flags = PAGER_CMD_FLAGS.get(base)
+    flags = PAGER_CMD_FLAGS.get(base) if not _rsync_remote(n) else None  # T-3956 F2: máy xa — `_remote_exec_scripts`
     out = _flag_values(n[1:], flags) if flags else []
     out += [a.split("!", 1)[1] for a in n[1:] if a[:1] == "+" and "!" in a] if base in ("less", "more") else []
     k = _git_sub_at(n[1:]) + 1 if base == "git" else 0
     return out + ([" ".join(n[k + 2 :])] if k and n[k : k + 2] == ["bisect", "run"] and n[k + 2 :] else [])
+
+
+def _rsync_remote(n: List[str]) -> bool:
+    """T-3956 F2: `rsync` có đầu kia là máy xa (`host:`, `u@h:`, `rsync://`) — `--rsync-path` chạy ở máy đó."""
+    pos = _positionals(n[1:], COPY_VALUE_OPTS["rsync"]) if n[:1] == ["rsync"] else []
+    return any(REMOTE_SPEC_RE.match(a) for a in pos)
 
 
 def _npm_sub_at(n: List[str], subs: Tuple[str, ...] = ()) -> int:
@@ -22794,6 +22802,8 @@ def _remote_exec_scripts(tokens: List[str]) -> List[RemoteScript]:
             # ssh nối đối số bằng dấu cách cho shell máy xa (cách đọc đúng); bản trích lại từng từ chỉ thêm chặn chắc
             pair = dict.fromkeys([" ".join(remote), _join_tokens(remote)]) if remote else {}
             out += [(s, REMOTE_EXEC_ROOT, True, k == 0) for k, s in enumerate(pair)]
+        elif _rsync_remote(n):  # T-3956 F2: `--rsync-path` chạy ở máy xa — luật máy xa (`sudo` là trình bọc)
+            out += [(s, REMOTE_EXEC_ROOT, True, True) for s in _flag_values(n[1:], PAGER_CMD_FLAGS["rsync"])]
         elif n:
             inner, fresh = _ctr_exec_inner(c, n)
             root = (

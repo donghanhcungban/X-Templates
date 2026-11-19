@@ -831,6 +831,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   `gh api -X DELETE …/packages/…`. Bổ sung cho T-3951/T-3952: push không refspec theo hành vi trên; F8 ở máy xa đổi như
   trên. Đổi tên định danh dễ kích CodeQL (`AUTHREF_VAR_RE`, `AUTHREF_NAME_RE`, `AUTHREF_ROUTE_WHY`). **Dự án đích:** cài
   lại khung (`install.py`) để nhận guard mới — áp cho cả T-3951/T-3952.
+- T-3956 (D-503, D-509, lô xác nhận cuối trên `fee39e61`): hết chặn oan `echo 'docs: set $GH_TOKEN' | git commit -F
+  -` (`\$`/nháy đơn/`\${…}` trước ống là chữ — chỉ biến mở rộng thật tính là gửi bí mật) và `rsync --rsync-path="sudo
+  rsync" dist/ host:/srv/app` (giá trị chạy ở máy xa: luật máy xa, `sudo` là trình bọc; rsync cục bộ giữ luật cục bộ).
+  **Dự án đích:** cài lại khung.
 
 ## [3.33.0] - 2026-11-08
 
