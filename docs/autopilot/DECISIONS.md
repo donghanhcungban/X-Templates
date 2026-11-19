@@ -1,7 +1,7 @@
 # Nhật ký quyết định tự duyệt
 
 > Ghi bởi `xt.py loop decide`. Phiên chính tự duyệt điểm quyết định theo tiêu chí chất lượng cuối (`LOOP-STOP-018`, ADR-0008 của khung). Người xem lại bất cứ lúc nào; đổi ý → quyết định mới ghi "thay D-NNN", không sửa mục cũ.
-> Bản tháng trước: [`DECISIONS-2026-10.md`](DECISIONS-2026-10.md) (D-001…D-287), [`DECISIONS-2026-11.md`](DECISIONS-2026-11.md) (D-292…D-400) — máy đọc cả bản tháng (T-3651).
+> Bản tháng trước: [`DECISIONS-2026-10.md`](DECISIONS-2026-10.md) (D-001…D-287), [`DECISIONS-2026-11.md`](DECISIONS-2026-11.md) (D-292…D-403) — máy đọc cả bản tháng (T-3651).
 
 ### D-404 · 2026-11-09T01:53:24+00:00 · PR #480 (release-sign, ADR-0074): kiểm lại bản sửa ac81683 còn 2 🔴 (NO-GO người trên nhánh PR bị xoá rồi ký; dự án thư mục con quét rỗng) và 🟠 (ô Không GO/Hold, đổi VERSION né lọc, dòng NO-GO thiếu ngày, xoá đã lên main). Sửa thế nào?
 
@@ -608,3 +608,10 @@
 - Chọn: Gỡ id khỏi ignoreGhsas (để danh sách rỗng) và audit-exceptions.json (exceptions rỗng); giữ check-audit-exceptions.ts, bước CI và test cho ngoại lệ sau này
 - Lý do (tiêu chí chất lượng cuối): Đúng: advisory bị rút nên pnpm audit không còn báo (kiểm cục bộ pnpm 12.16.1: No known vulnerabilities, exit 0 với danh sách rỗng); giữ ngoại lệ chết làm sổ sai và audit:exceptions vẫn phải gánh. Đường lùi: cơ chế kiểm hạn giữ nguyên cho ngoại lệ sau. Phương án 2 bỏ máy kiểm hạn (BASE-DEP-004), phương án 3 giữ ngoại lệ không còn lý do.
 - Đường lùi: Thêm lại GHSA vào ignoreGhsas và dòng ngoại lệ (cve, lý do, người duyệt, hạn) nếu advisory được khôi phục
+
+### D-514 · 2026-11-19T08:52:54+00:00 · Review #672 (reviewer-alt): check-audit-exceptions.ts (+ bộ đọc Python song sinh trong test) vẫn đọc rỗng, exit 0, với giá trị ignoreGhsas ở dòng kế sau khoá, alias YAML và khoá thoát ký tự — lỗ có từ trước PR này. Sửa trong PR cắt bản hay ghi nợ?
+
+- Phương án: (1) Ghi nợ 🟠 chấp nhận có hạn 2027-01-21 (ADR-0062), sửa ở 3.35.0 bằng cách lấy auditConfig từ chính pnpm · (2) Sửa ngay trong PR cắt bản: ném lỗi khi dòng kế không phải mục danh sách, từ chối khoá có thoát ký tự · (3) Gỡ máy kiểm khỏi CI gói
+- Chọn: Ghi nợ 🟠 chấp nhận có hạn 2027-01-21 (ADR-0062), sửa ở 3.35.0 bằng cách lấy auditConfig từ chính pnpm
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: danh sách ignoreGhsas hiện rỗng và do chủ dự án/agent tự viết, dạng lách là cố ý che giấu; pnpm audit vẫn chạy và báo lỗ hổng thật; không tạo vòng sửa thứ 15 (D-509 chốt một đợt sửa cuối, ADR-0062 ghi nợ 🟠 sau review một lần). Sửa đúng cách cần đổi bộ đọc sang pnpm config, đáng làm kỹ ở 3.35.0.
+- Đường lùi: Sửa ngay: thêm kiểm dòng kế/alias/khoá thoát vào check-audit-exceptions.ts và UNREAD_FORMS của test, đóng AUD-DEP-037
