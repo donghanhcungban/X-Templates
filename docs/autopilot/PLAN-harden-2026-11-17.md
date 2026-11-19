@@ -132,3 +132,10 @@
 - [x] `T-3955` 🔴 AUD-SEC-972/973, 🟠 AUD-SEC-966…971/974…977, 🟢 AUD-SEC-978/979, AUD-TEST-122, AUD-HAR-434 — Gate: `python3 -m unittest tests.test_guard_signoff14 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
 - [x] `T-3956` 🟠 AUD-SEC-981/982 — Gate: `python3 -m unittest tests.test_guard_signoff15 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/)
 - [x] `T-3957` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3954, T-3955, T-3956; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 15 — audit delta chính thức và cắt bản 3.34.0 (ADR-0031, ADR-0080)
+> Người dùng chọn kết thúc harden bằng đợt sửa cuối (D-509). `release-check` đòi audit delta 13 nhóm: 4 lô reviewer-alt trên `fe5f1e8e` (ARCH/CODE/XFEAT/DEP · SEC ngoài guard + CI · TEST · HAR + DOC), rồi sửa gộp T-3958.
+
+- [x] `T-3958` 🟠 ruleset vs WF-REVIEW-005/WF-GIT-002 (D-511), 🟠 `pack-acceptance` thiếu `pnpm audit:exceptions`, 🟢 gỡ ngoại lệ picomatch (D-512), `check-audit-exceptions.ts` fail-closed, tài liệu lạc hậu, `XT_FRAMEWORK_PYTHON`, test giờ tường — Gate: `python3 -m unittest tests.test_ci tests.test_pack_audit_exceptions tests.test_packs` (files: framework/, .github/, scripts/, tests/)
+- [x] `T-3959` 🟠 `PROGRESS.md` lạc hậu 26 PR; sổ và bảng nhóm cập nhật theo audit delta — Gate: `python3 scripts/xt.py progress-check` (files: PROGRESS.md, docs/ops/AUDIT-STATUS.md)
+- [x] `T-3960` Sổ không còn 🔴/🟠 mở, `audit check --strict` xanh (13 nhóm đã quét hoặc rút gọn) — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md --strict && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3958, T-3959; files: docs/ops/AUDIT-STATUS.md)

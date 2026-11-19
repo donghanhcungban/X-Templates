@@ -704,6 +704,14 @@
    "ids": [
     "AUD-SEC-969"
    ]
+  },
+  {
+   "reason": "Cấu hình/tài liệu/workflow của khung, không phải quyết định guard/harness/pr mô phỏng bằng corpus: ruleset `required_review_thread_resolution` theo `merge_review` (đỡ bằng tests.test_ci), bước `pnpm audit:exceptions` của workflow gói (tests.test_packs, tests.test_pack_audit_exceptions), `PROGRESS.md` lạc hậu (xt.py progress-check; sửa ở PR cắt bản 3.34.0)",
+   "ids": [
+    "AUD-CI-034",
+    "AUD-DEP-033",
+    "AUD-HAR-435"
+   ]
   }
  ]
 }

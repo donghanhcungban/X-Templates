@@ -145,3 +145,16 @@ Phạm vi hẹp theo D-509 (3 lô reviewer-alt: A ma trận các họ vừa sử
 | C đối kháng một bước (~3 500 quyết định) | CÓ PHÁT HIỆN | 🔴 AUD-SEC-972 (bí mật vào artefact GitHub), AUD-SEC-973 (`wsl.exe --unregister`) · 🟠 AUD-SEC-974…977 · 🟢 AUD-SEC-978 |
 
 Theo quyết định của người dùng (D-509) đây là đợt sửa cuối: #669 (T-3954) và #668 (T-3955) đã sửa các mục trên. Lô xác nhận cuối trên `fee39e61` (703 idiom lành, 6 525 ca tốc độ, 60 lệnh nguy hiểm một dòng): 60/60 vẫn bị chặn, 6 lệnh bắt buộc qua đều qua, tốc độ p50 13,1 ms, p95 46,6 → 50,4 ms; tìm hai 🟠 chặn oan do chính diff (AUD-SEC-981 chữ trong nháy qua ống, AUD-SEC-982 `--rsync-path` ở máy xa) → T-3956, cùng PR với sổ này để tiết kiệm một lượt CI. Còn lại là giới hạn đã biết có hạn 2027-01-21 (AUD-SEC-965) và 🟢 mở AUD-SEC-980, AUD-SEC-983; AUD-TEST-123 (test phụ thuộc mạng làm đỏ cổng commit) đóng cùng PR này bằng `isolate_network`. Cắt 3.34.0 ngay sau PR này.
+
+## Audit delta 2026-11-19 (ứng viên `fe5f1e8e`, trước cắt bản 3.34.0)
+
+`release-check` (3.34.0) đòi `audit check --strict` xanh và nợ review sau SHA quét bằng 0; nhóm TEST (4) và HAR (13) chưa từng quét, DOC có 155 file đổi, SEC/ARCH/CODE/XFEAT/DEP có file đổi từ 2026-11-11/17. Guard (`guard.py`) đã rà ở 11 cổng ký nên 4 lô không rà lại logic guard. Mỗi lô reviewer-alt ở worktree riêng (không `/tmp`), CHỈ ĐỌC.
+
+| Lô | Nhóm | Kết luận | Phát hiện |
+|---|---|---|---|
+| l1 | ARCH · CODE · XFEAT · DEP | ARCH `đã quét-sạch`; CODE, XFEAT, DEP có phát hiện | 🟠 `pack-acceptance.yml` thiếu `pnpm audit:exceptions` (AUD-DEP-033) · 🟢 GHSA-fc5q-39xc-vjpf bị OSV rút 2026-11-18, `check-audit-exceptions.ts` đọc rỗng với YAML hợp lệ, hạn ngoại lệ làm hai nơi, `@types/node` lệch `engines` |
+| l2 | SEC ngoài guard · CI | SEC `INCONCLUSIVE` (chưa rà gitleaks toàn lịch sử vì guard chặn oan lệnh, SHA ghim ↔ tag upstream, phần còn lại diff `xt.py`); CI có phát hiện | 🟠 ruleset `required_review_thread_resolution` `false` trái WF-REVIEW-005/WF-GIT-002 (AUD-CI-034, D-511) · 🟢 `XT_FRAMEWORK_PYTHON`, chú thích `release-tag.yml`, lời báo Python < 3.11, guard chặn oan `gitleaks git` |
+| l3 | TEST (lần đầu) | `INCONCLUSIVE` (4 mục con chưa rà) | 🟢 N1–N4 (giờ tường, regex ngưỡng cứng, 38 input trùng, scope 🟢); 71 module riêng xanh, chuỗi 33 module + test_hooks một tiến trình xanh (1 475 test) |
+| l4 | HAR (lần đầu) · DOC | `INCONCLUSIVE` (HAR `harness-files.md:252–387`, DOC `DECISIONS*.md`, vài file) | 🟠 `PROGRESS.md` lạc hậu 26 PR · 🟢 trạng thái ADR 0075–0079, `orchestration-and-subagents.md:65`, `harness-files.md:93`, AUD-HAR-430 còn `mở`; 28/28 URL ngoài, liên kết, CHANGELOG, số liệu sạch; `harness-files.md` 55/56 khớp hành vi |
+
+Sửa gộp T-3958 (D-511, D-512) và `PROGRESS.md` trong PR cắt bản; bảng nhóm cập nhật `fe5f1e8e` (ARCH/CODE/DEP/CI/XFEAT `đã quét`; SEC/TEST/DOC/HAR `rút gọn`, chỗ chưa rà ghi ở cột Ghi chú). Còn 🟢 mở: AUD-HAR-436, AUD-TEST-125…127, AUD-SEC-985, AUD-DEP-036.

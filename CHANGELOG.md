@@ -6,6 +6,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [Unreleased]
 
+## [3.34.0] - 2026-11-19
+
+Bản harden (ADR-0080): guard mặc định chặn theo danh sách đóng (D-503…D-509) sau 11 cổng ký và audit delta 13 nhóm; giới hạn đã biết ghi ở `framework/11-autonomous-loop/harness-files.md` (có hạn 2027-01-21). **Dự án đích:** cài lại khung (`install.py`) để nhận guard, hook, workflow và gói mới; kiểm lại ruleset (mẫu `required_review_thread_resolution: false` theo `merge_review`, D-511) và, với gói `web-api-ts`, CI chạy `pnpm audit:exceptions`.
+
 ### Added
 
 - README thêm mục "Vì sao dùng X-Templates" (vấn đề → lợi ích) và "Ủng hộ và liên hệ" (VietQR Techcombank,
