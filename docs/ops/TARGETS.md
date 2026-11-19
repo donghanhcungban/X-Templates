@@ -8,10 +8,10 @@
 
 ## Danh sách
 
-- www-donghanhcungban-org/hotel-manager — có `.xtemplates/` (3.32.0), kiểm 2026-11-08; 2026-10-23: 188 FB-*.md
-- www-donghanhcungban-org/X-Company — có `.xtemplates/` (3.32.0), kiểm 2026-11-08; 2026-10-23: 91 FB-*.md
-- www-donghanhcungban-org/xboss — có `.xtemplates/` (3.32.0), kiểm 2026-11-08; 2026-10-23: 4 FB-*.md
-- www-donghanhcungban-org/dhcb — có `.xtemplates/` (3.32.0), kiểm 2026-11-08; 2026-10-23: chưa có phản hồi
+- www-donghanhcungban-org/hotel-manager — có `.xtemplates/` (3.32.0), kiểm 2026-11-08; PR nâng 3.34.0 #159 mở, chờ chủ dự án xử lý check đỏ có từ trước; 2026-10-23: 188 FB-*.md
+- www-donghanhcungban-org/X-Company — có `.xtemplates/` (3.34.0), kiểm 2026-11-19 (#114); 2026-10-23: 91 FB-*.md
+- www-donghanhcungban-org/xboss — có `.xtemplates/` (3.34.0), kiểm 2026-11-19 (#747); 2026-10-23: 4 FB-*.md
+- www-donghanhcungban-org/dhcb — có `.xtemplates/` (3.34.0), kiểm 2026-11-19 (#1506); 2026-10-23: chưa có phản hồi
 
 Lần gộp 2026-10-23 (T-2410, `feedback aggregate --from` bản clone nông cả 4 repo public, exit 0): đủ ngưỡng 63 nhóm —
 `mien-tru` 47, `cong-cu` 10, `hook-chan-nham` 5, `hook-lot` 1; dưới ngưỡng 61. Nhóm `cong-cu` đủ ngưỡng cần phân loại
