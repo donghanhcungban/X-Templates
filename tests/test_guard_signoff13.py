@@ -303,6 +303,7 @@ class HelperTest(unittest.TestCase):
         self.assertIsNone(guard._pwsh_body(["pwsh", "script.ps1"]))
         self.assertEqual(guard._pwsh_body(["pwsh", "-NoLogo"]), "")
         self.assertEqual(guard._pwsh_body(["pwsh", "/c", "ls"]), "ls")
+        self.assertEqual(guard._pwsh_body(["pwsh", "-NoProfile", "-c", "ls"]), "ls")  # cờ khác: đọc tiếp
         self.assertEqual(guard._pwsh_statements("rm 'a"), [["rm 'a"]])
         self.assertIsNone(guard._pwsh_rm_targets(["rm", "$(x)"]))
         self.assertEqual(guard._pwsh_scripts(["ls"]), [])
