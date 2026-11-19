@@ -124,3 +124,11 @@
 - [x] `T-3951` 🔴 AUD-SEC-932…936/060, 🟠 AUD-SEC-937…941, 🟢 AUD-SEC-942, AUD-TEST-121 — Gate: `python3 -m unittest tests.test_guard_signoff11 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
 - [x] `T-3952` 🔴 AUD-SEC-945/947…950, 🟠 AUD-SEC-944/946/951/952, 🟢 AUD-SEC-892/953/954, AUD-HAR-433 — Gate: `python3 -m unittest tests.test_guard_signoff12 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
 - [x] `T-3953` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3951, T-3952; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 14 — sửa cuối theo cổng ký lần 11 (D-509)
+> Cổng ký lần 11 (ứng viên `4d8c403f`, phạm vi hẹp, 3 lô). Người dùng chọn đợt sửa cuối rồi ký GO (D-509): mọi 🔴/🟠 một bước và chặn oan phổ biến được sửa; họ lối thoát shell của công cụ ít dùng và che giấu cố ý ghi giới hạn (hạn 2027-01-21). Ba executor: T-3954 (lô A), T-3955 (lô B và C), T-3956 (hai chặn oan do lô xác nhận cuối).
+
+- [x] `T-3954` 🔴 AUD-SEC-956…962, 🟠 AUD-SEC-963, 🟢 AUD-SEC-964 — Gate: `python3 -m unittest tests.test_guard_signoff13 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [x] `T-3955` 🔴 AUD-SEC-972/973, 🟠 AUD-SEC-966…971/974…977, 🟢 AUD-SEC-978/979, AUD-TEST-122, AUD-HAR-434 — Gate: `python3 -m unittest tests.test_guard_signoff14 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/, framework/)
+- [x] `T-3956` 🟠 AUD-SEC-981/982 — Gate: `python3 -m unittest tests.test_guard_signoff15 tests.test_guard_d503_invariant` (files: .claude/hooks/guard.py, tests/)
+- [x] `T-3957` Sổ không còn 🔴/🟠 mở — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3954, T-3955, T-3956; files: docs/ops/AUDIT-STATUS.md)
