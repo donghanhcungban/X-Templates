@@ -64,3 +64,9 @@ jobs:
       - name: Quét lockfile của gói (đỏ khi có advisory mức vừa trở lên)
         working-directory: framework/templates/packs/web-api-ts/starter
         run: pnpm audit --audit-level moderate
+      - name: Hạn và độ khớp của ngoại lệ quét (BASE-DEP-004)
+        working-directory: framework/templates/packs/web-api-ts/starter
+        env:
+          # pnpm 12 mặc định cài phụ thuộc trước `pnpm <script>`; job này không cài, bước chỉ cần node.
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"
+        run: pnpm audit:exceptions

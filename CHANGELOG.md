@@ -243,6 +243,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3958 (BASE-DEP-004): job `pack-npm-audit` của khung và workflow mẫu `pack-acceptance` của gói `web-api-ts` chạy
+  `pnpm audit:exceptions` ngay sau `pnpm audit`, trước khi cài phụ thuộc (`PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false`,
+  vì pnpm 12 mặc định cài trước `pnpm <script>`) — ngoại lệ có hạn nay được máy kiểm hạn. README gói bỏ câu "không kèm
+  workflow CI mẫu". Dự án đích: cài lại gói (`install.py --pack web-api-ts`) để nhận workflow mới.
 - T-3952 (D-503, D-508, lô 4 cổng ký lần 10): guard chặn `git commit` lồng trong shell con/heredoc/trình thông
   dịch/`$(…)`/`npx -c` (commit không qua cổng); commit sau trình chạy/alias đứng một mình nay chạy cổng commit. Chặn
   thêm: khoá push đặt một lần (`-c remote.origin.mirror`, hoa-thường, `GIT_CONFIG_*`, `--config-env`, `export`) và cấu

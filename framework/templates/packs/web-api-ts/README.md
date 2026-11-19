@@ -1,7 +1,7 @@
 ---
 title: Gói web-api-ts — API nhiều tenant trên Node 24 + Postgres
 kind: index
-updated: 2026-11-16
+updated: 2026-11-19
 ---
 
 # Gói `web-api-ts`
@@ -32,7 +32,8 @@ riêng). Không có `DATABASE_URL` → test đỏ, không bỏ qua.
 
 ## Quét phụ thuộc
 
-Workflow `pack-acceptance` quét `pnpm-lock.yaml` bằng `pnpm audit --audit-level moderate` trước khi cài phụ thuộc.
+Workflow `pack-acceptance` quét `pnpm-lock.yaml` bằng `pnpm audit --audit-level moderate` rồi kiểm ngoại lệ bằng
+`pnpm audit:exceptions` trước khi cài phụ thuộc.
 Cảnh báo từ mức vừa hoặc lỗi truy cập registry làm job đỏ. Chạy cùng lệnh tại gốc dự án để kiểm tra cục bộ.
 
 Để bật PR cập nhật tự động, kiểm tra phiên bản pnpm của dự án với bảng hỗ trợ của Dependabot. Nếu được hỗ trợ,
@@ -42,7 +43,7 @@ Quét registry của workflow chạy độc lập với cấu hình Dependabot.
 Ngoại lệ hẹp theo từng GHSA nằm ở `starter/pnpm-workspace.yaml` (`auditConfig.ignoreGhsas`) và phải có dòng cùng id trong
 `starter/audit-exceptions.json` (`cve`, lý do, người duyệt, hạn). Hết hạn thì xét lại hoặc bỏ; không hạ `--audit-level`.
 `pnpm audit:exceptions` (`scripts/check-audit-exceptions.ts`) đỏ khi ngoại lệ hết hạn, thiếu khoá, hay `ignoreGhsas`/
-`ignoreCves` lệch với file ngoại lệ; gói không kèm workflow CI mẫu — thêm bước này vào CI của dự án cạnh `pnpm audit`.
+`ignoreCves` lệch với file ngoại lệ; workflow `pack-acceptance` chạy bước này ngay sau `pnpm audit`, trước khi cài phụ thuộc.
 [Xem phiên bản được hỗ trợ](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories).
 
 ## Ca sai cố ý (`mutants.json`)

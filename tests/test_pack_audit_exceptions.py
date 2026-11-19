@@ -128,6 +128,24 @@ class PackAuditExceptionsTest(unittest.TestCase):
         self.assertNotIn("audit-level high", job)
         self.assertNotIn("audit-level critical", job)
 
+    def test_workflows_check_exceptions_before_install(self):
+        """BASE-DEP-004 (T-3958): ngoại lệ có hạn phải được máy kiểm hạn — `pnpm audit:exceptions` chạy ngay sau
+        `pnpm audit` ở job khung `pack-npm-audit` và ở workflow mẫu `pack-acceptance`, trước khi cài phụ thuộc; pnpm 12
+        mặc định cài trước `pnpm <script>` nên bước tắt `verify-deps-before-run`."""
+        acceptance = STARTER.parent / "managed" / ".github" / "workflows" / "pack-acceptance.yml"
+        jobs = {
+            "pack-npm-audit": WORKFLOW.read_text(encoding="utf-8").split("  pack-npm-audit:", 1)[1],
+            "pack-acceptance": acceptance.read_text(encoding="utf-8"),
+        }
+        for name, job in jobs.items():
+            with self.subTest(job=name):
+                audit = job.index("run: pnpm audit --audit-level moderate\n")
+                check = job.index("run: pnpm audit:exceptions\n")
+                self.assertLess(audit, check)
+                self.assertNotIn("pnpm install", job[:check])
+                step = job[job.rindex("- name:", 0, check) : check]
+                self.assertIn('PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"', step)
+
 
 NODE = shutil.which("node")
 CHECKER = STARTER / "scripts" / "check-audit-exceptions.ts"
