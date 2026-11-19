@@ -113,6 +113,7 @@ import copy
 import datetime as _dt
 import errno
 import fnmatch
+import functools
 import glob
 import hashlib
 import importlib.util
@@ -145,6 +146,7 @@ from typing import (
     BinaryIO,
     Callable,
     Dict,
+    FrozenSet,
     Iterable,
     Iterator,
     List,
@@ -2476,9 +2478,10 @@ def cmd_guard_check(args: argparse.Namespace) -> int:
 # thành thân từng lớp top-level (kể cả decorator) và phần ngoài lớp. Lớp chạy khi thân lớp nhắc tên file đổi
 # (`"guard.py"`, `"dev-task.sh"`) hoặc có glob khớp tên đó (`*.md`, `docs/ops/GO-NO-GO*.md` — chỉ so phần sau `/` cuối),
 # hoặc thân lớp nhắc tên một lớp cùng file đang chạy (lớp cha, lớp phụ trợ kiểu `FakeGh` — bắc cầu). Cả file chạy
-# khi: phần ngoài lớp khớp, file import module đổi (`import xt`), file là `test_<tên>.py` cùng tên, chính file test bị
-# đổi, hoặc file không parse được. Lớp sinh động (không phải ClassDef top-level) chạy khi file có lớp trúng. Không ánh xạ được → cả suite (None). Cổng đầy đủ (CI, `dev-task.sh gate`)
-# vẫn chạy mọi test + ngưỡng coverage.
+# khi: phần ngoài lớp khớp hoặc nhắc tên lớp đã chọn, file import module đổi (`import xt`), file là `test_<tên>.py`
+# cùng tên, chính file test bị đổi, hoặc file không parse được. Lớp sinh động (không phải ClassDef top-level) chạy khi
+# file có lớp trúng; lọc ra 0 lớp dù có file liên quan → không lọc. Không ánh xạ được → cả suite (None). Cổng đầy đủ
+# (CI, `dev-task.sh gate`) vẫn chạy mọi test + ngưỡng coverage.
 CHANGED_FILES_ENV = "XT_CHANGED_FILES"
 # Token glob trong văn bản test: có `*`, phần sau `*` không chứa `/` (đuôi nối vào khi dùng, `_test_globs`)
 _TEST_GLOB_TOKEN = r"[\w.\-/*?\[\]]*\*[\w.\-*?\[\]]*"
@@ -2487,13 +2490,17 @@ _TestParts = Tuple[str, Dict[str, str]]
 
 
 def _test_mentions(name: str, text: str) -> bool:
-    return re.search(rf"(?<![\w.-]){re.escape(name)}(?![\w-])", text) is not None
+    # `in` lọc nhanh trước regex (cùng kết quả: regex chỉ khớp khi `text` chứa `name`)
+    return name in text and re.search(rf"(?<![\w.-]){re.escape(name)}(?![\w-])", text) is not None
 
 
-def _test_globs(text: str, suffix: str) -> Set[str]:
+@functools.lru_cache(maxsize=1 << 16)  # hàm thuần; nhiều file đổi cùng đuôi quét mỗi thân lớp một lần (review #678)
+def _test_globs(text: str, suffix: str) -> FrozenSet[str]:
     """Phần tên (sau `/` cuối) của các token glob trong `text` có `*` và kết thúc bằng `suffix`."""
+    if "*" not in text or suffix not in text:  # lọc nhanh, cùng kết quả: token khớp phải chứa cả hai
+        return frozenset()
     pat = _TEST_GLOB_TOKEN + re.escape(suffix) + r"(?!\w)"
-    return {t.rpartition("/")[2] for t in re.findall(pat, text)}
+    return frozenset(t.rpartition("/")[2] for t in re.findall(pat, text))
 
 
 def _test_matches(name: str, text: str) -> bool:
@@ -2522,6 +2529,11 @@ def _test_parts(text: str) -> _TestParts:
     return "\n".join(ln for i, ln in enumerate(lines) if i not in used), classes
 
 
+def _test_names_re(names: Set[str]) -> "re.Pattern[str]":
+    """Regex khớp một trong các tên lớp `names` như một từ (`\\bTên\\b`)."""
+    return re.compile(rf"\b(?:{'|'.join(map(re.escape, sorted(names)))})\b")
+
+
 def _test_classes_hit(name: str, parts: _TestParts, whole: bool) -> Optional[Set[str]]:
     """Lớp top-level chọn cho file đổi `name`; `whole` hoặc phần ngoài lớp khớp → mọi lớp; không lớp nào → None."""
     rest, classes = parts
@@ -2532,9 +2544,12 @@ def _test_classes_hit(name: str, parts: _TestParts, whole: bool) -> Optional[Set
     while more:
         # lớp cùng file nhắc TÊN lớp vừa chọn (bắc cầu): lớp con (`class C(A):` nằm trong thân C) và lớp dùng lớp phụ
         # trợ không phải lớp cha (`FakeGh().run()`)
-        ref = re.compile(rf"\b(?:{'|'.join(map(re.escape, sorted(more)))})\b")
+        ref = _test_names_re(more)
         more = {c for c, body in classes.items() if c not in hit and ref.search(body)}
         hit |= more
+    if hit and _test_names_re(hit).search(rest):
+        # phần ngoài lớp (hàm `make_runner()` trả lớp phụ trợ…) dùng lớp đã trúng: không lần được ai gọi → cả file
+        return set(classes)
     return hit or None
 
 
@@ -2556,8 +2571,16 @@ def _importers(name: str, texts: Dict[str, str]) -> Set[str]:
     return {t for t, s in texts.items() if _test_imports(stem, s)}
 
 
+def _test_parts_of(t: str, texts: Dict[str, str], memo: Dict[str, _TestParts]) -> _TestParts:
+    """`_test_parts` của file test `t`, tách lần đầu cần tới: file mà cả văn bản không khớp file đổi thì không phần nào
+    khớp (phần = tập dòng nguyên, tên/token không vượt dòng) nên khỏi parse."""
+    if t not in memo:
+        memo[t] = _test_parts(texts[t])
+    return memo[t]
+
+
 def _tests_for_file(
-    rel: str, tests_rel: str, texts: Dict[str, str], parts: Dict[str, _TestParts]
+    rel: str, tests_rel: str, texts: Dict[str, str], memo: Dict[str, _TestParts]
 ) -> Optional[Dict[str, Set[str]]]:
     """{file test: lớp top-level chọn} cho file đổi `rel` (đường dẫn POSIX theo gốc); None = không ánh xạ được."""
     p = posixpath.normpath(rel)
@@ -2565,10 +2588,11 @@ def _tests_for_file(
     whole = _importers(name, texts)
     if posixpath.dirname(p) == tests_rel and name.startswith("test_") and name.endswith(".py"):
         # file test bị xoá: không còn gì để chạy — trừ test khác import helper từ nó (`from test_merge import …`)
-        return {t: set(parts[t][1]) for t in ({p} & texts.keys()) | whole}
+        return {t: set(_test_parts_of(t, texts, memo)[1]) for t in ({p} & texts.keys()) | whole}
     stem = posixpath.splitext(name)[0].replace("-", "_").lstrip("_")
     whole |= {posixpath.join(tests_rel, f"test_{stem}.py")} & texts.keys()
-    hits = {t: _test_classes_hit(name, part, t in whole) for t, part in parts.items()}
+    cand = [t for t, s in texts.items() if t in whole or _test_matches(name, s)]
+    hits = {t: _test_classes_hit(name, _test_parts_of(t, texts, memo), t in whole) for t in cand}
     chosen = {t: cls for t, cls in hits.items() if cls is not None}
     return chosen or None
 
@@ -2580,7 +2604,7 @@ def test_select_plan(root: Path, tests_dir: str, files: Sequence[str]) -> Option
         posixpath.join(tests_rel, p.name): p.read_text(encoding="utf-8", errors="replace")
         for p in sorted((root / tests_rel).glob("test_*.py"))
     }
-    parts = {t: _test_parts(s) for t, s in texts.items()}
+    parts: Dict[str, _TestParts] = {}  # tách lười (`_test_parts_of`); file được chọn luôn đã tách
     chosen: Dict[str, Set[str]] = {}
     for f in files:
         hit = _tests_for_file(f, tests_rel, texts, parts)
@@ -2604,7 +2628,8 @@ def _unittest_pkg(tests_dir: str) -> str:
 
 def _class_ids_planned(ids: List[str], tests_dir: str, plan: Optional[Dict[str, Set[str]]]) -> List[str]:
     """Bỏ id lớp top-level mà `plan` loại; lớp không phải ClassDef top-level (sinh động) hoặc của module ngoài `plan`
-    (lớp import từ file test khác) giữ — thận trọng."""
+    (lớp import từ file test khác) giữ — thận trọng. Lọc ra 0 lớp dù file liên quan có lớp test (chỉ lớp phụ trợ trúng
+    mà không lần ra ai dùng nó) → không lọc, báo stderr: không bao giờ "có file liên quan mà 0 lớp" (xanh giả, #678)."""
     if plan is None:
         return ids
     pkg, tests_rel = _unittest_pkg(tests_dir), posixpath.normpath(tests_dir)
@@ -2613,6 +2638,13 @@ def _class_ids_planned(ids: List[str], tests_dir: str, plan: Optional[Dict[str, 
         module, _, cls = cid[len(pkg) :].rpartition(".")
         if cls not in plan.get(posixpath.join(tests_rel, f"{module}.py"), set()):
             kept.append(cid)
+    if ids and not kept:
+        print(
+            f"[test-select] lọc theo lớp ra 0 lớp dù có file liên quan ({', '.join(sorted(plan))}) — chạy mọi lớp của"
+            " các file đó",
+            file=sys.stderr,
+        )
+        return ids
     return kept
 
 

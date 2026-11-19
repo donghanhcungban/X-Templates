@@ -185,6 +185,15 @@ class CompleteNextStepTest(unittest.TestCase):
             self.assertIn(part, step)
         self.assertRegex(step, r"`<XT> stage submit --evidence \"[^\"]+\"`")
 
+    def test_step_1_reruns_doctor_after_harden(self):
+        """AUD-HAR-440: `doctor` ở pha build không báo khung chậm MINOR/PATCH (ADR-0081) và bước 0 chạy khi còn `build` —
+        bước 1 phải chạy lại `doctor` SAU khi đặt `harden`, không thì "nâng khung ở ranh giới pha" không xảy ra."""
+        lines = text(".claude/skills/complete/SKILL.md").splitlines()
+        at = next(i for i, line in enumerate(lines) if line.startswith("## Bước 1"))
+        step = lines[at + 1]
+        self.assertLess(step.index("`delivery_phase: harden`"), step.index("chạy lại `<XT> doctor`"))
+        self.assertIn("`install.py`", step[step.index("chạy lại `<XT> doctor`") :])
+
 
 class GreenGhNoNetworkTest(unittest.TestCase):
     """AUD-TEST-109: `tests.test_green_gh` chạy với `gh` lỗi trên PATH → 0 lời gọi `gh` (merge-check giả xanh)."""

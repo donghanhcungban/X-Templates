@@ -281,6 +281,22 @@ class TestSelectClassTest(unittest.TestCase):
         plan = self.plan("etc/lambda.json") or {}
         self.assertEqual(plan, {"tests/test_helper.py": {"FakeGhost", "Other"}})  # `FakeGhost`/`FakeGhx` ≠ `FakeGh`
 
+    def test_commit_gate_fast_class_used_from_module_level(self):
+        """Review #678 R1: lớp phụ trợ trúng mà phần ngoài lớp nhắc tên nó (`make_runner()` trả `FakeRunner`) → cả tệp;
+        trước đây chỉ lớp phụ trợ (không phải TestCase) được chọn → 0 id, cổng xanh giả."""
+        r1 = (
+            "import unittest\n\n\nclass FakeRunner:\n    def cmd(self):\n        return ['bash', 'scripts/rho.sh']\n\n\n"
+            "def make_runner():\n    return FakeRunner()\n\n\n"
+            "class RunnerTest(unittest.TestCase):\n    def test_runs(self):\n        make_runner()\n\n\n"
+            "class Other(unittest.TestCase):\n    pass\n"
+        )
+        (self.t / "test_r1.py").write_text(r1, encoding="utf-8")
+        self.assertEqual(self.plan("scripts/rho.sh"), {"tests/test_r1.py": set()})
+        # bắc cầu rồi mới xét phần ngoài lớp: `Mid` trúng nhờ nhắc `Leaf`, phần ngoài lớp nhắc `Mid`
+        r1b = "class Leaf:\n    X = 'tau.sh'\n\n\nclass Mid:\n    y = Leaf\n\n\nZ = Mid\n\n\nclass T:\n    pass\n"
+        (self.t / "test_r1b.py").write_text(r1b, encoding="utf-8")
+        self.assertEqual(self.plan("scripts/tau.sh"), {"tests/test_r1b.py": set()})
+
     def test_commit_gate_fast_class_glob_tokens(self):
         self.assertEqual(self.picked("docs/ops/GO-NO-GO-2026-11-19.md"), {"G", "H", "K"})
         self.assertEqual(self.picked("khac/GO-NO-GO-1.md"), {"G", "H", "K"})  # chỉ so phần tên
@@ -377,6 +393,22 @@ class UnittestClassIdsTest(unittest.TestCase):
             [i for i in got if i.startswith("tests.test_cgf_dyn.")], [f"tests.test_cgf_dyn.{c}" for c in want_all]
         )
         self.assertIn("tests.test_cgf_one.A", got)
+
+    def test_commit_gate_fast_class_filter_never_empties_related_files(self):
+        """Review #678: có tệp liên quan mà lọc theo lớp ra 0 id (chỉ lớp phụ trợ trúng, không ai nhắc tên nó) → không
+        lọc, chạy mọi lớp của tệp đó và nói rõ ở stderr — không bao giờ "có tệp liên quan mà 0 lớp" (xanh giả)."""
+        text = "import unittest\n\n\nclass Unused:\n    X = 'nu.sh'\n\n\n"
+        text += "class T(unittest.TestCase):\n    def test_x(self):\n        pass\n"
+        (self.t / "test_cgf_unused.py").write_text(text, encoding="utf-8")
+        self.assertEqual(
+            xt.test_select_plan(self.base, "tests", ["scripts/nu.sh"]), {"tests/test_cgf_unused.py": {"T"}}
+        )
+        rc, out, err = run_main("test-select", "--unittest", "scripts/nu.sh")
+        self.assertEqual((rc, out), (0, "tests.test_cgf_unused.T\n"))
+        self.assertIn("[test-select] lọc theo lớp ra 0 lớp", err)
+        rc, out, err = run_main("test-select", "--unittest", "tests/test_cgf_two.py")  # lọc ra ≥ 1 lớp: không báo
+        self.assertEqual((rc, out), (0, "tests.test_cgf_two.C\n"))
+        self.assertNotIn("lọc theo lớp ra 0 lớp", err)
 
     def test_commit_gate_fast_import_error_is_red(self):
         (self.t / "test_cgf_bad.py").write_text("import khong_co_module_nay_cgf\n", encoding="utf-8")

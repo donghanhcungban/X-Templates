@@ -420,6 +420,23 @@ class CommitGatePytestConfigChangeTest(CommitGateFastHookBase):
         self.assertNotIn("FULL-RAN", err)
 
 
+class CommitGateGuardChangeTest(CommitGateFastHookBase):
+    """Review #678: đổi `.claude/hooks/guard.py` (hàng rào) → cổng nhanh chạy MỌI lớp test như đổi hook/xt.py: test-select
+    theo lớp bỏ ~27 lớp mở guard.py qua đường dẫn ghép (test_doctor, test_install, LoopRecord…). Lớp riêng để
+    `CommitGateFastConfigChangeTest` không vượt ngân sách thời gian shard."""
+
+    def test_guard_change_forces_full_gate(self):
+        code, out, err = self.commit("commit_gate: fast\n", fast="echo FAST-RAN", change=".claude/hooks/guard.py")
+        self.assertEqual((code, decision(out)), (0, None), err)
+        self.assertIn("FULL-RAN", err)
+        self.assertNotIn("FAST-RAN", err)
+        self.assertIn("đụng cấu hình cổng nên cổng nhanh chạy MỌI lớp test", err)
+        subprocess.run([*self.git, "clean", "-qfd"], check=True)
+        code, out, err = self.commit("commit_gate: fast\n", fast="echo FAST-RAN", change="docs/hooks/guard.py")
+        self.assertIn("FAST-RAN", err)  # tên trùng ở thư mục khác: không phải hàng rào
+        self.assertNotIn("FULL-RAN", err)
+
+
 class CommitGateFastHookTest(CommitGateFastHookBase):
     """Hook chọn cổng theo `commit_gate` (fast → gate-fast; full, vắng, giá trị lạ → gate đầy đủ) và bước test của
     gate-fast khi diff đụng cấu hình cổng (T-1713)."""

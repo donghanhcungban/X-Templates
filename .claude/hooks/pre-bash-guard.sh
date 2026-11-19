@@ -51,9 +51,10 @@ decision="$XG_DECISION"
 
 gate_config_changed() { # $1=gốc repo → 0 nếu file đổi so với HEAD (đã/chưa stage, file mới) là cấu hình cổng
   local f
+  # `.claude/hooks/guard.py` = hàng rào: nhiều test mở nó qua đường dẫn ghép mà test-select theo lớp không thấy (#678)
   while IFS= read -r f; do
     case "$f" in
-    xt.yaml | .claude/settings.json | .claude/hooks/pre-bash-guard.sh | scripts/dev-task.sh | \
+    xt.yaml | .claude/settings.json | .claude/hooks/pre-bash-guard.sh | .claude/hooks/guard.py | scripts/dev-task.sh | \
       .xtemplates/scripts/dev-task.sh | scripts/xt.py | .xtemplates/scripts/xt.py | ruff.toml | */ruff.toml | .ruff.toml | */.ruff.toml | pyproject.toml | \
       */pyproject.toml | .coveragerc | */.coveragerc | requirements*.txt | */requirements*.txt | \
       pytest.py | conftest.py | */conftest.py | pytest.ini | .pytest.ini | pytest.toml | .pytest.toml | tox.ini | \
