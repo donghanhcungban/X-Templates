@@ -17859,11 +17859,12 @@ def _stdin_exec_check(tokens: List[str]) -> None:
     """B6: stdin của script đó là nguồn mờ (tệp, `cat f |`, lệnh khác) → BUDGET; thân chữ (heredoc, here-string, ống từ
     echo/printf/`cat <<E`) thì lớp quét stdin đã xét (AUD-SEC-392/608)."""
     for pipe in pipelines(tokens):
-        feeds: List[Optional[List[str]]] = [None, *_pipe_feeds(pipe)]
-        for k, c in enumerate(pipe):
+        runs = [k for k, c in enumerate(pipe) if _stdin_exec_runs(normalize(c))]  # đường nhanh: đa số ống không có
+        feeds: List[Optional[List[str]]] = [None, *_pipe_feeds(pipe)] if runs else []
+        for k in runs:
+            c = pipe[k]
             here = STDIN_HERE_OPS & set(c) or k > 0 and STDIN_HERE_OPS & set(pipe[k - 1])
-            seen = feeds[k] is not None or bool(here)
-            if not seen and _stdin_exec_runs(normalize(c)):
+            if feeds[k] is None and not here:
                 raise ScanTooComplex(f"script nội tuyến chạy dữ liệu stdin mờ như lệnh (T-3954 B6): {' '.join(c)[:80]}")
 
 
