@@ -21284,10 +21284,13 @@ def _is_send_authfile(path: str, root: str) -> bool:
 def _env_dumper(c: List[str]) -> bool:
     """Lệnh in môi trường (mọi biến, gồm bí mật): `env`/`printenv` (cả `printenv X`), `set`, `export -p`, `declare
     -p|-x`/`typeset -p` không tên — chung cho nhánh ống và thay lệnh của luật gửi bí mật."""
-    head = posixpath.basename(c[0]) if c else ""
+    s = _strip_prefixes(c)  # cả sau từ khoá/trình bọc (`{ export -p; }`, `nice printenv`)
+    if not s:  # `env` trơn (có thể sau trình bọc) in mọi biến
+        return any(posixpath.basename(t) == "env" for t in c)
+    head = posixpath.basename(s[0])
     if head in ("set", "export", "declare", "typeset"):
-        return all(a[:1] == "-" for a in c[1:]) and (head != "set" or len(c) == 1)
-    return head == "env" and not normalize(c) or head == "printenv"
+        return all(a[:1] == "-" for a in s[1:]) and (head != "set" or len(s) == 1)
+    return head == "printenv"
 
 
 def _socat_files(n: List[str]) -> List[str]:
@@ -22122,7 +22125,8 @@ def _key_out_rule(name: str, args: List[str], root: str, cwd: Optional[str]) -> 
         return "ask", DESTROY_ASK
     if name == "ssh-keygen" and SSH_KEYGEN_READ & set(args):
         return "", ""
-    for out in _flag_values(args, KEY_OUT_FLAGS[name]):
+    for value in _flag_values(args, KEY_OUT_FLAGS[name]):
+        out = HOME_REF_RE.sub("~", value)  # `$HOME/.ssh/…`, `${HOME}/.ssh/…`
         xs = [out, *_where(out, root, cwd)]
         if any(_home_dotfile(x) == "secret" for x in xs):
             return "deny", KEY_OUT_WHY.format(out)

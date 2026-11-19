@@ -904,7 +904,8 @@ class GuardMatrixTest(unittest.TestCase):
         "cat > /tmp/pr-body.md <<'EOF'\n`IFS=/; c=...; $c` — bash tách\nEOF\nls $HOME",
         "cat > /tmp/x.yml <<'EOF'\n    shell: bash\n    run: IFS=$'\\n'; echo ${{ github.sha }}\nEOF\nls $HOME",
         "cat > /tmp/Makefile <<'EOF'\nSHELL := bash\nall:\n\t@IFS=$$'\\n'; echo $$x\nEOF\nls $HOME",
-        "export $(grep -v '^#' .env | xargs) && npm run dev",
+        # T-3955 C3: `grep … .env` nay chặn trước bằng luật đọc tệp bí mật — dạng tên đích từ dữ liệu giữ với tệp thường
+        "export $(grep -v '^#' app.conf | xargs) && npm run dev",
         "git ls-files '*.md' | while IFS= read -r f; do python3 -c \"print(open('x').read())\" $f; done",
         "while IFS=\\| read -r a b; do echo $a; done < table.txt",
         'IFS="$sep" read -ra parts <<< "$s"; echo ${parts[0]}',
@@ -3448,7 +3449,7 @@ class GuardBashWave3Test(unittest.TestCase):
         for cmd in (
             "mv .claude/hooks/guard.py /tmp/x",
             "git rm .claude/hooks/pre-bash-guard.sh",
-            "git rm -f .claude/settings.json",
+            "git rm -r .claude/settings.json",  # `git rm -f` nay chặn thẳng (T-3955 C8 — như `reset --hard`)
             "git mv .github/workflows/ci.yml x",
             "perl -pi -e s/a/b/ .github/workflows/ci.yml",
             "rm -f .github/workflows/ci.yml",
