@@ -1,7 +1,7 @@
 ---
 title: Adapter hook cho công cụ agent khác
 kind: index
-updated: 2026-11-05
+updated: 2026-11-19
 ---
 
 # Adapter hook cho công cụ agent khác Claude Code (ADR-0064 lát B)
@@ -25,9 +25,30 @@ thật (2026-11-05: Codex CLI 0.147.0 có trên máy dev nhưng chạy nó tốn
 
 | File | Chép tới | Ghi chú |
 |---|---|---|
-| [`codex-hooks.json`](codex-hooks.json) | `.codex/hooks.json` | `PreToolUse`; matcher gồm cả `shell`/`exec_command` mà adapter nhận (tên tool thật của bản đang dùng: chưa xác minh 2026-11-03 — research §9 chỉ có `Bash`/`apply_patch`); `apply_patch` xét từng file trong thân patch; lỗi/hết giờ của hook thì Codex cho tool chạy (fail-open) |
+| [`codex-hooks.json`](codex-hooks.json) | `.codex/hooks.json` | `PreToolUse`; matcher gồm cả `shell`/`exec_command` mà adapter nhận (tên tool thật của bản đang dùng: chưa xác minh 2026-11-03 — research §9 chỉ có `Bash`/`apply_patch`); `apply_patch` xét từng file trong thân patch; hết giờ hoặc lỗi không phải exit 2 thì Codex cho tool chạy (fail-open), nhưng exit 2 là chặn — chạy Codex ngoài repo git thì `$(git rev-parse --show-toplevel)` rỗng, lệnh thành `python3 -I -B "/.xtemplates/scripts/xt_adapter.py"` (không có tệp → exit 2) và Codex **chặn mọi tool khớp matcher**. Cùng `--harness codex`: skill và agent sinh từ `.claude/` (mục dưới) |
 | [`gemini-settings.json`](gemini-settings.json) | `.gemini/settings.json` (gộp `hooks`) | `BeforeTool`; tên MCP `mcp_<server>_<tool>` tách ở `_` đầu |
 | [`cursor-hooks.json`](cursor-hooks.json) | `.cursor/hooks.json` | `preToolUse` với `failClosed: true`; Cursor cũng nạp `.claude/settings.json` (Third-Party Imports) — hook Claude chạy thêm, không hại |
 | [`copilot-xt.json`](copilot-xt.json) | `.github/hooks/xt.json` | `preToolUse` (lỗi = chặn, hết giờ = cho qua); Copilot cũng đọc `.claude/settings.json` — chạy hai lần, quyết định vẫn đúng |
 | [`grok-xt.json`](grok-xt.json) | `.grok/hooks/xt.json` | `PreToolUse` (chỉ deny tường minh chặn); matcher gồm tên thật `run_terminal_command`/`search_replace` (research §9) ngoài bí danh tên Claude — `write_file` vẫn chưa xác minh (2026-11-03); hook `.claude` cũng được nạp khi đã tin cậy |
 | [`opencode-xt.ts`](opencode-xt.ts) | `.opencode/plugins/xt.ts` | plugin `tool.execute.before`, `throw` khi deny; hook có thể không chạy ở `opencode run` (chưa xác minh bản 1.19.5) |
+
+## Codex: skill và agent sinh từ `.claude/` (ADR-0082)
+
+`--harness codex` ngoài `.codex/hooks.json` còn sinh, từ `.claude/` của dự án sau bước harness (nguồn duy nhất):
+`.agents/skills/<tên>/SKILL.md` — bản sao byte của skill khung; `.codex/agents/<tên>.toml` — `name`, `description`,
+`model_reasoning_effort` (từ `effort`), `developer_instructions` (thân tệp, giữ đường `.claude/…`), không `model` (agent
+thừa hưởng model của phiên). Chỉ skill/agent khung cài (trừ skill bị `.claude/commands/` che); ghi như file harness:
+chưa có → chép, còn đúng hash lần trước → cập nhật, dự án đã sửa → `kept-own`/`.xtemplates-new`; không ghi/đọc xuyên
+symlink; hash ở `codex_files` của `.xtemplates/manifest.json`; `--plan` liệt kê ở `codex_harness` (kèm `reason` khi bỏ
+qua). `--force-harness` **không** áp cho tệp Codex. Lần đầu sinh mà dự án đã tự làm gương: gương trùng bản sinh từ
+`.claude/` hiện có (trước bước harness) hoặc — với skill — trùng hash manifest harness lần cài trước thì cập nhật tại chỗ;
+gương lạ → `.xtemplates-new`. Agent chỉ nhận frontmatter YAML phẳng (`khoá: giá trị` một dòng, giá trị trơn hoặc nháy
+không thoát); khối `|`/`>`, khoá lồng, nháy có thoát, chú thích cuối dòng… → bỏ qua kèm cảnh báo nêu dòng, giữ bản cũ.
+Sửa skill/agent ở `.claude/` thì chạy lại `install.py --harness codex`. Repo khung: `python3 scripts/install.py .
+--sync-codex` (mọi tệp dưới `.agents/`, `.codex/` phải do bộ sinh tạo; tệp thừa chỉ báo, không xoá).
+
+**Tin cậy:** hook dự án chỉ chạy sau khi người tin cậy bằng `/hooks` (theo hash — đổi `hooks.json` phải tin cậy lại);
+chưa tin cậy thì Codex bỏ qua cả lớp `.codex/`. **Giới hạn:** chỉ `PreToolUse` (không Stop hook — vòng "chạy đến khi
+xong" của `/autopilot` không có ở Codex, dùng `loop run --agent codex`); `ask` không hỗ trợ; agent thừa hưởng model của phiên nên luật
+"reviewer cao hơn người viết" (`LOOP-ORCH-005`) chỉ còn effort để phân biệt — `executor` và `reviewer` đều không khai
+effort nên cặp mặc định **không** phân biệt được, chỉ `executor-deep` (high) so với `reviewer-alt` (max); tool đọc tệp không qua adapter; mức hỗ trợ vẫn **thử nghiệm**.

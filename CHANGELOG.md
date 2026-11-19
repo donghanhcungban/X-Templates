@@ -6,6 +6,21 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [Unreleased]
 
+### Added
+
+- Harness cho Codex CLI sinh từ `.claude/` ([ADR-0082](docs/adr/0082-codex-harness-generated.md), D-519, T-3966):
+  `install.py <dự-án> --harness codex` ngoài `.codex/hooks.json` (hook `PreToolUse` gọi `xt_adapter.py`, một guard) nay
+  sinh `.agents/skills/<tên>/SKILL.md` (bản sao byte của skill khung trong `.claude/skills/`) và
+  `.codex/agents/<tên>.toml` (từ `.claude/agents/<tên>.md`: `name`, `description`, `model_reasoning_effort`,
+  `developer_instructions`; không ghi `model`). Tệp dự án tự có hoặc đã sửa được giữ (`.xtemplates-new`); không ghi/đọc
+  xuyên symlink; `--force-harness` không áp cho tệp Codex; hash ghi ở khoá `codex_files` của `manifest.json`, `--plan`
+  có khoá `codex_harness`. Frontmatter agent ngoài dạng phẳng một dòng (block scalar, khối lồng, chuỗi có thoát…) →
+  bỏ qua tệp đó kèm cảnh báo, không sinh TOML sai nghĩa. Repo khung commit đầu ra của bộ sinh; cờ mới
+  `install.py . --sync-codex` sinh lại, `tests.test_codex_harness` so từng byte và báo tệp thừa dưới `.agents/`, `.codex/`.
+  Dữ kiện Codex 0.170.0: [research 2026-11-19](research/2026-11-19-codex-harness.md). Mức hỗ trợ Codex vẫn là thử
+  nghiệm (chưa có payload thật). **Dự án đích:** tuỳ chọn — chạy `install.py --harness codex`, rồi tin cậy hook trong
+  Codex bằng `/hooks`; tệp do `/import` của Codex sinh trước đó (`.codex/hooks/`, `hooks.json` có đường tuyệt đối) nên xoá.
+
 ### Changed
 
 - `xt.py test-select --unittest` (cổng commit `gate-fast`, khoá `test_fast`) chọn test theo **lớp** thay vì theo tệp: lớp
