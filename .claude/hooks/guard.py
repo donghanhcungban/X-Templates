@@ -17490,8 +17490,11 @@ def _dyn_exec_check(placed: "PlacedCmds", cmd: str = "") -> None:
         name, args = (n[0], n[1:]) if n else ("", [])
         why = _dyn_exec_why(name, args) or _special_var_why(c, name, args) or _exec_env_why(c, name, args)
         if switched and n[:2] == ["git", "push"] and _push_reads_head(n[2:], queried):
-            why = why or "`git push` theo `HEAD` sau khi `switch`/`checkout` trong cùng lệnh (AUD-SEC-554)"
-        switched = switched or n[:2] in HEAD_MOVERS
+            why = why or (
+                "`git push` theo `HEAD` sau lệnh đổi nhánh (`switch`/`checkout <nhánh>`/`rebase … <nhánh>`) trong cùng"
+                " lệnh (AUD-SEC-554)"
+            )
+        switched = switched or _git_switches(n)
         why = why or _env_file_why(c) or _cmd_env_why(c, name, args) or _runner_why(name, args, n) or _xargs_gh_why(c)
         if why:
             raise ScanTooComplex(f"ngoài tập con guard đọc chắc — {why}: {' '.join(c)[:80]} (ADR-0063)")
@@ -17697,7 +17700,6 @@ def _runner_why(name: str, args: List[str], n: List[str]) -> str:
 
 # T-3951 A7 (lô 3 BR): lệnh git đổi HEAD trước `push` của cùng lệnh; truy vấn nhánh hiện tại (viết thẳng hay qua biến gán
 # từ nó) ở refspec là đọc HEAD lúc chạy (`git checkout main && git push origin "$(git branch --show-current)"`)
-HEAD_MOVERS = tuple(["git", s] for s in ("switch", "checkout", "reset", "rebase", "merge", "pull", "worktree"))
 BRANCH_QUERY = r"\bbranch\s+--show-current|\bsymbolic-ref\b|--abbrev-ref|\bname-rev\b"
 BRANCH_QUERY_RE = re.compile(BRANCH_QUERY)
 BRANCH_ASSIGN_RE = re.compile(rf"(?<![\w$])([A-Za-z_]\w*)=[\"']?(?:\$\(|`)[^)`]*?(?:{BRANCH_QUERY})")
@@ -17710,6 +17712,56 @@ def _push_reads_head(args: List[str], queried: FrozenSet[str] | Set[str] = froze
     pos = [a for a in args if a[:1] != "-"]
     head = any("HEAD" in a or a == "@" or a.startswith(("@:", "+@")) or BRANCH_QUERY_RE.search(a) for a in pos[1:])
     return len(pos) < 2 or head or any(_var_refs(a) & queried for a in pos[1:])
+
+
+# T-3955 B1: chỉ lệnh đổi nhánh của worktree đang đứng làm `HEAD` lúc chạy khác lúc xét — `switch`, `checkout <nhánh>`
+# (không phải khôi phục tệp), `rebase <upstream> <nhánh>`/`--root <nhánh>`/`--abort`, `stash branch`, `gh pr checkout`.
+# `pull`/`merge`/`reset`/`worktree` không đổi tên nhánh: push không refspec sau chúng do luật đích/cấu hình (F3) xét.
+NEW_BRANCH_FLAGS = {"checkout": "bB", "switch": "cC"}
+REBASE_VALUED = frozenset({"--onto", "-s", "--strategy", "-X", "--strategy-option", "-x", "--exec"})
+PLAIN_BRANCH_RE = re.compile(r"[\w./-]+")
+
+
+def _new_branch_name(sub: str, args: List[str]) -> Optional[str]:
+    """Tên nhánh của `checkout -b|-B`/`switch -c|-C` (`--orphan`), cả dạng dính (`-bx`); không có cờ đó → None."""
+    letters = NEW_BRANCH_FLAGS[sub]
+    for i, a in enumerate(args):
+        k = next((j for j, c in enumerate(a) if c in letters), -1) if SHORT_CLUSTER_RE.fullmatch(a) else -1
+        if k > 0 or a == "--orphan":
+            rest = a[k + 1 :] if k > 0 else ""
+            return rest or (args[i + 1] if i + 1 < len(args) else "")
+    return None
+
+
+def _git_switches(n: List[str]) -> bool:
+    """Lệnh (đã chuẩn hoá) có thể đổi nhánh hiện tại; nhánh mới tên chữ thường không phải nhánh chính thì không tính
+    (push `HEAD` sau đó tới nhánh mới, guard xét theo nhánh lúc xét — chặt hơn)."""
+    if n[:3] == ["gh", "pr", "checkout"]:
+        return True
+    sub, args = (n[1], n[2:]) if n[:1] == ["git"] and len(n) > 1 else ("", [])
+    if sub in NEW_BRANCH_FLAGS:
+        name = _new_branch_name(sub, args)
+        if name is not None:
+            return name in MAIN_BRANCHES or not PLAIN_BRANCH_RE.fullmatch(name)
+    if sub == "switch" or sub == "stash" and args[:1] == ["branch"]:
+        return True
+    if sub == "rebase":
+        return len(_positionals_skip(args, REBASE_VALUED)) >= (1 if "--root" in args else 2) or "--abort" in args
+    if sub != "checkout" or "--" in args or {"-p", "--patch"} & set(args):
+        return False
+    pos = [a for a in args if a[:1] != "-"]
+    return "--detach" in args or len(pos) == 1 and pos[0] != "." and not pos[0].startswith("./")
+
+
+def _positionals_skip(args: List[str], valued: FrozenSet[str]) -> List[str]:
+    """Đối số vị trí, bỏ giá trị của cờ trong `valued` viết tách (`--onto x`)."""
+    out: List[str] = []
+    skip = False
+    for a in args:
+        if not skip and a[:1] != "-":
+            out.append(a)
+        skip = not skip and a in valued
+    return out
 
 
 def _xargs_gh_why(c: List[str]) -> str:

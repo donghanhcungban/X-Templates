@@ -24616,7 +24616,7 @@
   {"id": "guard-t3951-a5-deny-03", "origin": "audit", "refs": ["D-503", "D-508", "AUD-SEC-936"], "input": {"command": "python3 - <<< 'import os as o; o.system(\"rm -rf ~\")'"}, "expect": {"allowed": false}},
   {"id": "guard-t3951-a7-deny-01", "origin": "audit", "refs": ["D-503", "D-508", "AUD-SEC-938"], "input": {"command": "git checkout main && git push origin \"$(git branch --show-current)\""}, "expect": {"allowed": false}},
   {"id": "guard-t3951-a7-deny-02", "origin": "audit", "refs": ["D-503", "D-508", "AUD-SEC-938"], "input": {"command": "git switch main && B=$(git branch --show-current) && git push origin \"$B\""}, "expect": {"allowed": false}},
-  {"id": "guard-t3951-a7-deny-03", "origin": "audit", "refs": ["D-503", "D-508", "AUD-SEC-938"], "input": {"command": "git merge --ff-only feat/x && git push origin \"$(git branch --show-current)\""}, "expect": {"allowed": false}},
+  {"id": "guard-t3951-a7-deny-03", "origin": "audit", "refs": ["D-503", "D-508", "AUD-SEC-938"], "input": {"command": "git rebase origin/main main && git push origin \"$(git branch --show-current)\""}, "expect": {"allowed": false}},
   {"id": "guard-t3951-a1-allow-01", "origin": "control", "refs": ["D-503", "D-508", "AUD-SEC-932"], "input": {"command": "echo x >&2"}, "expect": {"allowed": true}},
   {"id": "guard-t3951-a1-allow-02", "origin": "control", "refs": ["D-503", "D-508", "AUD-SEC-932"], "input": {"command": "echo x 2>&1"}, "expect": {"allowed": true}},
   {"id": "guard-t3951-a1-allow-03", "origin": "control", "refs": ["D-503", "D-508", "AUD-SEC-932"], "input": {"command": "ls >& /dev/null"}, "expect": {"allowed": true}},
