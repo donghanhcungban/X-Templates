@@ -146,3 +146,9 @@
 - [x] `T-3961` 🟢 AUD-CI-035: CI `test` 6 shard, `test-main` 4 shard (trần 10 phút giữ nguyên) — Gate: `python3 -m unittest tests.test_ci tests.test_ci_shard` (files: .github/workflows/ci.yml, tests/test_ci_shard.py)
 - [x] `T-3962` `test-select --unittest` chọn theo lớp; glob trong test phải khớp tên tệp đổi — Gate: `python3 -m unittest tests.test_xt_cli tests.test_commit_gate` (files: scripts/xt.py, tests/)
 - [x] `T-3963` 🟠 AUD-HAR-440: `/complete` chạy lại `doctor` sau khi đặt `harden` — Gate: `python3 -m unittest tests.test_docs_budget tests.test_template_contracts` (files: .claude/skills/complete/SKILL.md)
+
+## Đợt 17 — cổng commit: worktree và tệp chưa track (D-517)
+> Đính chính đợt 16: 12 phút mỗi commit ở checkout chính là do 4 tệp chưa track không ánh xạ được (cả 697 lớp), không phải do chọn theo tệp; commit trong worktree dưới gốc dự án không qua cổng (hook `exit 0`).
+
+- [ ] `T-3964` 🟠 AUD-HAR-442: commit trong worktree cùng repo chạy cổng của dự án trên worktree đó — Gate: `python3 -m unittest tests.test_hooks.CommitGateWorktreeTest` (files: .claude/hooks/pre-bash-guard.sh, tests/test_hooks.py)
+- [ ] `T-3965` 🟢 AUD-HAR-443: tệp chưa track không ánh xạ được không đẩy `gate-fast` lên cả bộ test — Gate: `python3 -m unittest tests.test_commit_gate` (files: scripts/dev-task.sh, scripts/xt.py, tests/)

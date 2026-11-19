@@ -10,7 +10,7 @@
 - D-457: PLAN factory-A/BE đã lưu kho. `LOOP-ORCH-020`: chỉ tăng agent khi có số. 10 nhóm `cong-cu` chờ phân loại ([TARGETS](docs/ops/TARGETS.md)). Hoãn: T-1690/T-1691 (quét lại SEC-091…099); rà `seeker19110/stored` chờ chủ repo (hạn xét 2026-12-31).
 
 ## Tiếp theo
-1. Đợt 16 xong (D-516, #676–#678): CI `test` 6 shard (2m54s–5m02s, trước bị huỷ ở 10 phút), `test-select` chọn theo lớp (1 tệp `.md`: 331 → 47–81 lớp), `/complete` chạy lại `doctor` sau `harden`. Kế: nới guard cho lệnh chỉ-đọc dạng ghép sau khi tách `guard.py` (D-142); nợ AUD-TEST-131.
+1. Đợt 16 xong (D-516, #676–#678): CI `test` 6 shard (2m54s–5m02s, trước bị huỷ ở 10 phút), `test-select` chọn theo lớp (1 tệp `.md`: 331 → 47–81 lớp), `/complete` chạy lại `doctor` sau `harden`. **Đính chính (D-517):** 12 phút mỗi commit ở checkout chính là do 4 tệp chưa track `.codex/agents/*.toml` không ánh xạ được (cả 697 lớp, AUD-HAR-443); commit trong worktree dưới gốc dự án không qua cổng commit (AUD-HAR-442 🟠 mở) — đợt 17: T-3964, T-3965. Sau đó: nới guard cho lệnh chỉ-đọc dạng ghép khi đã tách `guard.py` (D-142); nợ AUD-TEST-131.
 1b. hotel-manager #159: sau khi chủ dự án xử lý check đỏ → merge, rồi cập nhật `registry.json`/TARGETS (còn 3.32.0).
 2. **3.35.0**: đề xuất stored XT-H-117…139 (research 2026-11-10/16/18); tách `guard.py` (>22 000 dòng) thành module theo họ luật (D-142) để executor song song không xung đột; đưa `pre-push.sh` (kiểm bẫy trước push) vào repo; kiểm máy PROGRESS không lạc hậu (AUD-HAR-436); nợ test AUD-TEST-125…127.
 3. Hạn: 2026-12-02 bỏ `pull_request_target` khỏi `pr-review.yml`; 2026-12-31 rà stored; **2027-01-21** xét lại hàng rào guard + đánh giá sandbox Bash opt-in (D-331/D-332, ADR-0072) và các chấp nhận AUD-SEC-406/931/943/955/965.
