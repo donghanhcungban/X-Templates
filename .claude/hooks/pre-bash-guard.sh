@@ -79,25 +79,33 @@ git_dir_of() { # $1=toplevel (vật lý) $2=--git-dir|--git-common-dir
 # (monorepo `apps/web` → `<worktree>/apps/web`). 1 = repo khác (hoặc dự án không có trên worktree) → luật cũ; 2 = git
 # không trả lời được (không xác định). Cùng `--git-common-dir` chưa đủ: thư mục lạ có `.git` trỏ vào gitdir của repo này
 # (hoặc gitdir tự dựng có `commondir` trỏ về) giả được → kiểm thêm LIÊN KẾT NGƯỢC: checkout chính = `$1/.git` là THƯ MỤC
-# và chính là common-dir; worktree liên kết = gitdir nằm ngay dưới `<common>/worktrees/` và tệp `gitdir` trong đó trỏ
-# đúng `$1/.git`. Không đọc `git worktree list --porcelain`: không `-z` thì đường dẫn có xuống dòng chèn được dòng
-# `worktree <thư mục lạ>` giả, còn `-z` cần git 2.36.
+# THẬT (không symlink), chính là common-dir và cha của common-dir là `$1`; worktree liên kết = `$1/.git` là TỆP thật
+# (không symlink), gitdir nằm ngay dưới `<common>/worktrees/` và tệp `gitdir` trong đó trỏ đúng `$1/.git`. `-d`/`-f`/`cd`
+# đi theo symlink ở thành phần cuối: `.git` symlink tới common-dir/admin (giải nén được từ tar) từng qua (review #680
+# R2-1) → mọi phép thử trên `.git` kèm `! -L`. Không đọc `git worktree list --porcelain`: không `-z` thì đường dẫn có
+# xuống dòng chèn được dòng `worktree <thư mục lạ>` giả, còn `-z` cần git 2.36. Checkout chính có `.git` là symlink
+# (hiếm) → luật cũ.
 same_repo_root() { # $1=gốc repo nhận commit (vật lý) $2=gốc dự án (vật lý)
-  local xtop c1 c2 gd p pre
+  local xtop c1 c2 gd p="" pre r
   xtop="$(git -C "$2" rev-parse --show-toplevel 2>/dev/null)" && [ -n "$xtop" ] || return 2
   c1="$(git_dir_of "$1" --git-common-dir)" && c2="$(git_dir_of "$xtop" --git-common-dir)" || return 2
   gd="$(git_dir_of "$1" --git-dir)" || return 2
-  [ "$c1" = "$c2" ] || return 1
+  [ "$c1" = "$c2" ] && [ ! -L "$1/.git" ] || return 1
   if [ "$gd" = "$c1" ]; then
-    [ -d "$1/.git" ] && [ "$(cd -P -- "$1/.git" 2>/dev/null && pwd -P)" = "$c1" ] || return 1
+    [ -d "$1/.git" ] && [ "$(cd -P -- "$1/.git" 2>/dev/null && pwd -P)" = "$c1" ] &&
+      [ "$(cd -P -- "$c1/.." 2>/dev/null && pwd -P)" = "$1" ] || return 1
   else
-    [ "${gd%/*}" = "$c1/worktrees" ] && [ -f "$gd/gitdir" ] && IFS= read -r p <"$gd/gitdir" || return 1
+    # `read` trả 1 khi tệp thiếu xuống dòng cuối dù đã đọc được dòng (review #680 R2-2)
+    [ -f "$1/.git" ] && [ "${gd%/*}" = "$c1/worktrees" ] && [ -f "$gd/gitdir" ] &&
+      { IFS= read -r p || [ -n "$p" ]; } <"$gd/gitdir" || return 1
     case "$p" in /*) ;; *) p="$gd/$p" ;; esac # `worktree.useRelativePaths` (git 2.48): tương đối theo gitdir
+    # thư mục cha chuẩn hoá vật lý (macOS /var → /private/var); thành phần cuối so theo TÊN, tệp thật đã kiểm ở trên
     [ "${p##*/}" = .git ] && [ "$(cd -P -- "${p%/*}" 2>/dev/null && pwd -P)" = "$1" ] || return 1
   fi
   pre="$(git -C "$2" rev-parse --show-prefix 2>/dev/null)" || return 2
-  [ -d "$1/$pre" ] || return 1
-  (cd -P -- "$1/$pre" && pwd -P)
+  # tiền tố dự án trên worktree không được đi qua symlink (`apps/web` → thư mục lạ): đường vật lý phải đúng `$1/<tiền tố>`
+  r="$(cd -P -- "$1/$pre" 2>/dev/null && pwd -P)" && [ "$r" = "$1${pre:+/${pre%/}}" ] || return 1
+  printf '%s\n' "$r"
 }
 
 # ---- 3) Cổng trước commit (chạy TRƯỚC khi hỏi người — ask không được bỏ cổng, AUD-HAR-013) ----

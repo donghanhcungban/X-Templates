@@ -621,15 +621,37 @@ class CommitGateWorktreeTest(CommitGateWorktreeBase):
         cases = [(f"git -C {r} commit -m x", None, nested_why) for r in (nested, fake, fake2)]
         cases += [("git commit -m x", fake2, nested_why), (f"git -C {foreign} commit -m x", None, out_why)]
         cases += [("git commit -m x", evil, out_why)]
+        self.assert_not_gated(cases, mark)
+
+    def assert_not_gated(self, cases: list[tuple[str, Path | None, str]], mark: Path) -> None:
         for cmd, cwd, why in cases:
             with self.subTest(cmd=cmd, cwd=cwd):
                 code, out, err = self.hook(cmd, cwd, policy="strict")
                 self.assertEqual((code, decision(out)), (0, "ask"), err)
                 self.assertIn(why, out)
+                self.assertFalse(mark.exists(), err)
                 code, out, err = self.hook(cmd, cwd)
                 self.assertEqual((code, decision(out)), (0, None), err)
                 self.assertFalse(mark.exists(), err)
                 self.assertFalse((self.proj / "gate-ran").exists(), err)
+
+    def test_symlinked_git_dir_is_not_a_checkout(self):
+        """Review #680 R2-1: thư mục lạ có `.git` là SYMLINK tới common-dir (tuyệt đối, tương đối `../../.git` — giải nén
+        được từ tar —, hay ở ngoài dự án) từng được nhận là "checkout chính" vì `-d` đi theo symlink → hook chạy
+        dev-task.sh của nó trước bước hỏi, kể cả strict. `.git` symlink tới admin của worktree thật cũng từ chối."""
+        mark = self.tmp / "PWNED"
+        s1 = self.other_repo(self.proj / "vendor" / "s1", mark)
+        (s1 / ".git").symlink_to(self.proj / ".git")
+        s2 = self.other_repo(self.proj / "vendor" / "s2", mark)
+        (s2 / ".git").symlink_to(Path("..") / ".." / ".git")
+        s3 = self.other_repo(self.tmp / "outside", mark)
+        (s3 / ".git").symlink_to(self.proj / ".git")
+        f2 = self.other_repo(self.proj / "vendor" / "f2", mark)
+        (f2 / ".git").symlink_to(self.proj / ".git" / "worktrees" / "wt")
+        nested_why, out_why = "repo lồng có cổng riêng", "repo ngoài dự án"
+        cases = [("git commit -m x", s1, nested_why), ("git -C vendor/s2 commit -m x", None, nested_why)]
+        cases += [(f"git -C {s3} commit -m x", None, out_why), ("git commit -m x", f2, nested_why)]
+        self.assert_not_gated(cases, mark)
 
 
 class CommitGateWorktreeConfigTest(CommitGateWorktreeBase):
@@ -738,6 +760,29 @@ class CommitGateWorktreeConfigTest(CommitGateWorktreeBase):
         self.assertEqual((code, decision(out)), (0, None), err)
         self.assertTrue((mwt / "apps" / "web" / "gate-ran").exists(), err)
         self.assertFalse((web / "gate-ran").exists(), err)
+        # Rà symlink (review #680 R2-1): `apps/web` trên worktree là symlink sang thư mục lạ → không lấy làm gốc cổng
+        # (luật cũ: repo ngoài dự án — hỏi ở strict), không chạy dev-task.sh của thư mục lạ.
+        mark = self.tmp / "PWNED"
+        evil = self.tmp / "evil-web" / "scripts"
+        evil.mkdir(parents=True)
+        (evil / "dev-task.sh").write_text(f"#!/bin/sh\ntouch {mark}\n", encoding="utf-8")
+        (evil / "dev-task.sh").chmod(0o755)
+        (evil.parent / "xt.yaml").write_text(f"test: touch {mark}\n", encoding="utf-8")
+        shutil.rmtree(mwt / "apps" / "web")
+        (mwt / "apps" / "web").symlink_to(evil.parent)
+        for policy, want in (("strict", "ask"), ("", None)):
+            with self.subTest(policy=policy):
+                code, out, err = self.hook(f"git -C {mwt} commit -m x", policy=policy, proj=web)
+                self.assertEqual((code, decision(out)), (0, want), err)
+                self.assertFalse(mark.exists(), err)
+
+    def test_gitdir_file_without_trailing_newline(self):
+        """Review #680 R2-2: tệp `gitdir` trong admin của worktree không có xuống dòng cuối (`read` trả 1) vẫn đọc được."""
+        admin = self.proj / ".git" / "worktrees" / "wt" / "gitdir"
+        admin.write_text(str(self.inner / ".git"), encoding="utf-8")
+        code, out, err = self.hook("git commit -m x", self.inner)
+        self.assertEqual((code, decision(out)), (0, None), err)
+        self.assertTrue((self.inner / "gate-ran").exists(), err)
 
 
 @unittest.skipIf(shutil.which("bash") is None, "cần bash")
