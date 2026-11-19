@@ -594,3 +594,10 @@
 - Chọn: Sửa nhóm có thể do lỡ tay/hồi quy/chặn oan (here-string $ với công cụ không đọc chương trình, lối thoát vim/sqlite3/psql qua ống, for/select/exec{PATH} ghi PATH, $(date) qua biến và env -C, ghi đè .git/** bằng truncate/cp/> và gitdir/refs của worktree, sub/.git, ex -sc cụm cờ ngắn, test rò patch); với nhóm chương trình viết tường minh trong stdin của công cụ đọc chương trình che bằng lệnh ghép/echo/fd (N1, N4, N6, N9, N11, N12) chỉ sửa nếu gọn, không thì chấp nhận họ (c) có chủ và hạn 2027-01-21 cùng (a)/(b)
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: mọi lỗi có thể do lỡ tay hoặc chặn oan lệnh phổ biến vẫn được sửa; nhóm (c) cần payload nguy hiểm viết tường minh vào stdin của trình thông dịch rồi che bằng cú pháp — không thể là tai nạn của agent và cùng bản chất với (a)/(b) đã chấp nhận ở D-507; có điều kiện 'sửa nếu gọn' để không bỏ lỡ cách sửa rẻ. Phương án 2 không có điểm dừng (9 vòng); phương án 3 bỏ cả lỗi lỡ tay.
 - Đường lùi: Mở lại họ (c) thành AUD mở và sửa ở đợt sau; không đổi mã
+
+### D-510 · 2026-11-19T04:23:43+00:00 · Cổng commit đỏ ở phiên cloud chạy root vì hai ca đối chứng git submodule (AUD-SEC-805) phụ thuộc uid của máy chạy test — xử lý thế nào để commit bản nghiên cứu 2026-11-19?
+
+- Phương án: (1) Ghim tiền đề exec-path mặc định không đổi được trong hai ca đối chứng (tests/git_fixture.py default_exec_path_fixed); không đổi guard, không bỏ khẳng định nào · (2) Không commit, giao bản nghiên cứu ngoài repo và chờ người sửa test · (3) Sửa guard để root vẫn tin exec-path mặc định
+- Chọn: Ghim tiền đề exec-path mặc định không đổi được trong hai ca đối chứng (tests/git_fixture.py default_exec_path_fixed); không đổi guard, không bỏ khẳng định nào
+- Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: guard giữ nguyên, ca đối chứng vẫn khẳng định cùng quyết định; chạy không root (CI) kết quả không đổi (đã chạy cả hai uid). Phương án 3 nới hàng rào thật; phương án 2 để mất việc khi container bị thu hồi.
+- Đường lùi: git revert commit test(guard) — hai ca trở lại phụ thuộc uid

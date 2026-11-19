@@ -27,7 +27,7 @@ import unittest.mock as mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/cpu_budget.py
 import cpu_budget
-from git_fixture import fixture_git, init_git_fixture, isolated_git_environment
+from git_fixture import default_exec_path_fixed, fixture_git, init_git_fixture, isolated_git_environment
 from nonet import isolate_network
 
 # Luật guard được test ở pha harden; pha build nới hành động cục bộ (ADR-0040) — test riêng ở BuildPhaseGuardTest.
@@ -12403,7 +12403,10 @@ class GuardGitSubcommandTest(_GuardDebtCase):
         self.assert_allowed(("git cherry-pick abc", "git submodule--helper list", "git x_y.z"))
 
     def test_benign_git_unchanged(self):  # AUD-SEC-632…635: đối chứng — không chặn oan lệnh git lành
-        self.assert_allowed(self.BENIGN)
+        with default_exec_path_fixed(
+            self.g
+        ):  # `git submodule`: không phụ thuộc uid chạy test (root ghi được exec-path)
+            self.assert_allowed(self.BENIGN)
 
     def test_global_redirect_walk_linear(self):  # AUD-SEC-632: bỏ chuyển hướng ở vùng tuỳ chọn toàn cục tuyến tính
         cpu_budget.assert_not_quadratic(
