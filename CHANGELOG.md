@@ -256,6 +256,18 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   đều đỏ thay vì đọc thành rỗng; `expires` phải là ngày có thật (round-trip `Date` UTC, từ chối `2026-13-45`). Bộ
   đọc Python trong `tests/test_pack_audit_exceptions.py` theo cùng luật, so hạn theo ngày UTC; test node thêm các dạng.
   Dự án đích: chép lại `scripts/check-audit-exceptions.ts` từ starter.
+- T-3958, tài liệu lạc hậu: dòng "Trạng thái triển khai" của ADR-0075…0079 theo thực tế (chỉ dòng trạng thái);
+  bảng `topo: review` ở `orchestration-and-subagents.md` trỏ `pr reviewed --pr <N> --head <SHA>` theo README mảng 11
+  bước 12 và `/review` thay `/complete` bước 4 đã bỏ; `harness-files.md` ghi `rm -rf $(pwd -P)/..` → BUDGET (đối
+  chiếu `guard.bash_decision`); chú thích `release-tag.yml` nêu agent ký được khi `release_signoff: agent` (ADR-0074);
+  `pre-bash-guard.sh` báo "không phải CPython 3.15.x" thay "python3 < 3.11" (ADR-0078). Dự án đích: không đổi hành vi.
+- T-3958 (LOOP-STOP-027, ADR-0078; lý do chạm cổng: đóng đường bỏ qua guard của lệnh `xt.yaml`): `dev-task.sh` với
+  `XT_FRAMEWORK_PYTHON` khai rõ phải qua bắt tay in đúng dấu CPython 3.15 — tên chạy được nhưng không phải CPython
+  3.15 (`true`, `echo`) trước cho `guard-check` exit 0, tên không có trước bỏ qua kiểm; nay cả hai exit 126, không
+  lệnh nào chạy (cả `gate` lẫn task đơn). Không khai biến thì giữ hành vi cũ. Dự án đích: cài lại khung.
+- T-3958: `test_large_command_not_slower` (`tests/test_guard_exec_class.py`) bỏ ngưỡng giờ tường `SCAN_SECONDS` (đỏ
+  12,6 s khi máy tải) — đo tỉ lệ CPU cỡ n/4n bằng `cpu_budget.assert_not_quadratic` và assert không `BUDGET` ở mọi cỡ
+  như docstring hứa (trước nhận cả deny `BUDGET`).
 - T-3952 (D-503, D-508, lô 4 cổng ký lần 10): guard chặn `git commit` lồng trong shell con/heredoc/trình thông
   dịch/`$(…)`/`npx -c` (commit không qua cổng); commit sau trình chạy/alias đứng một mình nay chạy cổng commit. Chặn
   thêm: khoá push đặt một lần (`-c remote.origin.mirror`, hoa-thường, `GIT_CONFIG_*`, `--config-env`, `export`) và cấu

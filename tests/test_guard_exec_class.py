@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 import unittest
 import unittest.mock as mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("XT_GUARD_PHASE", "harden")
+sys.path.insert(0, str(ROOT / "tests"))
+import cpu_budget
+
 sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
 import guard
 
@@ -175,13 +177,20 @@ class ExecClassTest(unittest.TestCase):
                 self.assertEqual(decide(cmd).get("code"), "WIPE_OUTSIDE")
 
     def test_large_command_not_slower(self):
-        """Lệnh ~30 KB nhiều lệnh lạ có tên lệnh có luật làm đối số: quét xong trong hạn, không BUDGET."""
-        cmd = "; ".join(f"tool{i} --x v{i} git status" for i in range(900))
-        self.assertGreater(len(cmd), 20000)
-        start = time.monotonic()
-        d = decide(cmd)
-        self.assertLess(time.monotonic() - start, guard.SCAN_SECONDS)
-        self.assertIn(d["decision"], ("", "deny"))
+        """Lệnh nhiều lệnh lạ có tên lệnh có luật làm đối số: chi phí quét không bậc hai theo số lệnh (tỉ lệ cỡ n/4n cùng
+        tiến trình — không ngưỡng giây tường, BASE-GATE-005, AUD-TEST-008) và không BUDGET ở mọi cỡ (T-3958)."""
+        seen: list[tuple[int, dict]] = []
+
+        def work(n: int) -> None:
+            cmd = "; ".join(f"tool{i} --x v{i} git status" for i in range(n))
+            seen.append((len(cmd), decide(cmd)))
+
+        cpu_budget.assert_not_quadratic(self, work, 60)
+        self.assertGreater(max(size for size, _ in seen), 6000)
+        for size, d in seen:
+            with self.subTest(size=size):
+                self.assertNotEqual(d.get("code"), guard.BUDGET, d.get("reason"))
+                self.assertIn(d["decision"], ("", "deny"))
 
 
 class ExecHelperTest(unittest.TestCase):

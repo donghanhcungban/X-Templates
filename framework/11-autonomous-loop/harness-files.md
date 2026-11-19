@@ -90,7 +90,7 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   biết (D-106) nên chỉ chặn tên file đã có hoặc tên được canh; lệnh chạy hộ ngoài danh sách (`mise exec --`,
   `pyenv exec`, `asdf exec`, `volta run`, `fnm exec`, `direnv exec`, `bundle exec`, `nix develop -c`, `pnpm exec`)
   không được bóc để trích script; lồng hơn 8 lớp lệnh chạy hộ cũng không. Đích `rm -rf` là thay lệnh guard không tính
-  được (`$(dirname $PWD)`, `$(realpath ..)`) → BUDGET (D-503); `$(pwd -P)/..` → RULE_DENY (đích `..`). Giá trị tính được
+  được (`$(dirname $PWD)`, `$(realpath ..)`, `$(pwd -P)/..`) → BUDGET (D-503); `..`, `$PWD/..` → luật `rm -rf`. Giá trị tính được
   (`$(date +FMT)`, `$(mktemp …)`, `$(cat TỆP)` trong sed) chỉ được tin khi cả lệnh, mọi tầng bọc, chỉ gồm cấu trúc trong
   danh sách đóng (D-506, T-3945): gán/ghi biến `PATH`/`BASH_CMDS`/`IFS`/`LD_*`/`GIT_*`… dưới mọi dạng (`read`, `printf -v`,
   `mapfile`, `declare`/`export` tên có nháy/thoát/brace/động, nameref, số học có tên biến — `[[ -eq ]]`, không `[ -eq ]`;

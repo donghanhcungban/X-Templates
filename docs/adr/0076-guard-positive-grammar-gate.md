@@ -3,7 +3,9 @@
 - **Trạng thái:** Đã chấp nhận 2026-11-13 — chủ repo chọn hướng "khoá tập con đọc chắc" khi số 🔴 guard tăng ròng
   (13 → 18 trong một phiên `/complete`); phiên chính chốt thiết kế theo tiêu chí chất lượng cuối (ADR-0008) —
   **D-430** (ngữ pháp dương), **D-431** (mã `BUDGET`, cổng hẹp, ngưỡng dừng), **D-432** (691 và 648).
-- **Trạng thái triển khai:** chưa bắt đầu — sáu lát và một lát riêng ở §Quyết định; PR của ADR này chỉ có tài liệu.
+- **Trạng thái triển khai:** đang làm — lát 0 (#525–#527), 1 (#528), 2 (#529), 3 (T-3763) và 4 (#530) đã vào
+  `.claude/hooks/guard.py`; lát 5, 6 và lát riêng (T-3765…T-3767, `PLAN-harden-2026-11-11.md`) chưa làm (cập nhật
+  2026-11-19, T-3958).
 - **Ngày:** 2026-11-13.
 - **Thay:** cách mở rộng tập con đọc chắc bằng bảng cấm theo từng cú pháp (`STRICT_PLAIN/LIVE/RAW/BARE`, ADR-0063/0065).
   **Giữ:** ADR-0002 (fail-closed về hành động nguy hiểm, fail-open về luồng), ADR-0018/0019 (guard không hỏi người),
