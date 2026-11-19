@@ -246,17 +246,24 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   GitHub qua curl/wget/httpie/xh/`requests` (host `api|uploads.github.com`, GHES `/api/v3`, `/api/graphql`) dựng lại
   thành `gh api` và qua cùng bảng luật; `POST …/merges`, `mergeBranch` là merge không qua PR. Biến token GitHub trong argv
   của trình mạng/git chỉ tới host GitHub; biến bí mật (`*TOKEN`, `*_KEY`, `*SECRET`, `*PASSWORD`, `*_PAT`) vào message
-  commit/tag, `gh` (trừ `secret`/`auth`, header `gh api`), URL userinfo (mọi host), hay gửi tới dịch vụ trút dữ liệu
-  (paste, `webhook.site`, requestbin, pipedream, ngrok, trycloudflare, OAST, webhook Discord/Telegram/Slack) → chặn;
-  bí mật khác tới API của chính nó (`$OPENAI_API_KEY` → `api.openai.com`) cho qua. Hậu tố
+  commit/tag, `gh` (trừ `secret`/`auth`, header `gh api`), URL userinfo của trình mạng/git/trình quản lý gói (`pip`,
+  `uv`, `npm`, `pnpm`, `yarn`, `go`, `cargo`… — T-3955 B7), hay gửi tới dịch vụ trút dữ liệu (paste, `webhook.site`,
+  requestbin, pipedream, ngrok, trycloudflare, OAST, webhook Discord/Telegram/Slack — kể cả bot token Telegram tới
+  `api.telegram.org`) → chặn; bí mật khác tới API của chính nó (`$OPENAI_API_KEY` → `api.openai.com`) cho qua. Biến chỉ
+  tính khi mở rộng thật: trong nháy đơn, `$'…'` hay thoát `\$` là chữ (`git commit -m 'docs: set $GH_TOKEN'`) — T-3955
+  B2. Hậu tố
   trình chạy gói/tên lạ bóc thêm tại tên trình mạng/in/đọc tệp/CLI đám mây (`uv run curl -d @.env`, `valgrind printenv
   GH_TOKEN`); `env -S` quét như lệnh. Chuỗi `-c`/`--call` của `npx`, `npm exec|x`, `pnpm exec|dlx` quét như `sh -c`.
   Lệnh ở máy xa/container đang chạy (`ssh host …`, `docker|podman|nerdctl exec`, `kubectl exec`, `lxc|incus exec`,
   `limactl shell`) quét đủ luật (vi phạm → mã REMOTE_EXEC; CSDL không nêu host là máy chủ không cục bộ). `ssh`/`kubectl
   exec` (máy xa/cụm): xoá đường dẫn tuyệt đối chặn trừ thư mục tạm/cache (`/tmp`, `/var/tmp`, `/var/cache`,
   `/var/lib/apt/lists`, `~/.cache`, `node_modules`, `__pycache__`, `.pytest_cache`, `dist`, `build`, `.next`). Container
-  cục bộ (`docker|podman|nerdctl exec|run`, lxc, lima) giữ gốc `/`: xoá đường dẫn trong đó không chặn — **giới hạn chấp
-  nhận (d)** (T-3952, hạn xét lại 2027-01-21 cùng (a)–(c)): `docker exec app rm -rf /data` còn qua. CLI đám mây/PaaS huỷ hạ tầng (`aws …
+  cục bộ (`docker|podman|nerdctl exec|run`, lima) giữ gốc `/`: xoá đường dẫn trong đó không chặn — **giới hạn chấp
+  nhận (d)** (T-3952, hạn xét lại 2027-01-21 cùng (a)–(c)): `docker exec app rm -rf /data` còn qua; `lxc|incus exec c --
+  rm -rf /data` vẫn chặn (luật lệnh lồng — remote của lxc có thể là máy khác). Ở máy xa (T-3955 B3/B4) `sudo`/`doas` là
+  trình bọc (luật sudo là chính sách máy dev — lệnh sau nó quét theo luật huỷ), heuristic BUDGET của máy dev (tệp ghi rồi
+  nhắc lại khi không chạy tệp, `$(…)`/biến máy xa ở đối số lệnh lành) không áp; giá trị không tính được ở tên lệnh hay
+  đối số của lệnh có luật huỷ (`rm -rf $DIR`, `rm $FLAG /data`) → REMOTE_EXEC. CLI đám mây/PaaS huỷ hạ tầng (`aws …
   delete-*|terminate-*|s3 rb|rm|sync --delete`, `gcloud|gsutil|az|helm|doctl|heroku|fly|vercel|netlify|wrangler` xoá) →
   DESTROY; thanh toán/thư/SMS (`stripe` ghi, `sendmail`, `mail <người nhận>`, `twilio …:create`, `aws ses|sns` gửi) →
   chặn. In tệp chứa token (`~/.config/gh/hosts.yml`, `.git-credentials`, `.netrc`) → chặn như `gh auth token`. Tên lệnh
@@ -270,21 +277,43 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
   Tuỳ chọn đặt thư mục của trình chạy (`--directory`, `--dir`, `-C`, `--cwd`, `--prefix`, `-p`, `-w`, `-d`,
   `--working-directory`…) đứng trước lệnh có luật là `cd` (`uv run --directory ~ rm -rf x`). Chuỗi template JS là chuỗi
   chữ (`${…}` đọc như thay lệnh); Python nhập mô-đun chạy lệnh qua bí danh/`from … import`/`__import__` → mọi chuỗi chữ
-  quét như lệnh. `git push` đọc nhánh hiện tại (viết thẳng hay qua biến) sau `checkout`/`switch`/`merge`/`reset`/
-  `rebase`/`pull` cùng lệnh → BUDGET. Glob (`rm -rf lnk_*/`, `*/.config`, `rsync --delete e/ l*/`, biến vòng `for d in
+  quét như lệnh. `git push` đọc nhánh hiện tại (không refspec, `HEAD`/`@`, truy vấn nhánh viết thẳng hay qua biến) sau
+  lệnh ĐỔI NHÁNH cùng lệnh (`switch`, `checkout <nhánh>`/`--detach`, `checkout -b|-B`/`switch -c|-C` tên nhánh chính
+  hay tên dựng lúc chạy, `rebase <upstream> <nhánh>`/`--root <nhánh>`/`--abort`, `stash branch`, `gh pr checkout`) →
+  BUDGET; `pull`/`merge`/`reset`/`rebase <upstream>`/`worktree`/`checkout -- <tệp>` không đổi nhánh: push không refspec
+  sau chúng cho qua, đích do cấu hình hiệu lực (F3) và luật nhánh chính xét (T-3955 B1). Glob (`rm -rf lnk_*/`, `*/.config`, `rsync --delete e/ l*/`, biến vòng `for d in
   lnk_*`) mở ra từng phần tử rồi realpath (có `/` cuối: cả đường; không: thư mục cha + tên; không khớp gì: thư mục cha
   glob). Lệnh ngoài danh sách chỉ đọc (như GO-NO-GO; trừ công cụ kiểm không cờ sửa, `python -m json.tool`…) có đối số
   giải vào `.claude/**`, `.autopilot/**`, bên trong thư mục git → chặn với mã của đích (`gsed -i`, `vim -es`, `sponge`,
   `gzip`/`zstd --rm`, `tar --remove-files`; trình thông dịch chỉ khi `-i` hay có lời gọi ghi). Ghi/xoá `~/.ssh/**`,
   `~/.gnupg/**`, `~/.aws/**`, `~/.kube/**`, `~/.netrc`, `~/.npmrc`, `/etc/**` và `>` vào tệp khởi động shell (`~/.bashrc`…)
-  → WIPE_OUTSIDE; nối thêm `>>`/`tee -a` vào rc cho chạy (AUD-SEC-060). Nguồn xargs `grep -rl`/`rg -l`/`git grep -l`/`ag
+  → WIPE_OUTSIDE; nối thêm `>>`/`tee -a` vào rc và `~/.ssh/known_hosts` cho chạy (AUD-SEC-060, T-3955 B5). Nguồn xargs `grep -rl`/`rg -l`/`git grep -l`/`ag
   -l` với đường chữ dưới gốc, không phải gốc/hàng rào, không chứa `.git` → như `find src`. Stdin từ `< <(…)`/`<&N`/nhóm
   vào lệnh ngoài `STDIN_DATA_OK` (`Rscript -`, `julia`) → BUDGET. Lối thoát theo từng công cụ: `!` (ed/ex/vim/dc), `\!`
   (psql/mysql), `pager`/`system` đầu câu (mysql), `pipe`/`shell` (gdb), `to program` (psql), `exec`/`spawn`/`open "|…"`
   (tcl/expect); `Deno.Command`/`Deno.run` là lời gọi chạy lệnh. Giữ BUDGET có chủ (D-503): `sed -n "$(grep -n …)…"`,
   `cd "$T" && … && cd - && rm -rf "$T"`, `rm -rf "$(git rev-parse --show-toplevel)/dist"`, `rm -f "$(basename "$f"
   .c).o"`. Họ (c) mở rộng (hạn xét lại 2027-01-21): payload che bằng biến/`getattr(os, "system")`/`` `r${"m"} -rf ~` ``
-  trong template JS. Họ `trap 'cd ~' DEBUG` là 🟢 cố ý. Fuzz cổng ký sau dùng gốc ngoài /tmp (fz6–fz9 từng dùng gốc
+  trong template JS (cả `${process.env.HOME}` trong `execSync` — cố ý, T-3955 B9). Họ `trap 'cd ~' DEBUG` là 🟢 cố ý.
+  T-3955 (cổng ký 11, D-509): bí mật vào artefact — mọi lệnh `gh` (thân/ghi chú/`<`/`-F -`), message `git commit|tag|notes`
+  (`-m`, `-F tệp`), thân `curl`: thay lệnh đọc tệp chứng thực (`classify_path` 'secret', `CRED_FILE_RE`,
+  `~/.aws/credentials`, `~/.docker/config.json`, `~/.kube/config`, `*.tfstate`, `.dev.vars`, `secrets.*`) hay in môi
+  trường (`env`, `printenv`, `set`, `export -p`, `declare -p`) → chặn (C1); in tệp đó ra transcript (`cat|head|sed|grep …`,
+  trừ `.pub`/`.example`/`.sample`/`.template`, `grep -c|-l|-q`, stdout ra tệp) → chặn (C3; giới hạn chọn chặt:
+  thân thay lệnh không biết có bị ghi ra tệp hay in, nên `echo "$(cat .env)" > out.txt` vẫn chặn). Interop WSL: `wsl --unregister` → DESTROY;
+  `cmd /c`, `powershell.exe|pwsh.exe -c|-File|-EncodedCommand` (bản Linux: luật T-3954 B4) là shell mờ (BUDGET) trừ lệnh đọc đứng một mình; `rd /s`, `del
+  /s|/q`, `Remove-Item`, `rm -r`, `robocopy /MIR|/PURGE` → WIPE_OUTSIDE (C2). Huỷ thêm (C4, DESTROY): `terragrunt|cdk
+  destroy`, `sls remove`, `sam|eksctl|neonctl delete`, `turso … destroy`, `rclone sync|purge|delete`, `s3cmd del`, `mc rm`,
+  `firebase …:delete`, đồng bộ có cờ xoá (`gsutil rsync -d`, `gcloud storage rsync --delete-unmatched…`, `azcopy sync
+  --delete-destination=true`, `s3cmd sync --delete-removed`, `mc mirror --remove`), `supabase db reset --linked`. Cờ đầu ra
+  của trình sinh khoá (`ssh-keygen -f`, `openssl -out|-keyout`, `age-keygen -o`) vào `~/.ssh`/`~/.gnupg`/`~/.aws`/`~/.kube`
+  → SECRET_WRITE; `gpg --delete-secret*` → DESTROY (C5). `chmod|chown|chgrp|setfacl -R` trên đích nguy hiểm của `rm` → chặn,
+  ngoài gốc (trừ thư mục tạm) → WIPE_OUTSIDE (C6). `crontab -r`/`/dev/null`/nguồn rỗng qua ống → chặn (C7). `git read-tree
+  -u --reset`, `checkout-index -f`, `rm -f`, `reset --merge`, `switch -C <nhánh chính>`, `submodule deinit -f` như `reset
+  --hard` (nới ở pha build); `reflog expire --expire=now`, `reflog delete`, `gc --prune=now` → chặn (C8). `npm|pnpm|yarn
+  unpublish`, `gem yank`, `skopeo|crane delete`, `regctl tag delete`, `gh release delete-asset`, `gh api -X DELETE
+  …/packages/…` → DESTROY (C9). Trình xem/kiểm chỉ đọc trên hàng rào (`tree`, `xxd`, `od`, `hexdump`, `bat`, `pyflakes`,
+  `yq` không `-i`, `black|isort --check|--diff`) cho qua (B8); `gh secret list` không còn DESTROY (B11). Fuzz cổng ký sau dùng gốc ngoài /tmp (fz6–fz9 từng dùng gốc
   dưới /tmp nên `..` của gốc bị coi là thư mục tạm, che vài ca — C3).
 - **Lô A cổng ký 11 — đợt sửa cuối** (T-3954, D-503, D-509): sed đọc cờ như getopt (`-Ei`, `-ni`, `-sEi`: `i` ở mọi
   vị trí là sửa tại chỗ; cả `gsed`); đích home quy `$HOME`/`${HOME}`/`"$HOME"` về `~` trước luật dotfile, công cụ sửa tại

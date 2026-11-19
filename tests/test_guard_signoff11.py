@@ -268,7 +268,8 @@ A7_MOVES = (
     "git switch main",
     "git switch -c main",
 )
-A7_MOVES += ("git merge --ff-only feat/x", "git reset --hard origin/main")
+# T-3955 B1: `merge`/`pull`/`reset` không đổi nhánh — chỉ `rebase <upstream> <nhánh>` (đổi sang `<nhánh>`)
+A7_MOVES += ("git rebase origin/main main", "git reset --hard origin/main")
 A7_PUSH = (
     'git push origin "$(git branch --show-current)"',
     'git push -u origin "$(git branch --show-current)"',
