@@ -6,6 +6,12 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [Unreleased]
 
+### Changed
+
+- CI repo khung: job `test` chia 6 shard (trước: 4), `test-main` 4 shard (trước: 3); trần 10 phút mỗi job giữ nguyên.
+  Tổng trọng số 2 605 s chia 4 là 651 s mỗi shard, vượt trần — shard 3/4 bị huỷ ở #672 và #674 (AUD-CI-035, T-3961,
+  D-516). Dự án đích: không đổi (CI mẫu không chia shard).
+
 ## [3.34.0] - 2026-11-19
 
 Bản harden (ADR-0080): guard mặc định chặn theo danh sách đóng (D-503…D-509) sau 11 cổng ký và audit delta 13 nhóm; giới hạn đã biết ghi ở `framework/11-autonomous-loop/harness-files.md` (có hạn 2027-01-21). **Dự án đích:** cài lại khung (`install.py`) để nhận guard, hook, workflow và gói mới; kiểm lại ruleset (mẫu `required_review_thread_resolution: false` theo `merge_review`, D-512) và, với gói `web-api-ts`, CI chạy `pnpm audit:exceptions`; ADR-0081 (D-511): `compose` không `--scale` ra **S** (trước: M) và `doctor` ở pha build không báo khung chậm MINOR/PATCH — script dựa vào mặc định M phải truyền `--scale M`.

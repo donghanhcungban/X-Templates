@@ -139,3 +139,10 @@
 - [x] `T-3958` 🟠 ruleset vs WF-REVIEW-005/WF-GIT-002 (D-512), 🟠 `pack-acceptance` thiếu `pnpm audit:exceptions`, 🟢 gỡ ngoại lệ picomatch (D-513), `check-audit-exceptions.ts` fail-closed, tài liệu lạc hậu, `XT_FRAMEWORK_PYTHON`, test giờ tường — Gate: `python3 -m unittest tests.test_ci tests.test_pack_audit_exceptions tests.test_packs` (files: framework/, .github/, scripts/, tests/)
 - [x] `T-3959` 🟠 `PROGRESS.md` lạc hậu 26 PR; sổ và bảng nhóm cập nhật theo audit delta — Gate: `python3 scripts/xt.py progress-check` (files: PROGRESS.md, docs/ops/AUDIT-STATUS.md)
 - [x] `T-3960` Sổ không còn 🔴/🟠 mở, `audit check --strict` xanh (13 nhóm đã quét hoặc rút gọn) — Gate: `python3 scripts/xt.py audit check docs/ops/AUDIT-STATUS.md --strict && ! grep -E '^\| AUD-[A-Z]+-[0-9]+ \| (🔴|🟠) \| mở' docs/ops/AUDIT-STATUS.md` (sau: T-3958, T-3959; files: docs/ops/AUDIT-STATUS.md)
+
+## Đợt 16 — tốc độ repo khung sau 3.34.0 (D-516)
+> Số đo phiên cắt bản: cổng commit ~12 phút (1 tệp `.md` → 331/700 lớp test), shard `test` 651 s > trần 10 phút. Nới guard cho lệnh chỉ-đọc dạng ghép: 3.35.0, sau khi tách `guard.py` (D-142).
+
+- [ ] `T-3961` 🟢 AUD-CI-035: CI `test` 6 shard, `test-main` 4 shard (trần 10 phút giữ nguyên) — Gate: `python3 -m unittest tests.test_ci tests.test_ci_shard` (files: .github/workflows/ci.yml, tests/test_ci_shard.py)
+- [ ] `T-3962` `test-select --unittest` chọn theo lớp; glob trong test phải khớp tên tệp đổi — Gate: `python3 -m unittest tests.test_xt_cli tests.test_commit_gate` (files: scripts/xt.py, tests/)
+- [ ] `T-3963` 🟠 AUD-HAR-440: `/complete` chạy lại `doctor` sau khi đặt `harden` — Gate: `python3 -m unittest tests.test_docs_budget tests.test_template_contracts` (files: .claude/skills/complete/SKILL.md)
