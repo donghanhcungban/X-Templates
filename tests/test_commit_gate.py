@@ -187,6 +187,158 @@ class TestSelectTest(unittest.TestCase):
         self.assertIn("không có test liên quan", err)
 
 
+# Tệp test mẫu cho chọn theo LỚP (D-516): mỗi lớp nhắc một tệp/glob khác nhau.
+CLASS_FIXTURE = """import unittest
+
+ROOT = "x"
+
+
+class Mix:
+    def helper(self):
+        return "alpha.sh"
+
+
+class A(Mix, unittest.TestCase):
+    pass
+
+
+class B(unittest.TestCase):
+    pass
+
+
+class C(A):
+    pass
+
+
+class D(C):
+    pass
+
+
+@unittest.skipIf(False, "gamma.cfg")
+class E(unittest.TestCase):
+    pass
+
+
+class G(unittest.TestCase):
+    PAT = "GO-NO-GO*.md"
+
+
+class H(unittest.TestCase):
+    PAT = "docs/ops/GO-NO-GO*.md"
+
+
+class K(unittest.TestCase):
+    PAT = "**/*.md"
+
+
+class M(unittest.TestCase):
+    PAT = "*.mdx"
+
+
+class B(unittest.TestCase):
+    PAT = "kappa.ini"
+"""
+
+
+class TestSelectClassTest(unittest.TestCase):
+    """Chọn theo lớp (D-516): lớp trúng khi thân lớp (kể cả decorator) khớp tệp đổi hoặc nhắc tên lớp cùng tệp đã
+    trúng (bắc cầu); cả tệp khi phần ngoài lớp khớp, import module đổi, `test_<tên>.py`, chính tệp test đổi, hoặc không parse được.
+    `test_select_plan` trả {tệp test: lớp top-level BỎ QUA}."""
+
+    def setUp(self):
+        self.base = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(unittest.mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(self.base)}))
+        self.t = self.base / "tests"
+        self.t.mkdir()
+        (self.t / "test_cls.py").write_text(CLASS_FIXTURE, encoding="utf-8")
+        self.names = {"Mix", "A", "B", "C", "D", "E", "G", "H", "K", "M"}
+
+    def plan(self, *files: str) -> dict[str, set[str]] | None:
+        return xt.test_select_plan(self.base, "tests", files)
+
+    def picked(self, *files: str) -> set[str]:
+        plan = self.plan(*files) or {}
+        return self.names - plan["tests/test_cls.py"]
+
+    def test_commit_gate_fast_class_hit_and_parent_chain(self):
+        self.assertEqual(self.picked("scripts/alpha.sh"), {"Mix", "A", "C", "D"})  # Mix → A → C → D
+        self.assertEqual(self.picked("etc/gamma.cfg"), {"E"})  # nhắc trong decorator
+        self.assertEqual(self.picked("etc/kappa.ini"), {"B"})  # lớp trùng tên top-level: gộp thân
+        self.assertEqual(self.picked("scripts/alpha.sh", "etc/gamma.cfg"), {"Mix", "A", "C", "D", "E"})
+        self.assertIsNone(self.plan("scripts/omega.sh"))  # không lớp/phần nào khớp → cả suite
+        self.assertEqual(xt.test_select(self.base, "tests", ["etc/gamma.cfg"]), ["tests/test_cls.py"])  # chế độ tệp
+
+    def test_commit_gate_fast_class_helper_by_name(self):
+        """Lớp phụ trợ không phải lớp cha (kiểu `FakeGh`) trúng → lớp nhắc TÊN nó cùng file cũng chạy, bắc cầu (D-516)."""
+        helper = (
+            "import unittest\n\n\nclass FakeGh:\n    def run(self):\n        return 'lambda.json'\n\n\n"
+            "class UsesFake(unittest.TestCase):\n    def test_x(self):\n        FakeGh().run()\n\n\n"
+            "class UsesUser(unittest.TestCase):\n    helper = UsesFake\n\n\n"
+            "class FakeGhost(unittest.TestCase):\n    def test_x(self):\n        FakeGhx = 1\n\n\n"
+            "class Other(unittest.TestCase):\n    pass\n"
+        )
+        (self.t / "test_helper.py").write_text(helper, encoding="utf-8")
+        plan = self.plan("etc/lambda.json") or {}
+        self.assertEqual(plan, {"tests/test_helper.py": {"FakeGhost", "Other"}})  # `FakeGhost`/`FakeGhx` ≠ `FakeGh`
+
+    def test_commit_gate_fast_class_used_from_module_level(self):
+        """Review #678 R1: lớp phụ trợ trúng mà phần ngoài lớp nhắc tên nó (`make_runner()` trả `FakeRunner`) → cả tệp;
+        trước đây chỉ lớp phụ trợ (không phải TestCase) được chọn → 0 id, cổng xanh giả."""
+        r1 = (
+            "import unittest\n\n\nclass FakeRunner:\n    def cmd(self):\n        return ['bash', 'scripts/rho.sh']\n\n\n"
+            "def make_runner():\n    return FakeRunner()\n\n\n"
+            "class RunnerTest(unittest.TestCase):\n    def test_runs(self):\n        make_runner()\n\n\n"
+            "class Other(unittest.TestCase):\n    pass\n"
+        )
+        (self.t / "test_r1.py").write_text(r1, encoding="utf-8")
+        self.assertEqual(self.plan("scripts/rho.sh"), {"tests/test_r1.py": set()})
+        # bắc cầu rồi mới xét phần ngoài lớp: `Mid` trúng nhờ nhắc `Leaf`, phần ngoài lớp nhắc `Mid`
+        r1b = "class Leaf:\n    X = 'tau.sh'\n\n\nclass Mid:\n    y = Leaf\n\n\nZ = Mid\n\n\nclass T:\n    pass\n"
+        (self.t / "test_r1b.py").write_text(r1b, encoding="utf-8")
+        self.assertEqual(self.plan("scripts/tau.sh"), {"tests/test_r1b.py": set()})
+
+    def test_commit_gate_fast_class_glob_tokens(self):
+        self.assertEqual(self.picked("docs/ops/GO-NO-GO-2026-11-19.md"), {"G", "H", "K"})
+        self.assertEqual(self.picked("khac/GO-NO-GO-1.md"), {"G", "H", "K"})  # chỉ so phần tên
+        self.assertEqual(self.picked("PROGRESS.md"), {"K"})  # `GO-NO-GO*.md` không còn là "quét *.md"
+        self.assertEqual(self.picked("docs/a.mdx"), {"M"})  # `*.md` không khớp đuôi `.mdx`
+        self.assertIsNone(self.plan("docs/GO-NO-GO-1.txt"))
+        cases = [
+            ("a.md", 'p.rglob("*.md")', True),
+            ("a.md", '"**/*.md"', True),
+            ("GO-NO-GO-1.md", '"docs/ops/GO-NO-GO*.md"', True),
+            ("DECISIONS-2026.md", '"DECISIONS-*.md"', True),
+            ("PROGRESS.md", '"DECISIONS-*.md", "GO-NO-GO*.md"', False),
+            ("a.md", '"*.mdx"', False),
+            ("a.md", '"docs/*/README.md"', False),  # `*` không ở phần tên
+            ("README.md", '"docs/*/README.md"', True),  # nhắc tên tệp
+            ("Makefile", '"*"', False),  # không đuôi: không luật glob
+            ("tài liệu.md", '"tài*.md"', True),  # Unicode, khoảng trắng trong tên
+            ("PROGRESS.md", '"tài*.md"', False),
+        ]
+        for name, text, want in cases:
+            with self.subTest(name=name, text=text):
+                self.assertEqual(xt._test_matches(name, text), want)
+
+    def test_commit_gate_fast_class_whole_file(self):
+        (self.t / "test_rest.py").write_text(
+            'import unittest\nCFG = "delta.toml"\n\n\nclass P(unittest.TestCase):\n    pass\n', encoding="utf-8"
+        )
+        (self.t / "test_imp.py").write_text(
+            "import unittest\n\n\nclass Q(unittest.TestCase):\n    def test_x(self):\n        import clsmod\n",
+            encoding="utf-8",
+        )
+        (self.t / "test_bad.py").write_text('"zeta.ini"\nclass (:\n', encoding="utf-8")
+        self.assertEqual(self.plan("src/delta.toml"), {"tests/test_rest.py": set()})  # phần ngoài lớp khớp
+        self.assertEqual(self.plan("scripts/clsmod.py"), {"tests/test_imp.py": set()})  # import lồng trong lớp
+        self.assertEqual(self.plan("src/cls.py"), {"tests/test_cls.py": set()})  # test_<tên>.py
+        self.assertEqual(self.plan("tests/test_cls.py"), {"tests/test_cls.py": set()})  # chính tệp test
+        self.assertEqual(self.plan("tests/test_xoa.py"), {})  # tệp test bị xoá: không còn gì
+        self.assertEqual(self.plan("etc/zeta.ini"), {"tests/test_bad.py": set()})  # không parse được: cả tệp
+        self.assertNotIn("tests/test_bad.py", self.plan("scripts/alpha.sh") or {})
+        self.assertIsNone(xt.test_select_plan(self.base, "tests", ["Makefile"]))
+
+
 class UnittestClassIdsTest(unittest.TestCase):
     def setUp(self):
         self.base = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -209,6 +361,54 @@ class UnittestClassIdsTest(unittest.TestCase):
         self.assertEqual(xt.unittest_class_ids(self.t, ".", ["test_cgf_two.py"]), ["test_cgf_two.C"])  # không gói
         rc, out, _ = run_main("test-select", "--unittest", "tests/test_cgf_two.py")
         self.assertEqual((rc, out), (0, "tests.test_cgf_two.C\n"))
+
+    def test_commit_gate_fast_class_ids_filtered_by_class(self):
+        dyn = (
+            "import unittest\n\n\nclass A(unittest.TestCase):\n    def test_x(self):\n        'omega.sh'\n\n\n"
+            "class B(unittest.TestCase):\n    def test_x(self):\n        'kappa.sh'\n\n\n"
+            "def _make():\n    return type('Dyn', (unittest.TestCase,), {'test_x': lambda self: None})\n\n\n"
+            "Dyn = _make()\n"
+        )
+        (self.t / "test_cgf_dyn.py").write_text(dyn, encoding="utf-8")
+        imp = "import unittest\nfrom test_cgf_dyn import B as Again\n\n\nclass Z(unittest.TestCase):\n"
+        imp += "    def test_x(self):\n        'sigma.sh'\n"
+        (self.t / "test_cgf_imp.py").write_text(imp, encoding="utf-8")
+        cases = {
+            "omega.sh": "tests.test_cgf_dyn.A\ntests.test_cgf_dyn.Dyn\n",  # lớp sinh động: chạy khi tệp trúng
+            "kappa.sh": "tests.test_cgf_dyn.B\ntests.test_cgf_dyn.Dyn\n",
+            "sigma.sh": "tests.test_cgf_dyn.B\ntests.test_cgf_imp.Z\n",  # lớp import từ module ngoài kế hoạch: giữ
+        }
+        for changed, want in cases.items():
+            with self.subTest(changed=changed):
+                self.assertEqual(run_main("test-select", "--unittest", f"scripts/{changed}")[:2], (0, want))
+        rc, out, _ = run_main("test-select", "scripts/omega.sh")  # chế độ tệp: vẫn in tệp
+        self.assertEqual((rc, out), (0, "tests/test_cgf_dyn.py\n"))
+        env = {k: v for k, v in os.environ.items() if k != "XT_CHANGED_FILES"}
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            rc, out, _ = run_main("test-select", "--unittest")  # không biết tệp đổi → mọi lớp
+        want_all = ["A", "B", "Dyn"]
+        got = out.split()
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            [i for i in got if i.startswith("tests.test_cgf_dyn.")], [f"tests.test_cgf_dyn.{c}" for c in want_all]
+        )
+        self.assertIn("tests.test_cgf_one.A", got)
+
+    def test_commit_gate_fast_class_filter_never_empties_related_files(self):
+        """Review #678: có tệp liên quan mà lọc theo lớp ra 0 id (chỉ lớp phụ trợ trúng, không ai nhắc tên nó) → không
+        lọc, chạy mọi lớp của tệp đó và nói rõ ở stderr — không bao giờ "có tệp liên quan mà 0 lớp" (xanh giả)."""
+        text = "import unittest\n\n\nclass Unused:\n    X = 'nu.sh'\n\n\n"
+        text += "class T(unittest.TestCase):\n    def test_x(self):\n        pass\n"
+        (self.t / "test_cgf_unused.py").write_text(text, encoding="utf-8")
+        self.assertEqual(
+            xt.test_select_plan(self.base, "tests", ["scripts/nu.sh"]), {"tests/test_cgf_unused.py": {"T"}}
+        )
+        rc, out, err = run_main("test-select", "--unittest", "scripts/nu.sh")
+        self.assertEqual((rc, out), (0, "tests.test_cgf_unused.T\n"))
+        self.assertIn("[test-select] lọc theo lớp ra 0 lớp", err)
+        rc, out, err = run_main("test-select", "--unittest", "tests/test_cgf_two.py")  # lọc ra ≥ 1 lớp: không báo
+        self.assertEqual((rc, out), (0, "tests.test_cgf_two.C\n"))
+        self.assertNotIn("lọc theo lớp ra 0 lớp", err)
 
     def test_commit_gate_fast_import_error_is_red(self):
         (self.t / "test_cgf_bad.py").write_text("import khong_co_module_nay_cgf\n", encoding="utf-8")

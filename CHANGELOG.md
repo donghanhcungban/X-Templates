@@ -8,6 +8,18 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- `xt.py test-select --unittest` (cổng commit `gate-fast`, khoá `test_fast`) chọn test theo **lớp** thay vì theo tệp: lớp
+  chạy khi thân lớp nhắc tên tệp đổi, có glob khớp tên đó (`GO-NO-GO*.md` không còn khớp mọi `.md`), hoặc nhắc tên một
+  lớp cùng tệp đang chạy (lớp cha, lớp phụ trợ — bắc cầu); cả tệp chạy khi phần ngoài lớp khớp, tệp import module đổi,
+  trùng tên `test_<tên>.py`, chính tệp test đổi, không parse được, hoặc phần ngoài lớp nhắc tên một lớp đã trúng. Có
+  tệp liên quan mà lọc ra 0 lớp thì chạy mọi lớp của các tệp đó và báo stderr (không có đường "0 lớp mà xanh"). Đo ở
+  repo khung: sửa một tệp `.md` chọn 47–81 lớp (trước: 331–375), `fintech.md` chạy 55 s. Không ánh xạ được vẫn chạy cả
+  bộ; CI là cổng đầy đủ nên chọn sót ở cổng commit bị CI bắt (T-3962, D-516). Chế độ in tệp (không `--unittest`) dùng
+  cùng luật glob chặt hơn: test chỉ có `GO-NO-GO*.md` không còn được chọn cho `PROGRESS.md` (tệp không ánh xạ được →
+  cả bộ, như trước). Dự án đích: nhận khi chạy lại `install.py`.
+- Hook cổng commit (`pre-bash-guard.sh`): đổi `.claude/hooks/guard.py` nay tính là đụng cấu hình cổng — cổng nhanh chạy
+  mọi lớp test, như khi đổi `xt.py`/`dev-task.sh` (review #678: chọn theo lớp bỏ 27 lớp thật sự đọc guard.py).
+
 - CI repo khung: job `test` chia 6 shard (trước: 4), `test-main` 4 shard (trước: 3); trần 10 phút mỗi job giữ nguyên.
   Tổng trọng số 2 605 s chia 4 là 651 s mỗi shard, vượt trần — shard 3/4 bị huỷ ở #672 và #674 (AUD-CI-035, T-3961,
   D-516). Dự án đích: không đổi (CI mẫu không chia shard).
