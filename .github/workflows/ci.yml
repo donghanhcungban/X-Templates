@@ -31,8 +31,8 @@ jobs:
   # (dep-audit.yml) ở workflow khác. Nguyên tắc: required check phải là job có thật (protection-guard đối chiếu).
   # `merge-gate.yml` chỉ là stub tạm (D-122, ADR-0036) giữ context `merge-gate` tới khi chủ repo gỡ khỏi ruleset sống.
   # Fan-out/fan-in (WF-CI-024): mỗi task của `scripts/dev-task.sh gate` (build · typecheck · lint · test) là MỘT job song
-  # song gọi đúng `dev-task.sh <task>` (lệnh trong xt.yaml — WF-CI-002); `test` chia 4 shard theo lớp, `coverage` gộp dữ
-  # liệu các shard và đòi đúng ngưỡng của `test`; `test-main` (checkout tên nhánh main) 3 shard; `checks` (bench + kiểm của repo khung).
+  # song gọi đúng `dev-task.sh <task>` (lệnh trong xt.yaml — WF-CI-002); `test` chia 6 shard theo lớp, `coverage` gộp dữ
+  # liệu các shard và đòi đúng ngưỡng của `test`; `test-main` (checkout tên nhánh main) 4 shard; `checks` (bench + kiểm của repo khung).
   # Wall time ≈ nhánh chậm nhất (test → coverage) thay vì cộng dồn. Test `tests/test_ci.py` giữ cho không trôi: mọi task
   # của `gate` có job, `quality` needs mọi job con và `if: always()`.
   build:
@@ -92,16 +92,18 @@ jobs:
       - name: lint — đúng lệnh trong xt.yaml (validate · link · progress · changelog · ci-check · ruff · shellcheck · JSON)
         run: scripts/dev-task.sh lint
 
-  # Test có coverage, 4 shard theo lớp, chia tham lam theo trọng số đo thật (`xt.yaml` `test_weights`, LPT; lớp lạ lấy trung vị — D-095). Mỗi shard tải dữ liệu
+  # Test có coverage, 6 shard theo lớp, chia tham lam theo trọng số đo thật (`xt.yaml` `test_weights`, LPT; lớp lạ lấy trung vị — D-095). Mỗi shard tải dữ liệu
   # `.coverage.*` lên artefact; job `coverage` gộp và đòi 100 % — cùng tập test, cùng ngưỡng với `xt.yaml` `test`.
+  # Số shard theo tổng trọng số (D-516, AUD-CI-035): 2 605 s / 4 = 651 s mỗi shard, vượt trần 10 phút của job (shard 3/4 bị
+  # huỷ ở #672, #674); 6 shard ≈ 434 s. Trần thời gian giữ nguyên — thêm test làm shard sát trần thì tăng số shard.
   test:
-    name: test ${{ matrix.shard }}/4
+    name: test ${{ matrix.shard }}/6
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false # shard khác vẫn chạy hết để thấy mọi lớp đỏ; kết quả gộp của job vẫn là `failure`
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -133,7 +135,7 @@ jobs:
           SHARD: ${{ matrix.shard }}
           COVERAGE_CORE: sysmon
           XT_REQUIRE_BUN: "1" # thiếu bun → test plugin OpenCode đỏ thay vì skip (AUD-TEST-056)
-        run: scripts/dev-task.sh test-shard "$SHARD" 4 "$RUNNER_TEMP/cov"
+        run: scripts/dev-task.sh test-shard "$SHARD" 6 "$RUNNER_TEMP/cov"
       # actions/upload-artifact, actions/download-artifact: tag mới nhất giải ra SHA commit bằng `git ls-remote` (tag nhẹ),
       # xác minh 2026-10-20. File dữ liệu coverage bắt đầu bằng `.` → cần `include-hidden-files`.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -172,13 +174,13 @@ jobs:
         run: scripts/dev-task.sh test-combine "$RUNNER_TEMP/cov"
 
   test-main:
-    name: test-main ${{ matrix.shard }}/3
+    name: test-main ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -201,7 +203,7 @@ jobs:
           set -euo pipefail
           git checkout -q -B main
           test "$(git symbolic-ref --short HEAD)" = main
-          scripts/dev-task.sh test-shard "$SHARD" 3
+          scripts/dev-task.sh test-shard "$SHARD" 4
 
   checks:
     name: checks
