@@ -47,6 +47,11 @@ jobs:
           cache: pnpm
       - name: Quét lockfile (advisory mức vừa trở lên)
         run: pnpm audit --audit-level moderate
+      - name: Hạn và độ khớp của ngoại lệ quét (BASE-DEP-004)
+        env:
+          # pnpm 12 mặc định cài phụ thuộc trước `pnpm <script>`; bước này chỉ cần node, chạy trước khi cài.
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"
+        run: pnpm audit:exceptions
       - run: pnpm install --frozen-lockfile
       - name: Bộ nghiệm thu (lệnh `test` của xt.yaml)
         env:

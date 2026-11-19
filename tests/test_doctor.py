@@ -874,6 +874,11 @@ class DoctorVersionTest(DoctorCase):
         text = xt_yaml.read_text(encoding="utf-8").replace("delivery_phase: build", "delivery_phase: harden")
         xt_yaml.write_text(text, encoding="utf-8")
         self.assertEqual(len(msgs((3, 4, 1))), 1)
+        xt_yaml.write_text(text.replace("delivery_phase: harden", "delivery_phase: lạ"), encoding="utf-8")
+        self.assertEqual(len(msgs((3, 4, 1))), 1)  # giá trị lạ → không coi là build, vẫn báo
+        xt_yaml.write_text(text.replace("delivery_phase: harden\n", ""), encoding="utf-8")
+        self.assertEqual(len(msgs((3, 4, 1))), 1)  # vắng khoá → vẫn báo
+        xt_yaml.write_text(text, encoding="utf-8")
         got = msgs((3, 0, 0))
         self.assertEqual(len(got), 1)
         self.assertIn("khung đã cài 3.0.0-rc1 cũ hơn", got[0])

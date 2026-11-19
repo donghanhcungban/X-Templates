@@ -6,6 +6,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [Unreleased]
 
+## [3.34.0] - 2026-11-19
+
+Bản harden (ADR-0080): guard mặc định chặn theo danh sách đóng (D-503…D-509) sau 11 cổng ký và audit delta 13 nhóm; giới hạn đã biết ghi ở `framework/11-autonomous-loop/harness-files.md` (có hạn 2027-01-21). **Dự án đích:** cài lại khung (`install.py`) để nhận guard, hook, workflow và gói mới; kiểm lại ruleset (mẫu `required_review_thread_resolution: false` theo `merge_review`, D-512) và, với gói `web-api-ts`, CI chạy `pnpm audit:exceptions`; ADR-0081 (D-511): `compose` không `--scale` ra **S** (trước: M) và `doctor` ở pha build không báo khung chậm MINOR/PATCH — script dựa vào mặc định M phải truyền `--scale M`.
+
 ### Added
 
 - README thêm mục "Vì sao dùng X-Templates" (vấn đề → lợi ích) và "Ủng hộ và liên hệ" (VietQR Techcombank,
@@ -104,13 +108,22 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Changed
 
+- `WF-REVIEW-005`, `WF-GIT-002` (T-3958, D-512; giữ ID và mức MUST): thread resolution của ruleset thành có điều kiện —
+  bật `required_review_thread_resolution: true` khi `merge_review: required` hoặc có người review tay; với
+  `merge_review: optional` (mặc định, ADR-0079) để `false`, blocker do `pr next` + review 1 lần chặn. Khớp ruleset
+  repo khung và mẫu `ruleset-main.json` (đã `false` từ #558); `tests/test_ci.py` ghim khoá đi cùng `merge_review`.
+  Dự án đích: ghép lại blueprint theo hai ID; dự án đặt `merge_review: required` bật lại khoá ở ruleset sống.
+
 - ADR-0081 (D-511, đường nhanh pha build): `xt.py compose` không `--scale` giữ quy mô của blueprint đã ghép ở `--out`,
   chưa có thì **S** (trước: luôn M) và in một dòng stderr nói rõ nguồn; `doctor` ở `delivery_phase: build` không còn
   cảnh báo khi bản khung đã cài chậm MINOR/PATCH (chậm MAJOR vẫn cảnh báo; harden và `doctor --drift` như cũ).
   `composition.md` §Chọn quy mô hỏi theo hiện trạng; `/autopilot`, `/complete`, `/blueprint` cập nhật theo. Số đo:
   [research 2026-11-19](research/2026-11-19-target-project-speed.md). **Dự án đích:** chạy lại `install.py` (nhận
   `xt.py`, skill); dự án đang ở M/L không đổi gì — ghép lại không `--scale` giữ quy mô cũ; script gọi `compose` mà
-  dựa vào mặc định M phải truyền `--scale M`.
+  dựa vào mặc định M phải truyền `--scale M`. Bản đã ghép mà quy mô không đọc được (`scale:` hỏng hay lạ) → `compose`
+  thoát 2 và đòi `--scale` thay vì ngầm hạ về S (AUD-HAR-437; bộ đọc dùng chung với cổng, hiểu `scale: m  # ghi chú` và
+  nháy); `LOOP-HARNESS-020` ghi ngoại lệ pha build của `doctor` (AUD-HAR-438); gói ngành fintech/healthcare/government
+  ghi "quy mô khi vận hành thật L" thay cho "mặc định L" (AUD-DOC-302).
 
 - `autonomy-bench` (D-510): ghim tiền đề "exec-path mặc định của git không đổi được" khi chấm corpus guard, như đã
   ghim `merge-check` — chạy bằng root (container phiên cloud) không còn báo `false_red` ở ca đối chứng
@@ -252,6 +265,31 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- T-3958 (BASE-DEP-004): job `pack-npm-audit` của khung và workflow mẫu `pack-acceptance` của gói `web-api-ts` chạy
+  `pnpm audit:exceptions` ngay sau `pnpm audit`, trước khi cài phụ thuộc (`PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false`,
+  vì pnpm 12 mặc định cài trước `pnpm <script>`) — ngoại lệ có hạn nay được máy kiểm hạn. README gói bỏ câu "không kèm
+  workflow CI mẫu". Dự án đích: cài lại gói (`install.py --pack web-api-ts`) để nhận workflow mới.
+- T-3958 (D-513, đường lùi của D-504): GHSA-fc5q-39xc-vjpf (picomatch) bị rút ngày 2026-11-18 — gỡ khỏi
+  `auditConfig.ignoreGhsas` và `audit-exceptions.json` của starter `web-api-ts` (cả hai để rỗng); `pnpm audit
+  --audit-level moderate` không còn báo. Giữ `check-audit-exceptions.ts`, bước CI và test cho ngoại lệ sau này.
+  Dự án đích: gỡ dòng ngoại lệ này nếu đã chép starter.
+- T-3958: `check-audit-exceptions.ts` của starter `web-api-ts` fail-closed — dòng nhắc `ignoreGhsas`/`ignoreCves` không
+  đúng dạng `  key:` (khoá có nháy, `key :`, `? key`), mục danh sách lạ, `auditConfig: # …` rồi flow-mapping dòng sau
+  đều đỏ thay vì đọc thành rỗng; `expires` phải là ngày có thật (round-trip `Date` UTC, từ chối `2026-13-45`). Bộ
+  đọc Python trong `tests/test_pack_audit_exceptions.py` theo cùng luật, so hạn theo ngày UTC; test node thêm các dạng.
+  Dự án đích: chép lại `scripts/check-audit-exceptions.ts` từ starter.
+- T-3958, tài liệu lạc hậu: dòng "Trạng thái triển khai" của ADR-0075…0079 theo thực tế (chỉ dòng trạng thái);
+  bảng `topo: review` ở `orchestration-and-subagents.md` trỏ `pr reviewed --pr <N> --head <SHA>` theo README mảng 11
+  bước 12 và `/review` thay `/complete` bước 4 đã bỏ; `harness-files.md` ghi `rm -rf $(pwd -P)/..` → BUDGET (đối
+  chiếu `guard.bash_decision`); chú thích `release-tag.yml` nêu agent ký được khi `release_signoff: agent` (ADR-0074);
+  `pre-bash-guard.sh` báo "không phải CPython 3.15.x" thay "python3 < 3.11" (ADR-0078). Dự án đích: không đổi hành vi.
+- T-3958 (LOOP-STOP-027, ADR-0078; lý do chạm cổng: đóng đường bỏ qua guard của lệnh `xt.yaml`): `dev-task.sh` với
+  `XT_FRAMEWORK_PYTHON` khai rõ phải qua bắt tay in đúng dấu CPython 3.15 — tên chạy được nhưng không phải CPython
+  3.15 (`true`, `echo`) trước cho `guard-check` exit 0, tên không có trước bỏ qua kiểm; nay cả hai exit 126, không
+  lệnh nào chạy (cả `gate` lẫn task đơn). Không khai biến thì giữ hành vi cũ. Dự án đích: cài lại khung.
+- T-3958: `test_large_command_not_slower` (`tests/test_guard_exec_class.py`) bỏ ngưỡng giờ tường `SCAN_SECONDS` (đỏ
+  12,6 s khi máy tải) — đo tỉ lệ CPU cỡ n/4n bằng `cpu_budget.assert_not_quadratic` và assert không `BUDGET` ở mọi cỡ
+  như docstring hứa (trước nhận cả deny `BUDGET`).
 - T-3952 (D-503, D-508, lô 4 cổng ký lần 10): guard chặn `git commit` lồng trong shell con/heredoc/trình thông
   dịch/`$(…)`/`npx -c` (commit không qua cổng); commit sau trình chạy/alias đứng một mình nay chạy cổng commit. Chặn
   thêm: khoá push đặt một lần (`-c remote.origin.mirror`, hoa-thường, `GIT_CONFIG_*`, `--config-env`, `export`) và cấu

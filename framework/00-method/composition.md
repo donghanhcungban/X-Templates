@@ -74,7 +74,7 @@ khi sắp phát hành cho họ.
 | Nhiều đội cùng phát triển, SLA ký với khách hàng, kiểm toán bên ngoài? | L |
 | Đang xây hoặc thử nghiệm, chưa lưu dữ liệu thật? | S |
 
-`compose` không `--scale` giữ quy mô của blueprint đã ghép, chưa có thì S. Lên quy mô ở ranh giới pha: `/complete` bước 1
+`compose` không `--scale` giữ quy mô của blueprint đã ghép ở `--out`, chưa có thì S (có bản mà quy mô không đọc được → lỗi, truyền `--scale`). Lên quy mô ở ranh giới pha: `/complete` bước 1
 ghép lại `--scale M` (hoặc L) trước khi phát hành cho người dùng thật — MUST của quy mô đó vào PLAN-harden, trước
 `release-check`.
 

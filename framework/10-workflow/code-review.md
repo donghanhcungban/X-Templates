@@ -3,7 +3,7 @@ title: Code review: người + AI, checklist, SLA, ranh giới
 kind: module
 prefix: WF-REVIEW
 applies_to: [all]
-updated: 2026-10-30
+updated: 2026-11-19
 ---
 
 # Code review: người + AI, checklist, SLA, ranh giới
@@ -42,7 +42,7 @@ updated: 2026-10-30
 - [ ] `WF-REVIEW-002` **MUST** Mỗi PR có mô tả: mục tiêu, link spec/issue, **cách đã xác minh** (lệnh + kết quả/exit code hoặc link CI), rủi ro và cách rollback; thiếu → chưa đủ điều kiện review. → Kiểm: `pr-policy` job kiểm các mục bắt buộc trong body. · Nguồn: catalog 23 §2.5 (mục bắt buộc Summary/Validation/Risk)
 - [ ] `WF-REVIEW-003` **MUST@L** Reviewer dùng checklist review (đúng spec/tiêu chí chấp nhận; ca biên null/rỗng/race/UTC/tiền; bảo mật: input validate, quyền server, không secret; test chứng minh thay đổi; đảo ngược được; không nới cổng); kết luận có bằng chứng, không "LGTM" trần cho PR có code. → Kiểm: comment approve chứa mục checklist hoặc skill `/review` xuất báo cáo; mẫu checklist trong PR template. · Nguồn: [`../14-testing-quality/unit-and-logic-edge-cases.md`](../14-testing-quality/unit-and-logic-edge-cases.md)
 - [ ] `WF-REVIEW-004` **MUST@L** AI review (nếu dùng) chạy bằng model/tool **năng lực cao hơn** model/tool đã viết code (bậc model cao hơn, cùng họ thì effort cao hơn, hoặc khác nhà cung cấp — `LOOP-ORCH-005`); kết quả gắn nhãn là claim; chỉ người hoặc test tái hiện mới đóng được finding; AI không có quyền approve/merge. → Kiểm: cấu hình reviewer agent năng lực cao hơn implementer (vd `.claude/agents/reviewer.md`); `pr reviewed --clean` cùng họ không khai effort cao hơn exit 2; token bot không có quyền approve trong ruleset. · Nguồn: catalog 23 §2.3 (reviewer khác model), AGENTS.md mục Skill và subagent
-- [ ] `WF-REVIEW-005` **MUST** Finding mức `blocker` phải được sửa hoặc bác bỏ có lý do trước merge; `required_review_thread_resolution` bật; tác giả không tự resolve thread blocker của người khác. → Kiểm: ruleset có `required_review_thread_resolution: true`; review log. · Nguồn: GitHub Rulesets
+- [ ] `WF-REVIEW-005` **MUST** Finding mức `blocker` phải được sửa hoặc bác bỏ có lý do trước merge; tác giả không tự resolve thread blocker của người khác; `required_review_thread_resolution` bật khi `merge_review: required` hoặc có người review tay trên GitHub — với `merge_review: optional` (mặc định, ADR-0079 của repo khung) cổng thread được thay bằng `pr next` + review 1 lần (🔴 sửa trước merge, ADR-0062) và ruleset để `false`. → Kiểm: `merge_review: required` thì ruleset có `required_review_thread_resolution: true`; review log. · Nguồn: GitHub Rulesets
 - [ ] `WF-REVIEW-006` **MUST@L** SLA: phản hồi đầu tiên ≤ 24 giờ làm việc; nhắc ở 12 giờ; quá 24 giờ → leo thang reviewer khác/người quản lý; **không tự merge vì quá hạn**. → Kiểm: job cron đánh dấu PR chờ review > 24h (nhãn `review-overdue` + thông báo); không có cơ chế auto-approve theo thời gian. · Nguồn: catalog 23 §2.6 (gate timeout 24h leo thang, nhắc 12h)
 - [ ] `WF-REVIEW-007` **MUST** Vùng nhạy cảm (auth, payment, migration, `.github/`, hook, ruleset, secrets, crypto, PII) luôn có người review là code owner; không fast-lane; không auto-merge — trừ khi chủ dự án chọn `merge_autonomy: L3` (PR làn chuẩn — vùng nhạy cảm theo đường dẫn, PII qua nhãn `risk:pii` hoặc `merge_risk_paths` — review sạch ở đúng head rồi máy merge ghim head, ADR-0015/ADR-0024/ADR-0036 của repo khung): khi đó miễn cho `.github/`, hook, ruleset, migration (ghi `[~] — Miễn:` kèm lý do); auth, payment, secrets, crypto, PII vẫn người review và merge ở mọi mức (`LOOP-STOP-005`, ADR-0016). → Kiểm: CODEOWNERS có mục; `require_code_owner_review` hoặc guard kiểm đường dẫn ↔ reviewer. · Nguồn: catalog 23 §2.6 (auth/payment/crypto luôn lane kiến trúc)
 - [ ] `WF-REVIEW-008` **MUST@L** Tác giả tự review diff trước khi xin review (đọc lại từng hunk, xoá debug/console.log, không file ngoài phạm vi, không thay đổi cấu hình cổng không lý do). → Kiểm: PR template có mục "đã tự review"; `pr-policy` cảnh báo khi diff chạm `eslint.config`/`tsconfig`/coverage threshold/CI mà body không có mục "Thay đổi cổng: lý do". · Nguồn: AGENTS.md mục Luật bất biến
@@ -78,7 +78,7 @@ updated: 2026-10-30
 | Công cụ | Lệnh / cấu hình | Đặt ở | Ngưỡng |
 |---|---|---|---|
 | pr-policy | script kiểm body có mục Summary/Spec/Validation/Risk-rollback/DoD; `feat` link spec; cảnh báo khi chạm cấu hình cổng không lý do | CI | Đỏ khi thiếu mục |
-| Thread resolution | ruleset `required_review_thread_resolution: true` | GitHub | Chặn merge |
+| Thread resolution | ruleset `required_review_thread_resolution: true` khi `merge_review: required`; `false` khi `optional` (`pr next` + review 1 lần thay thế) | GitHub | Chặn merge khi bật |
 | Reviewer AI | skill `/review` hoặc action review với năng lực cao hơn implementer; output gắn nhãn claim | CI (góp ý) | Không chặn, không approve |
 | Luật theo đường dẫn | alibaba/open-code-review (Apache-2.0) `ocr delegate`; Semgrep rule theo glob | CI (góp ý) | — |
 | SLA | cron: `gh pr list --json createdAt,reviews` → nhãn `review-overdue` > 24h, nhắc 12h | CI schedule | Thông báo + leo thang |

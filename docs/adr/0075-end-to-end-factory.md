@@ -3,8 +3,8 @@
 - **Trạng thái:** Đã chấp nhận 2026-11-11 — chủ dự án trả lời ba câu hỏi của phiên: *"1. song song nếu không chạm cùng
   file · 2. thiết lập sau khi lên bản dev · 3. ở mọi quy mô"*; phiên chính chốt cách máy hoá theo tiêu chí chất lượng cuối
   (ADR-0008) — **D-419**.
-- **Trạng thái triển khai:** chưa bắt đầu — [`PLAN-factory-e2e.md`](../autopilot/PLAN-factory-e2e.md) (D-420); PR của ADR
-  này chỉ có tài liệu, không đổi mã, khoá, ID hay mức.
+- **Trạng thái triển khai:** đang làm — [`PLAN-factory-e2e.md`](../autopilot/PLAN-factory-e2e.md) (D-420): xong T-3866,
+  T-3841 (ADR-0077) và T-3845 (`install.py --new`, F-111); các lát còn lại chưa làm (cập nhật 2026-11-19, T-3958).
 - **Ngày:** 2026-11-11.
 - **Nghiên cứu:** [`research/2026-11-11-factory-end-to-end.md`](../../research/2026-11-11-factory-end-to-end.md) (đọc repo
   ở `e1c74e6`; dữ kiện ngoài chưa tra — việc đầu của PLAN).

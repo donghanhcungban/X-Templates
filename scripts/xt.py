@@ -7298,12 +7298,10 @@ def compose_write(
 
 
 def _old_scale(path: Path) -> str:
-    """`scale:` của blueprint đã ghép trước; file không có/không đọc được/giá trị lạ → ""."""
-    try:
-        scale = str(parse_frontmatter(path.read_text(encoding="utf-8"))[0].get("scale") or "")
-    except (OSError, UnicodeDecodeError, FrontmatterError):
-        return ""
-    return scale if scale in SCALES else ""
+    """`scale:` của blueprint đã ghép trước, đọc bằng chính bộ đọc của cổng (`_blueprint_front`: nháy, comment, chữ
+    thường — AUD-HAR-437); file không đọc được/giá trị lạ → ""."""
+    got = _blueprint_front(path.parent, path.name)
+    return got[0] if got else ""
 
 
 def compose_scale(given: Optional[str], out: Optional[str]) -> str:
@@ -7311,7 +7309,15 @@ def compose_scale(given: Optional[str], out: Optional[str]) -> str:
     không ngầm hạ M/L xuống S); chưa có bản nào → `DEFAULT_SCALE`. Vắng `--scale` thì in một dòng stderr nói rõ nguồn."""
     if given:
         return given
-    old = _old_scale(Path(out)) if out else ""
+    old = ""
+    if (
+        out and Path(out).exists()
+    ):  # chưa có bản nào → mặc định; có mà không đọc được quy mô → đòi `--scale` (fail-closed)
+        old = _old_scale(Path(out))
+        if not old:
+            raise ValueError(
+                f"không đọc được quy mô của {out} (frontmatter `scale:` hỏng hay lạ) — truyền `--scale S|M|L`"
+            )
     why = (
         "giữ theo bản đã ghép"
         if old
@@ -7322,7 +7328,11 @@ def compose_scale(given: Optional[str], out: Optional[str]) -> str:
 
 
 def cmd_compose(args: argparse.Namespace) -> int:
-    args.scale = compose_scale(args.scale, args.out)
+    try:
+        args.scale = compose_scale(args.scale, args.out)
+    except ValueError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return 2
     src = (args.framework, args.profile, args.industry or [], args.scale, args.include_may)
     feats = args.feature or []
     if args.out:

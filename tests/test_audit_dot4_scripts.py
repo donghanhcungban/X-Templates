@@ -301,6 +301,37 @@ class GuardRuntimeLogTest(unittest.TestCase):
         self.assertIn("cần CPython 3.15.x — ADR-0078", r.stderr)
         self.assertFalse((self.tmp / "l").exists())
 
+    def run_task(self, task: str, **env: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", str(self.tmp / "scripts" / "dev-task.sh"), task],
+            capture_output=True,
+            text=True,
+            cwd=self.tmp,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(self.tmp), XT_GUARD_POLICY="", **env),
+        )
+
+    def test_declared_runtime_without_handshake_is_closed(self) -> None:
+        """T-3958: XT_FRAMEWORK_PYTHON khai rõ mà chạy được nhưng không phải CPython 3.15 (`true` exit 0 không in gì,
+        `echo` in lại đối số) hoặc tên không có → 126, không lệnh nào chạy — cả đường `gate` (guard_ok_all) lẫn task
+        đơn (guard_ok)."""
+        for runtime in ("true", "echo", str(self.tmp / "khong-co-python")):
+            for task in ("gate", "lint"):
+                with self.subTest(runtime=runtime, task=task):
+                    r = self.run_task(task, XT_FRAMEWORK_PYTHON=runtime)
+                    self.assertEqual(r.returncode, 126, r.stderr)
+                    self.assertIn("không qua bắt tay (cần CPython 3.15.x — ADR-0078)", r.stderr)
+                    self.assertNotIn("guard cấm", r.stderr)
+                    self.assertFalse((self.tmp / "l").exists())
+
+    def test_declared_cpython_315_runs(self) -> None:
+        """Ca được phép: XT_FRAMEWORK_PYTHON là CPython 3.15 thật → qua bắt tay, guard cho lệnh lành chạy."""
+        for task in ("lint", "gate"):
+            with self.subTest(task=task):
+                r = self.run_task(task, XT_FRAMEWORK_PYTHON=sys.executable)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertTrue((self.tmp / "l").exists())
+                (self.tmp / "l").unlink()
+
     def test_real_guard_deny_still_logged(self) -> None:
         (self.tmp / "xt.yaml").write_text("lint: touch l && git push origin main\n", encoding="utf-8")
         r = self.gate(XT_FRAMEWORK_PYTHON=sys.executable)

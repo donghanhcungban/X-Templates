@@ -1,7 +1,9 @@
 # ADR-0077: Receipt ghi nhận bản đang phục vụ theo môi trường
 
 - **Trạng thái:** Đã chấp nhận ngày 2026-11-14 theo các quyết định D-422, D-423 và D-424.
-- **Trạng thái triển khai:** Chưa có mã. T-3842 đến T-3844 triển khai và kiểm bản dev, T-3860 triển khai đường production.
+- **Trạng thái triển khai:** Một phần — `xt.py deploy status` kiểm schema và đọc sổ receipt (`_deploy_receipt_problem`,
+  D-484). Phần ghi receipt và quay lui của T-3842, T-3843, T-3844 (bản dev) và T-3860 (production) chưa làm (cập nhật
+  2026-11-19, T-3958).
   [Kế hoạch xưởng đầu-cuối](../autopilot/PLAN-factory-e2e.md)
 - **Đặc tả:** Khoá cấu hình, trình tự, schema receipt và các kịch bản nghiệm thu nằm trong
   [SPEC-factory-deploy](../specs/SPEC-factory-deploy.md).

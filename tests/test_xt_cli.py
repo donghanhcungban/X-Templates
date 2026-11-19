@@ -672,8 +672,8 @@ class FrameworkCommandsTest(TmpDirCase):
         self.assertIn("ℹ quy mô S (mặc định: lên M khi đã có người dùng thật", err)
 
     def test_compose_without_scale_keeps_composed_scale(self):
-        # ADR-0081: ghép lại không `--scale` giữ quy mô của bản ở `--out` (không ngầm hạ M xuống S); frontmatter hỏng hay
-        # quy mô lạ → coi như chưa có bản → S
+        # ADR-0081: ghép lại không `--scale` giữ quy mô của bản ở `--out` (không ngầm hạ M xuống S), đọc bằng chính bộ đọc
+        # của cổng (comment, nháy, chữ thường); có bản mà quy mô không đọc được → đòi `--scale` (fail-closed, AUD-HAR-437)
         target = self.tmp / "BLUEPRINT.md"
         cmd = ("--framework", self.fw, "compose", "--profile", "web-app", "--out", target)
         self.assertEqual(run_main(*cmd, "--scale", "M")[0], 0)
@@ -682,6 +682,11 @@ class FrameworkCommandsTest(TmpDirCase):
         self.assertIn("ℹ quy mô M (giữ theo bản đã ghép) — ADR-0081", err)
         self.assertIn("scale: M\n", target.read_text(encoding="utf-8"))
         self.assertEqual(xt.compose_scale("L", str(target)), "L")  # truyền vào thì thắng, không in gì
+        for ok_front in ("---\nscale: m  # ghi chú\n---\n", '---\nscale: "M"\nreviewed-by: lead\n---\n'):
+            target.write_text(ok_front, encoding="utf-8")
+            with self.subTest(ok_front=ok_front):
+                self.assertEqual(xt._old_scale(target), "M")
+                self.assertIn("ℹ quy mô M (giữ theo bản đã ghép)", run_main(*cmd)[2])
         for broken in ("---\nscale: X\n---\n", "không frontmatter\n", b"\xff\xfe"):
             if isinstance(broken, bytes):
                 target.write_bytes(broken)
@@ -689,7 +694,14 @@ class FrameworkCommandsTest(TmpDirCase):
                 target.write_text(broken, encoding="utf-8")
             with self.subTest(broken=broken):
                 self.assertEqual(xt._old_scale(target), "")
+                rc, _, err = run_main(*cmd)
+                self.assertEqual(rc, 2)
+                self.assertIn("truyền `--scale S|M|L`", err)
+        target.write_text("---\nscale: X\n---\n", encoding="utf-8")
+        self.assertEqual(run_main(*cmd, "--scale", "S")[0], 0)  # có `--scale` thì ghi đè được bản quy mô lạ
         self.assertEqual(xt._old_scale(self.tmp / "khong-co.md"), "")
+        gone = self.tmp / "chua-co" / "BLUEPRINT.md"  # chưa có bản nào → mặc định S, không lỗi
+        self.assertEqual(run_main("--framework", self.fw, "compose", "--profile", "web-app", "--out", gone)[0], 0)
 
     def test_blueprint_status_prints_bad_lines(self):
         bp = self.tmp / "BP.md"

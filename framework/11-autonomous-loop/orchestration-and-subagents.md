@@ -3,7 +3,7 @@ title: Điều phối: subagent, worktree, song song, không lồng
 kind: module
 prefix: LOOP-ORCH
 applies_to: [all]
-updated: 2026-11-17
+updated: 2026-11-19
 ---
 
 # Điều phối: subagent, worktree, song song, không lồng
@@ -62,7 +62,7 @@ tăng số agent khi số đo chứng minh (`LOOP-ORCH-020`):
 | `topo:` | Loại việc | Cấu hình | Gồm |
 |---|---|---|---|
 | `self` (mặc định) | Sửa lỗi, tính năng nhỏ, task mà SPEC đã là nội dung cuối | **Một** agent (phiên chính) sở hữu code và tích hợp; CI là cổng đầy đủ (ADR-0056); review theo làn của `pr next` | `loop record` không `--executor`; `researcher` chỉ khi đọc dài (`LOOP-ORCH-012`) |
-| `review` | Tính năng xuyên nhiều module; chạm bảo mật/kiến trúc/dữ liệu | Phiên chính viết; `reviewer-alt` rà **trước khi mở PR** (góc nhìn độc lập — `LOOP-ORCH-005`); không `executor`. Pha harden: không rà giữa nhịp vét việc — gom về cổng ký (ADR-0080; `loop status` ghi trong `reason`) | Ghi `pr reviewed --head <SHA đã rà>` theo `/complete` bước 4 |
+| `review` | Tính năng xuyên nhiều module; chạm bảo mật/kiến trúc/dữ liệu | Phiên chính viết; `reviewer-alt` rà **trước khi mở PR** (góc nhìn độc lập — `LOOP-ORCH-005`); không `executor`. Pha harden: không rà giữa nhịp vét việc — gom về cổng ký (ADR-0080; `loop status` ghi trong `reason`) | Ghi `pr reviewed --pr <N> --head <SHA đã rà> --clean`/`--blocking`/`--inconclusive` theo [README](README.md) bước 12 và skill `/review` |
 | `parallel` | Nhiều module độc lập về file, hợp đồng giao diện đã chốt (`LOOP-ORCH-007`) | Phiên chính điều phối; mỗi module một `executor`/`executor-deep` (`exec:`), đợt ≤ 4 (`plan waves --max 4`; trần cứng 5 — `LOOP-ORCH-008`), worktree mỗi task (mô hình B) | `plan waves` xác nhận `files:` đôi một không giao; thiếu `files:` → task đứng riêng |
 | `audit` | Audit lớn, kiểm thử độc lập sau một pha | Một lượt: reviewer read-only theo cụm độc lập file (≤ 4 đồng thời) + xác minh đối kháng 🔴/🟠 bằng reviewer **khác** (`/audit` §3–4); sửa theo **batch** = PLAN có Gate, mỗi lát một PR. Pha harden: audit chỉ ở cổng ký (ADR-0080) | Không sửa trong lúc audit; kết quả là dữ liệu (`LOOP-ORCH-004`) |
 
