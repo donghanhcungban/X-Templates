@@ -2063,7 +2063,18 @@ class EssentialNotCappedTest(unittest.TestCase):
         r3m = xt_cli("--framework", str(self.fw), "compose", "--profile", "web-app", "--scale", "M", "--feature", "pii")
         self.assertIn("không đổi mức mục nào ở quy mô M (không module nào trong hồ sơ/gói", r3m.stderr)
         self.assertNotIn("chỉ đổi mức ở quy mô M", r3m.stderr)  # ở M, lý do thật là không có module khai fact
-        r4 = xt_cli("--framework", str(self.fw), "compose", "--profile", "web-app", "--full", "--feature", "oauth")
+        r4 = xt_cli(
+            "--framework",
+            str(self.fw),
+            "compose",
+            "--profile",
+            "web-app",
+            "--scale",
+            "M",
+            "--full",
+            "--feature",
+            "oauth",
+        )
         self.assertIn("`BE-AUTHX-004` **MUST**", r4.stdout)
         self.assertIn("BE-AUTHX-004", r4.stderr)
         r5 = xt_cli("--framework", str(self.fw), "compose", "--profile", "web-app", "--feature", "sso")

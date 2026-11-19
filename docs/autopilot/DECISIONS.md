@@ -601,3 +601,10 @@
 - Chọn: Ghim tiền đề exec-path mặc định không đổi được trong hai ca đối chứng (tests/git_fixture.py default_exec_path_fixed); không đổi guard, không bỏ khẳng định nào
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn: guard giữ nguyên, ca đối chứng vẫn khẳng định cùng quyết định; chạy không root (CI) kết quả không đổi (đã chạy cả hai uid). Phương án 3 nới hàng rào thật; phương án 2 để mất việc khi container bị thu hồi.
 - Đường lùi: git revert commit test(guard) — hai ca trở lại phụ thuộc uid
+
+### D-511 · 2026-11-19T05:08:01+00:00 · Chủ dự án 2026-11-19: 'code nhanh nhất là được, xong rồi tạo PR, chờ cắt bản xong rồi triển khai' — đổi gì ở khung để dự án đích viết mã nhanh nhất trong pha build?
+
+- Phương án: (1) Đổi mặc định của máy theo pha: compose không --scale giữ quy mô bản cũ, chưa có thì S; doctor không cảnh báo chậm bản MINOR/PATCH ở pha build; M và nâng khung dồn về /complete (ADR-0081) · (2) Giữ mặc định, chỉ viết hướng dẫn nên chọn S và nâng khung theo pha · (3) Thêm fact phủ định cho compose để bỏ module không áp dụng
+- Chọn: Đổi mặc định của máy theo pha: compose không --scale giữ quy mô bản cũ, chưa có thì S; doctor không cảnh báo chậm bản MINOR/PATCH ở pha build; M và nâng khung dồn về /complete (ADR-0081)
+- Lý do (tiêu chí chất lượng cuối): Bền, đơn giản, test được: số đo 2026-11-19 cho thấy M từ đầu (473 so với 70 MUST) và nâng khung mỗi phiên (16–22 % commit) là hai khoản tốn nhất do mặc định của máy; hướng dẫn đã có mà không đổi kết quả; ở S không còn mục AI/realtime nên phương án 3 thừa. An toàn giữ nguyên: release-check và sàn Gate theo quy mô khai không đổi, ghép lại không ngầm hạ quy mô, chậm MAJOR vẫn báo.
+- Đường lùi: Revert PR của ADR-0081; dự án cần M ghi rõ compose --scale M

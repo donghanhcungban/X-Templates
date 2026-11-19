@@ -22,8 +22,13 @@ hôm nay (ba lượt tra độc lập: một kiểm kê trong repo, hai `researc
    liên tục (16–22 % commit nhánh chính) · mỗi dự án tự dựng lại cổng CI/bảo mật · làm hồ sơ miễn trừ (84 % phản hồi).
 4. **Song song hoá là đòn bẩy bậc hai.** Nó rút ngắn khâu vốn chỉ chiếm vài ngày, tốn token gấp nhiều lần và chỉ chạy tốt
    khi có bộ kiểm gần hoàn hảo (§4). Thứ tự đã chốt ở D-420 (triển khai dev → pilot 1 → UI → song song) khớp số đo.
-5. Cấu hình mặc định hiện nay của khung đã đúng hướng (`install.py --new` mặc định `S`, mẫu `delivery_phase: build`), nhưng
-   **chưa dự án nào chạy trọn dưới cấu hình này**; pilot 1 (T-3847) là phép đo còn thiếu quan trọng nhất.
+5. Mẫu `delivery_phase: build` và `install.py --new` (mặc định `S`) đã đúng hướng, nhưng **chưa dự án nào chạy trọn dưới
+   cấu hình này**; pilot 1 (T-3847) là phép đo còn thiếu quan trọng nhất.
+
+> Đính chính cùng ngày: bản đầu ghi "mặc định của khung đã là S". Sai một nửa — `xt.py compose` (đường của `/autopilot`)
+> mặc định `--scale M` và `doctor` nhắc nâng khung mỗi phiên. Hai mặc định này được đổi ở
+> [ADR-0081](../docs/adr/0081-build-fast-path.md) (đề xuất C và D ở §6). Đề xuất F (lọc mục lúc ghép) rút lại: ở S
+> blueprint `web-app` chỉ còn nhóm `BASE-*` và `PRF-WEB` (70 MUST), không mục AI/realtime nào.
 
 ## 2. Số đo ở dự án đích (mới)
 

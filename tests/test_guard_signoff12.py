@@ -49,6 +49,10 @@ def patched(root: Path = ROOT) -> contextlib.ExitStack:
     stack = contextlib.ExitStack()
     stack.enter_context(mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(root), "XT_GUARD_POLICY": ""}))
     stack.enter_context(mock.patch.object(guard, "_current_branch", return_value="feat"))
+    # Như tests/test_green_shell.py (AUD-TEST-112): không gọi `xt.py merge-check`/`gh` thật. Máy có token gh (phiên
+    # cloud) nhận verdict của PR thật nên ca `gh pr merge 1` hết bị chặn; ghim đúng kết quả máy không token (CI) nhận.
+    unverified = {"verdict": "lỗi", "reasons": ["merge-check không chạy được"]}
+    stack.enter_context(mock.patch.object(guard, "merge_check", return_value=unverified))
     return stack
 
 

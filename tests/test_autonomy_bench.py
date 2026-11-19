@@ -73,6 +73,25 @@ class AutonomyBenchRepoTest(unittest.TestCase):
         self.assertEqual(sorted(covered & set(scope)), [])
         self.assertTrue(all(scope.values()))
 
+    def test_autonomy_bench_pins_default_exec_path_only(self):
+        """D-510: quyết định của corpus không phụ thuộc uid chạy bench — root (mọi đường đều đổi được) vẫn coi exec-path
+        mặc định là cố định, đường khác xét thật; không đọc được exec-path thì không ghim gì; ghim lại không chồng lớp."""
+        with tempfile.TemporaryDirectory() as tmp:
+            core = Path(tmp).resolve() / "git-core"
+            core.mkdir()
+            seen: list[str] = []
+            guard = unittest.mock.Mock()
+            guard._bench_real_can_change = lambda path: seen.append(path) or True  # như root
+            guard._git_exec_path = lambda: str(core)
+            xt._bench_pin_exec_path(guard)
+            xt._bench_pin_exec_path(guard)
+            self.assertFalse(guard._agent_can_change(str(core / "git-submodule")))
+            self.assertTrue(guard._agent_can_change(str(Path(tmp) / "bin" / "git-pusj")))
+            self.assertEqual(seen, [str(Path(tmp) / "bin" / "git-pusj")])  # một lớp: hàm thật gọi đúng một lần
+            guard._git_exec_path = lambda: ""
+            xt._bench_pin_exec_path(guard)
+            self.assertTrue(guard._agent_can_change(str(core / "git-submodule")))
+
     def test_autonomy_bench_detects_regression_as_false_green(self):
         """Đỏ trước/xanh sau: gỡ bản sửa AUD-HAR-058 (merge-gate không phải bằng chứng CI) và REC-08 (check bắt buộc
         skipped) khỏi hàm thật → corpus báo false-green, exit 1."""
