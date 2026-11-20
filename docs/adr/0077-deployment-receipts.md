@@ -1,10 +1,13 @@
 # ADR-0077: Receipt ghi nhận bản đang phục vụ theo môi trường
 
 - **Trạng thái:** Đã chấp nhận ngày 2026-11-14 theo các quyết định D-422, D-423 và D-424.
-- **Trạng thái triển khai:** Một phần — `xt.py deploy status` kiểm schema và đọc sổ receipt (`_deploy_receipt_problem`,
-  D-484). Phần ghi receipt và quay lui của T-3842, T-3843, T-3844 (bản dev) và T-3860 (production) chưa làm (cập nhật
-  2026-11-19, T-3958).
-  [Kế hoạch xưởng đầu-cuối](../autopilot/PLAN-factory-e2e.md)
+- **Trạng thái triển khai ngày 2026-11-20**
+
+  Gói `web-api-ts` triển khai bản dev bằng Docker Compose, ghi receipt và xác nhận digest của bản trước sau khi quay lui.
+  `deploy status` đọc sổ, `release-check` đối chiếu receipt với ứng viên và `registry pull` đọc receipt từ dự án đích.
+  T-3843 và T-3844 đã hoàn tất. T-3842 còn phần chạy lệnh triển khai tuỳ biến và bảo vệ sổ receipt khỏi ghi tay.
+  Với production, `rollout-drill` kiểm điều kiện bàn giao cho pipeline của dự án. T-3860 còn mở cho triển khai và quay lui trên đích thật.
+  [Kế hoạch xưởng đầu-cuối](../autopilot/PLAN-factory-e2e.md) · [Lần CI kiểm rollback ở dev](https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44684821820)
 - **Đặc tả:** Khoá cấu hình, trình tự, schema receipt và các kịch bản nghiệm thu nằm trong
   [SPEC-factory-deploy](../specs/SPEC-factory-deploy.md).
 
