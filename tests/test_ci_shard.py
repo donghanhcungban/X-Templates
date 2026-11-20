@@ -23,7 +23,9 @@ from typing import Dict, List
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 import xt
+from test_ci import CI, ci_jobs, matrix_shards
 
 WEIGHTS = ROOT / "tests" / "shard-weights.json"
 
@@ -431,7 +433,8 @@ class DevTaskRealSuiteShardTest(DevTaskProject):
         (self.tmp / "tests").symlink_to(ROOT / "tests", target_is_directory=True)
         self.yaml(test_list=listing, test_weights=weights)
         want = xt.unittest_class_ids(ROOT, "tests", None)
-        got = self.shards(6)  # N của job `test`; N khác đã kiểm trong tiến trình (ShardPlanTest)
+        test_job = ci_jobs(CI.read_text(encoding="utf-8"))["test"]
+        got = self.shards(len(matrix_shards(test_job)))
         flat = [t for s in got for t in s]
         self.assertEqual(sorted(flat), want)
         self.assertEqual(len(flat), len(set(flat)))

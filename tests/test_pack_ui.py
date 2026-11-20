@@ -2,6 +2,7 @@
 
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,7 @@ import unittest
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -53,6 +55,62 @@ class PackUiTest(unittest.TestCase):
             self.assertFalse((brown / TEST_DB).exists())
             self.assertFalse((brown / WORKFLOW).exists())
             self.assertFalse((brown / JOURNEY).exists())
+
+    def test_browser_preview_restricts_fixture_login_and_redirects(self):
+        # Mô phỏng Playwright: bộ unittest không cần tải Chromium hoặc mở kết nối mạng.
+        with patch.dict(sys.modules, {"playwright": MagicMock(), "playwright.sync_api": MagicMock()}):
+            preview = runpy.run_path(str(STARTER / JOURNEY))
+        origin = preview["PREVIEW_ORIGIN"]
+        other = "http://127.0.0.1:4320"
+        for target, status in ((origin + "/", 200), (origin + "/", 302), (other + "/", 200)):
+            with self.subTest(target=target, status=status):
+                route = MagicMock()
+                route.request.url = target
+                response = route.fetch.return_value
+                response.status = status
+                preview["preview_request"](route)
+                if target.startswith(other):
+                    route.fetch.assert_not_called()
+                else:
+                    route.fetch.assert_called_once_with(max_redirects=0)
+                    response.dispose.assert_called_once()
+                if target.startswith(other) or status == 302:
+                    route.abort.assert_called_once()
+                    route.fulfill.assert_not_called()
+                else:
+                    route.fulfill.assert_called_once_with(response=response)
+
+        browser = MagicMock()
+        context = preview["preview_context"](browser)
+        browser.new_context.assert_called_once_with(service_workers="block")
+        context.route.assert_called_once_with("**/*", preview["preview_request"])
+        socket = MagicMock()
+        pattern, reject = context.route_web_socket.call_args.args
+        self.assertEqual(pattern, "**/*")
+        reject(socket)
+        socket.close.assert_called_once()
+        health_url = origin + "/healthz"
+        health = context.request.get.return_value
+        health.url = health_url
+        health.status = 302
+        with self.assertRaisesRegex(ValueError, "healthz"):
+            preview["served_digest"](context, "digest")
+        context.request.get.assert_called_once_with(health_url, max_redirects=0)
+        health.json.assert_not_called()
+        health.status = 200
+        health.json.return_value = {"digest": "digest"}
+        self.assertEqual(preview["served_digest"](context, "digest"), "digest")
+        ledger = {"envs": {"dev": {"unknown": False, "current": {"result": "deployed", "url": other}}}}
+        with (
+            patch.object(Path, "read_text", return_value=json.dumps(ledger)),
+            self.assertRaisesRegex(ValueError, "origin"),
+        ):
+            preview["confirmed_candidate"]()
+        page = MagicMock()
+        page.url = other + "/"
+        with self.assertRaisesRegex(ValueError, "origin"):
+            preview["login"](page, {"email": "fixture", "password": "fixture"})
+        page.locator.assert_not_called()
 
     def test_ci_runs_target_command_and_browser_lock_matches_audited_pins(self):
         workflow = (STARTER / WORKFLOW).read_text(encoding="utf-8")

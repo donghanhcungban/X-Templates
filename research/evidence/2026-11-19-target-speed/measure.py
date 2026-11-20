@@ -62,7 +62,7 @@ def subject_kind(subject: str) -> str:
 
 
 out = subprocess.run(
-    ["git", "-C", repo, "log", "--first-parent", "--numstat", "--date=format-local:%m-%d", "--format=@@%cd|%s", rev],
+    ["git", "-C", repo, "log", "--first-parent", "--numstat", "--date=format-local:%Y-%m-%d", "--format=@@%cd|%s", rev],
     capture_output=True,
     text=True,
     check=True,
