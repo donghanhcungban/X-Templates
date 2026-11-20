@@ -133,6 +133,25 @@ class AcceptanceLockTest(unittest.TestCase):
         (self.base / lock.LEDGER).unlink()
         self.assertIn("trong Git", self.cli("check", code=1))
 
+    def test_unmerged_lock_does_not_enable_acceptance_on_other_branches(self):
+        self.configure("")
+        self.git("add", "xt.yaml")
+        self.git("commit", "-qm", "Nhánh gốc chưa bật nghiệm thu")
+        previous = self.git("branch", "--show-current")
+        self.git("switch", "--quiet", "-c", "feature-acceptance")
+        self.configure()
+        self.create()
+        self.git("add", "xt.yaml", lock.LEDGER)
+        self.git("commit", "-qm", "Khoá thử nghiệm ở nhánh tính năng")
+        self.git("switch", "--quiet", previous)
+        self.assertFalse(json.loads(self.cli("check", "--json"))["enabled"])
+        self.write(lock.LEDGER, json.dumps({"schema": 1, "locks": [], "events": []}))
+        self.assertFalse(json.loads(self.cli("check", "--json"))["enabled"])
+        (self.base / lock.LEDGER).unlink()
+        self.git("merge", "-q", "--ff-only", "feature-acceptance")
+        (self.base / lock.LEDGER).unlink()
+        self.assertIn("trong Git", self.cli("check", code=1))
+
     def test_amend_requires_new_decision_independent_actor_and_audit_trail(self):
         log = "docs/autopilot/DECISIONS.md"
         self.write(log, "### D-001 · 2020-01-01T00:00:00+00:00\nA-001\n")

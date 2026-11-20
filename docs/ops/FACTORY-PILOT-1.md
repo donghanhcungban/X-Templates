@@ -24,7 +24,7 @@ MVP đầu tiên có receipt ở giây **93**. Sau khi thử quay lui và chạy
 | D-005 | Quy mô S, dùng hai tài khoản mẫu ở hai nhóm độc lập. |
 | D-006 | Tận dụng chức năng ghi chú của starter và đặt tên sổ cho nhóm. |
 
-Agent độc lập viết bốn tình huống từ SPEC. Khoá A-001 được ghi trước lần tùy biến giao diện. Trên bản cuối, mật khẩu sai bị từ chối, người viết lưu và đọc lại cùng mã ghi chú trong phiên trình duyệt mới, nhóm khác không thấy ghi chú. Digest từ HTTP khớp receipt và archive. [SPEC](../../tests_e2e/notes/SPEC-notes.md) · [Khoá A-001](FACTORY-PILOT-1/ACCEPTANCE.json)
+Agent độc lập viết bốn tình huống từ SPEC. Khoá A-001 được ghi trước lần tùy biến giao diện. Trên bản cuối, mật khẩu sai bị từ chối, người viết lưu và đọc lại cùng mã ghi chú trong phiên trình duyệt mới, nhóm khác không thấy ghi chú. Digest từ HTTP khớp receipt và archive. [SPEC](../../tests_e2e/notes/docs/specs/SPEC-notes.md) · [Khoá A-001](FACTORY-PILOT-1/ACCEPTANCE.json)
 
 Cổng T-001 xanh trong lượt này. Ở lượt tích hợp trước, cổng định dạng của gói từ chối sổ nghiệm thu do khung sinh. Cấu hình Biome đã được sửa và cả bốn ca chạy lại. [Lượt CI trước](https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716333626)
 

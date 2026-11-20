@@ -166,7 +166,7 @@ def _ledger(base: Path, core: ModuleType) -> dict[str, Any]:
     if not path.exists():
         if (
             any((p / ".git").exists() for p in (base, *base.parents))
-            and core._git(base, "log", "--all", "-1", "--format=%H", "--", LEDGER).stdout.strip()
+            and core._git(base, "log", "-1", "--format=%H", "HEAD", "--", LEDGER).stdout.strip()
         ):
             raise ValueError(f"Thiếu sổ đã có trong Git: {LEDGER}")
         return {"schema": 1, "locks": [], "events": []}
@@ -177,7 +177,7 @@ def _ledger(base: Path, core: ModuleType) -> dict[str, Any]:
         raise ValueError(f"Sổ {LEDGER} thiếu khoá/lịch sử")
     if (
         not doc["locks"]
-        and core._git(base, "log", "--all", "-1", "-G", r'"A-[0-9]+"', "--format=%H", "--", LEDGER).stdout.strip()
+        and core._git(base, "log", "-1", "-G", r'"A-[0-9]+"', "--format=%H", "HEAD", "--", LEDGER).stdout.strip()
     ):
         raise ValueError(f"Sổ {LEDGER} mất các khoá đã có trong Git")
     _validate_records(doc, core)

@@ -80,9 +80,9 @@ def prepare(app, state):
     if run(app, "git", "rev-list", "--count", "HEAD") != "1" or run(app, "git", "remote"):
         raise ValueError("Cần một repo mới từ --new, chưa có remote")
     for src, dest in (
-        ("SPEC-notes.md", SPEC),
+        (SPEC, SPEC),
         ("notes-journey.py", SUITE),
-        ("PLAN-notes.md", PLAN),
+        (PLAN, PLAN),
         ("SETUP-ONCE.md", CHECKLIST),
     ):
         copy(FIX / src, app / dest)
