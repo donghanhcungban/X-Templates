@@ -69,6 +69,11 @@ class PackUiTest(unittest.TestCase):
         self.assertEqual(pins(STARTER / LOCK), pins(ROOT / "requirements-e2e.txt"))
         self.assertIn(f'bash {BROWSER} "$python"', (STARTER / COMMAND).read_text())
         self.assertIn(f"bash {BROWSER} python", (ROOT / ".github/workflows/pack-web-api.yml").read_text())
+        app_job = (ROOT / ".github/workflows/ci.yml").read_text().split("\n  app-e2e:\n")[1].split("\n  quality:\n")[0]
+        setup = app_job.index(f"run: bash {(STARTER / BROWSER).relative_to(ROOT).as_posix()} python")
+        self.assertLess(app_job.index("--require-hashes -r requirements-e2e.txt"), setup)
+        self.assertLess(setup, app_job.index("python -m unittest discover -s tests_e2e -t ."))
+        self.assertNotIn("--with-deps", app_job)
 
     def test_chromium_installs_system_packages_only_for_missing_libraries_on_ci(self):
         install = "-m playwright install --only-shell chromium"
