@@ -47,10 +47,20 @@ OS/devcontainer có egress allowlist (`LOOP-HARNESS-022`) và việc phiên chí
 
 - **Hàng rào qua lịch sử git** (AUD-SEC-988): không bị chặn như ghi hàng rào — (a) lệnh dời HEAD cả cây (`checkout
   <rev>`, `switch`, `reset [--hard|--soft] <rev>`, `symbolic-ref HEAD`, `pull`, `merge`) rồi khôi phục từ HEAD mới,
-  `git apply`/`am`/`cherry-pick`/`revert -n`, `stash apply` (cả `stash store <commit>`), `git archive <rev> | tar -x`,
-  `rm -rf .github` (cha của `.github/hooks`): lớp đỡ là diff PR (tệp cổng, không làn nhanh) và review; (b) hạ cấp chỉ ở
-  cây làm việc, không để lại diff PR — `reset <rev> && checkout -- f && reset ORIG_HEAD`, `update-index --index-info`
-  rồi `checkout -- f`: **chưa có lớp đỡ** ngoài sandbox OS (`LOOP-HARNESS-022`).
+  `git apply`/`am`/`cherry-pick`/`revert -n`, `stash apply` (cả `stash store <commit>`), `git archive <rev> | tar -x`
+  không pathspec, `rm -rf .github` (cha của `.github/hooks`): lớp đỡ là diff PR (tệp cổng, không làn nhanh) và
+  review; (b) hạ cấp chỉ ở cây làm việc, không để lại diff PR — `reset <rev> && checkout -- f && reset ORIG_HEAD`,
+  `update-index --index-info` rồi `checkout -- f`: **chưa có lớp đỡ** ngoài sandbox OS (`LOOP-HARNESS-022`).
+- **Giải nén có nêu thành viên** (AUD-SEC-990/992): thành viên/mẫu trên dòng lệnh (`tar`/`bsdtar`/`unzip`/`7z`/`cpio
+  -i`/`pax -r`/`ar x`/`jar x`; cả `--strip-components`, `--no-anchored`, `7z -r`, `--include=`, `--add-file=`, glob,
+  thư mục cha, `pax -s`, `echo … | xargs tar`, `-T -` với `<<<`/heredoc không mở rộng) ra quyết định như `cp x <thư
+  mục/thành viên>` (hàng rào, bằng chứng, hook git, bí mật, cổng). Tên so không phân hoa thường; hàng rào khớp ở mọi
+  thư mục con (`-C /tmp/x .claude/settings.json` bị chặn); mẫu có chữ (`.*`, `.cl*`, `../.claude/*`) vẫn chặn. `git
+  archive <rev> <pathspec phủ hàng rào> | …` giải vào gốc hay thư mục không biết (cả trong `( … )`, `{ …; }`, `sh -c`,
+  `eval`, `-C "$D"`) bị chặn. **Cho chạy**: không nêu thành viên hay "cả gói" (`tar -xf a.tar`, `.`, `'*'`, `../*`,
+  `-T list`, `"$M"`, `printf … | tar -T -`, `git archive <rev> [.] | tar -x`) như `cp -r src/. .` — guard không đọc
+  archive; lớp đỡ như (a). Còn lọt (AUD-SEC-993): heredoc khi `-T` nằm trong cụm cờ (`tar -xT - …`), vế sau ống là hàm
+  shell, `git archive -o /dev/stdout`.
 
 - **Cơ chế kiểm không dùng được** (ADR-0054): CLI/Gate chặn mã 126 khi guard lỗi nạp hoặc fallback hỏng;
   không dùng module nạp dở; `apply_policy` hỏng không cho raw `ask` thành allow. Runtime fallback khỏe giữ ADR-0002. State thiếu `fcntl` hoặc FS không hỗ trợ
