@@ -73,6 +73,51 @@ class AutonomyBenchRepoTest(unittest.TestCase):
         self.assertEqual(sorted(covered & set(scope)), [])
         self.assertTrue(all(scope.values()))
 
+    def test_scope_ids_are_all_required(self):
+        """AUD-TEST-127: scope.json chỉ chứa ID bắt buộc (REC §2 + 🔴/🟠 `đã sửa`), như `note` và `autonomy_required`.
+
+        Đọc từng dòng `| AUD-…` của cả hai sổ bằng quét thô, độc lập với `md_tables` (AUD-HAR-448)."""
+        _, scope = xt.autonomy_corpus(CORPUS)
+        rows: dict[str, list[tuple[str, str]]] = {}
+        for name in ("AUDIT-STATUS.md", "AUDIT-STATUS-ARCHIVE.md"):
+            for line in (ROOT / "docs" / "ops" / name).read_text(encoding="utf-8").splitlines():
+                if line.startswith("| AUD-"):
+                    cells = xt.split_md_row(line)
+                    rows.setdefault(cells[0], []).append((cells[1], cells[2]))
+        plan = (ROOT / xt.AUTONOMY_REMEDIATION).read_text(encoding="utf-8")
+        rec = set(xt.REC_ROW_RE.findall(plan.split("\n## 2.", 1)[-1].split("\n## 3.", 1)[0]))
+        extra = sorted(
+            i
+            for i in scope
+            if i not in rec and not any(m in ("🔴", "🟠") and s == "đã sửa" for m, s in rows.get(i, []))
+        )
+        self.assertEqual(extra, [], "ID không bắt buộc nằm trong scope.json: gỡ khỏi out_of_scope")
+
+    def test_autonomy_bench_requires_every_fixed_row_of_real_ledgers(self):
+        """AUD-HAR-448: lưu trữ dời theo đợt (ghi chú `>` chen giữa bảng) — ID bắt buộc = MỌI dòng 🔴/🟠 `đã sửa` của sổ
+        và sổ lưu trữ (đếm bằng regex thô, không qua `md_tables`); gỡ một ID nằm sau ghi chú khỏi `scope.json` của bản
+        sao corpus → bench báo chưa phủ, exit 1 (ca chạy được thay bằng `pass` — chỉ đo độ phủ)."""
+        row = re.compile(r"^\| (AUD-[A-Z]+-\d+) \| (?:🔴|🟠) \| đã sửa \|", re.M)
+        ledgers = [ROOT / xt.AUDIT_STATUS_DEFAULT, ROOT / xt.AUDIT_ARCHIVE_DEFAULT]
+        raw = [i for p in ledgers for i in row.findall(p.read_text(encoding="utf-8"))]
+        need = xt.autonomy_required(ROOT, "không-có.md", xt.AUDIT_STATUS_DEFAULT)["audit"]
+        self.assertEqual(sorted(need), sorted(raw))
+        archive = (ROOT / xt.AUDIT_ARCHIVE_DEFAULT).read_text(encoding="utf-8")
+        after_note = row.findall(archive.split("\n## Phát hiện\n", 1)[1].split("\n> ", 1)[1])  # sau ghi chú giữa bảng
+        _, scope = xt.autonomy_corpus(CORPUS)
+        gone = next(i for i in after_note if i in scope)
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = Path(tmp) / "c"
+            shutil.copytree(CORPUS, corpus)
+            data = json.loads((corpus / "scope.json").read_text(encoding="utf-8"))
+            for item in data["out_of_scope"]:
+                item["ids"] = [i for i in item["ids"] if i != gone]
+            (corpus / "scope.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            passed = {"status": "pass"}
+            with unittest.mock.patch.object(xt, "_bench_run", lambda c, env: {**c, **passed}):
+                rc, out, err = bench("--corpus", str(corpus), "--json")
+        self.assertEqual((rc, json.loads(out)["coverage"]["uncovered"]), (1, [gone]), err)
+
     def test_autonomy_bench_pins_default_exec_path_only(self):
         """D-510: quyết định của corpus không phụ thuộc uid chạy bench — root (mọi đường đều đổi được) vẫn coi exec-path
         mặc định là cố định, đường khác xét thật; không đọc được exec-path thì không ghim gì; ghim lại không chồng lớp."""
@@ -415,6 +460,19 @@ class AutonomyBenchCorpusTest(unittest.TestCase):
         self.write("scope.json", {"out_of_scope": [{"reason": "tài liệu", "ids": ["REC-02"]}]})
         rc, _, _ = self.run_bench("--json", "--remediation", "R.md")
         self.assertEqual(rc, 0)
+
+    def test_autonomy_bench_requires_rows_after_moved_note(self):
+        """AUD-HAR-448: dòng 🔴/🟠 `đã sửa` sau dòng trống + ghi chú `>` chen giữa bảng `## Phát hiện` vẫn là ID bắt buộc."""
+        self.write(
+            "guard.json", {"cases": [case("ok", {"command": "git status"}, {"allowed": True}, refs=["AUD-SEC-001"])]}
+        )
+        (self.base / "S.md").write_text(
+            "## Phát hiện\n\n| ID | Mức | Trạng thái |\n|---|---|---|\n| AUD-SEC-001 | 🔴 | đã sửa |\n\n"
+            "> Đợt 2: dời nguyên văn AUD-SEC-002\n\n| AUD-SEC-002 | 🟠 | đã sửa |\n",
+            encoding="utf-8",
+        )
+        rc, out, _ = self.run_bench("--json", "--status", "S.md")
+        self.assertEqual((rc, json.loads(out)["coverage"]["uncovered"]), (1, ["AUD-SEC-002"]))
 
     def test_autonomy_bench_rejects_missing_or_non_boolean_gate_results(self):
         for expected in (False, True):

@@ -4108,37 +4108,67 @@ def split_md_row(line: str) -> List[str]:
     return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", s)]
 
 
-def md_tables(text: str) -> Dict[str, List[Dict[str, str]]]:
-    """Bảng đầu tiên dưới mỗi heading `## `: {tên heading: [dòng dạng dict theo tiêu đề cột]} (bỏ code fence)."""
-    out: Dict[str, List[Dict[str, str]]] = {}
-    heading: Optional[str] = None
-    header: Optional[List[str]] = None
+def _md_unfenced(text: str) -> Iterator[str]:
+    """Dòng của `text` ngoài code fence (dòng mở/đóng fence cũng bỏ)."""
     fence: Optional[str] = None
     for line in text.splitlines():
         m = FENCE_RE.match(line)
         if m and (fence is None or m.group(1) == fence):
             fence = None if fence else m.group(1)
-            continue
-        if fence:
-            continue
+        elif not fence:
+            yield line
+
+
+class _MdTableReader:
+    """Trạng thái đọc bảng của `md_tables`. `continued` (AUD-HAR-448): dòng trống và ghi chú `>` chỉ TẠM NGẮT bảng — dòng
+    bảng sau đó nối tiếp cùng tiêu đề (tiêu đề lặp lại thì bỏ); dòng đầu sau ngắt mà ngay sau là dòng phân cách thì là
+    tiêu đề của bảng KHÁC → bỏ dòng đó, hết bảng (vẫn chỉ bảng đầu tiên)."""
+
+    def __init__(self, continued: bool) -> None:
+        self.continued = continued
+        self.out: Dict[str, List[Dict[str, str]]] = {}
+        self.heading: Optional[str] = None
+        self.header: Optional[List[str]] = None
+        self.gap = False  # vừa qua dòng trống/ghi chú `>` (chỉ khi `continued`)
+        self.fresh = False  # dòng dữ liệu vừa thêm là dòng đầu sau ngắt — có thể là tiêu đề bảng khác
+
+    def feed(self, line: str) -> None:
         if line.startswith("## "):
-            heading, header = unicodedata.normalize("NFC", line[3:].strip()), None
-            continue
-        if heading is None or (heading in out and header is None):
-            continue
-        if not line.lstrip().startswith("|"):
-            if header is not None:  # hết bảng: chỉ lấy bảng đầu tiên của mỗi heading
-                header, heading = None, None
-            continue
-        cells = split_md_row(line)
-        if header is None:
-            header = [unicodedata.normalize("NFC", c) for c in cells]
-            out[heading] = []
+            self.heading, self.header, self.gap = unicodedata.normalize("NFC", line[3:].strip()), None, False
+        elif self.heading is None or (self.heading in self.out and self.header is None):
+            return
+        elif line.lstrip().startswith("|"):
+            self._row(self.heading, split_md_row(line))
+        elif self.header is not None:
+            self._text(line.strip())
+
+    def _text(self, s: str) -> None:
+        if self.continued and (not s or s.startswith(">")):
+            self.gap, self.fresh = True, False
+        else:  # hết bảng: chỉ lấy bảng đầu tiên của mỗi heading
+            self.header = self.heading = None
+
+    def _row(self, heading: str, cells: List[str]) -> None:
+        gap, fresh, self.gap, self.fresh = self.gap, self.fresh, False, False
+        if self.header is None:
+            self.header = [unicodedata.normalize("NFC", c) for c in cells]
+            self.out[heading] = []
         elif all(re.fullmatch(r":?-{3,}:?", c) for c in cells if c):
-            continue
-        else:
-            out[heading].append(dict(zip(header, cells + [""] * (len(header) - len(cells)))))
-    return out
+            if fresh:
+                self.out[heading].pop()
+                self.header = self.heading = None
+        elif not (gap and [unicodedata.normalize("NFC", c) for c in cells] == self.header):
+            self.out[heading].append(dict(zip(self.header, cells + [""] * (len(self.header) - len(cells)))))
+            self.fresh = gap
+
+
+def md_tables(text: str, continued: bool = False) -> Dict[str, List[Dict[str, str]]]:
+    """Bảng đầu tiên dưới mỗi heading `## `: {tên heading: [dòng dạng dict theo tiêu đề cột]} (bỏ code fence).
+    `continued=True` cho sổ audit (AUD-HAR-448): đọc tiếp bảng qua dòng trống/ghi chú `>` chen giữa (đợt dời lưu trữ)."""
+    reader = _MdTableReader(continued)
+    for line in _md_unfenced(text):
+        reader.feed(line)
+    return reader.out
 
 
 def _repo_files(root: Path) -> List[str]:
@@ -4383,18 +4413,24 @@ def audit_archive(status: Path) -> Path:
     return status.with_name(f"{status.stem}{ARCHIVE_SUFFIX}{status.suffix}")
 
 
+def audit_tables(text: str) -> Dict[str, List[Dict[str, str]]]:
+    """Bảng của sổ audit/sổ lưu trữ — mọi đường đọc sổ đi qua đây: đọc tiếp bảng qua dòng trống/ghi chú `>` chen giữa
+    (đợt dời lưu trữ, AUD-HAR-448), không mất dòng nào sau ghi chú."""
+    return md_tables(text, continued=True)
+
+
 def audit_findings(status: Path) -> List[Dict[str, str]]:
     """Dòng `## Phát hiện` của sổ rồi của sổ lưu trữ (vắng → chỉ sổ) — mọi máy đọc phát hiện đi qua đây. Ném
     OSError/ValueError khi không đọc được file nào."""
-    rows = md_tables(status.read_text(encoding="utf-8")).get("Phát hiện", [])
+    rows = audit_tables(status.read_text(encoding="utf-8")).get("Phát hiện", [])
     archive = audit_archive(status)
     if archive.is_file():
-        rows = rows + md_tables(archive.read_text(encoding="utf-8")).get("Phát hiện", [])
+        rows = rows + audit_tables(archive.read_text(encoding="utf-8")).get("Phát hiện", [])
     return rows
 
 
 def audit_status_groups(status: Path) -> Dict[int, Dict[str, str]]:
-    rows = md_tables(status.read_text(encoding="utf-8")).get("Nhóm", [])
+    rows = audit_tables(status.read_text(encoding="utf-8")).get("Nhóm", [])
     out: Dict[int, Dict[str, str]] = {}
     for r in rows:
         if r.get("#", "").isdecimal():  # không isdigit: "²" là digit nhưng int() văng ValueError
@@ -4665,7 +4701,7 @@ def _audit_archive_rows(status: Path, errors: List[str], counts: Dict[str, int])
     archive = audit_archive(status)
     if not archive.is_file():
         return []
-    tables = md_tables(archive.read_text(encoding="utf-8"))
+    tables = audit_tables(archive.read_text(encoding="utf-8"))
     if "Phát hiện" not in tables:
         errors.append(f"{archive.name}: thiếu bảng `## Phát hiện`")
     rows = tables.get("Phát hiện", [])
@@ -4685,7 +4721,7 @@ def audit_check(
     """Kiểm sổ AUDIT-STATUS.md theo templates/AUDIT-STATUS.md, kèm sổ lưu trữ cạnh nó (T-3651). Trả (lỗi, đếm). Ném
     OSError/ValueError khi không đọc được."""
     today = today or _dt.date.today()
-    tables = md_tables(status.read_text(encoding="utf-8"))
+    tables = audit_tables(status.read_text(encoding="utf-8"))
     # Gốc = gốc repo chứa sổ (AUD-HAR-078: sổ ở docs/ops/ thì `git ls-files` trong docs/ops không thấy UI/CSDL).
     root = status.resolve().parent
     top = _git(root, "rev-parse", "--show-toplevel")
@@ -17236,7 +17272,7 @@ def _book_rows_at(base: Path, rev: str, need: bool) -> Tuple[Optional[str], List
     bad = next((r for r in (listed, *shows) if r.returncode), None)
     if bad is not None:
         return _one_line(bad.stderr), []
-    return None, [r for s in shows for r in md_tables(s.stdout).get("Phát hiện", [])]
+    return None, [r for s in shows for r in audit_tables(s.stdout).get("Phát hiện", [])]
 
 
 def _review_drift(

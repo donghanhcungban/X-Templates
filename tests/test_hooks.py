@@ -1421,26 +1421,33 @@ class GuardMatrixTest(unittest.TestCase):
     def test_guard_ifs_scan_linear(self):
         """AUD-SEC-388 lượt 2 (review blk-guard 🟠 ReDoS): dò ngữ cảnh số học/danh sách `for` tuyến tính. Lượt 1
         `STRICT_ARITH_DYN_RE` O(n³) trên chữ thô: ca của review (4 KB `((`/`$` trong nháy đơn) 54 s, ~9 KB vượt timeout
-        600 s của hook. Nay ca đó dưới 5 s; ~60 KB mã/nháy kép dồn `((`, `a[`, `[[ -eq`, danh sách `for` qua lớp
-        AUD-SEC-388 dưới 5 s (`a[` dồn còn chậm ở luật cũ `STRICT_RAW` AUD-SEC-249 — có từ trước, ngoài phạm vi)."""
-        review = "git push --force origin main; echo $x; : '" + "((" * 1000 + "$" * 2000 + "'"
-        start = time.monotonic()
-        self.assertEqual(self.g.bash_decision(review, self.root)["decision"], "deny")
-        self.assertLess(time.monotonic() - start, 5.0)
-        for cmd in (
-            'echo $x; : "' + "((" * 30000 + "$a" * 1000 + '"',
-            "echo $x; : " + "a[" * 30000,
-            "echo $x; : " + "a[$" * 20000,
-            "echo $x; for x in " + "$a " * 20000 + "; do :; done",
-            "echo $x; " + "for x in a; " * 5000 + "do :; done",
-            'echo $x; : "' + "[[ -eq " * 10000 + '"',
-            'echo $x; : "' + "${x:1}" * 10000 + '"',
+        600 s của hook. Nay ca đó và ~60 KB mã/nháy kép dồn `((`, `a[`, `[[ -eq`, danh sách `for` qua lớp AUD-SEC-388
+        không bậc hai theo số đơn vị lặp (`a[` dồn còn chậm ở luật cũ `STRICT_RAW` AUD-SEC-249 — có từ trước, ngoài phạm
+        vi)."""
+
+        def review(n: int) -> str:
+            return "git push --force origin main; echo $x; : '" + "((" * n + "$" * (2 * n) + "'"
+
+        self.assertEqual(self.g.bash_decision(review(1000), self.root)["decision"], "deny")
+        # AUD-TEST-008: tỉ lệ cỡ n/4n (cỡ lớn = cỡ của ca), không trần giây; lượt 1 O(n³) vượt xa
+        cpu_budget.assert_not_quadratic(self, lambda n: self.g.bash_decision(review(n), self.root), 250)
+        for name, make, n in (
+            ('"((', lambda k: 'echo $x; : "' + "((" * k + "$a" * (k // 30) + '"', 7500),
+            ("a[", lambda k: "echo $x; : " + "a[" * k, 7500),
+            ("a[$", lambda k: "echo $x; : " + "a[$" * k, 5000),
+            ("for $a", lambda k: "echo $x; for x in " + "$a " * k + "; do :; done", 5000),
+            ("for x in a;", lambda k: "echo $x; " + "for x in a; " * k + "do :; done", 1250),
+            ("[[ -eq", lambda k: 'echo $x; : "' + "[[ -eq " * k + '"', 2500),
+            ("${x:1}", lambda k: 'echo $x; : "' + "${x:1}" * k + '"', 2500),
         ):
-            with self.subTest(cmd=cmd[:30]):
-                live, bare = self.g._code_views(self.g._CodeView(cmd))
-                start = time.monotonic()
-                self.g._ifs_split_why(cmd, live, bare)
-                self.assertLess(time.monotonic() - start, 5.0)
+            with self.subTest(cmd=name):
+
+                def work(k: int, make=make) -> object:
+                    cmd = make(k)
+                    live, bare = self.g._code_views(self.g._CodeView(cmd))
+                    return self.g._ifs_split_why(cmd, live, bare)
+
+                cpu_budget.assert_not_quadratic(self, work, n)
 
     def test_guard_commit_dir_follows_cd_and_git_C(self):
         # Commit rơi vào repo ở `cd …`/`git -C …`, không phải gốc phiên — hook chạy cổng của repo đó.
@@ -3790,12 +3797,6 @@ class DevTaskGateParTest(unittest.TestCase):
         self.assertIn("TEST-OK", r.stderr)  # test chạy SAU build trong cùng nhóm
         self.assertIn("GATE-PAR XANH (4 lệnh)", r.stderr)
         self.assertEqual(sorted(p.name for p in (self.tmp / "started").iterdir()), ["build", "lint", "tc"])
-
-    def test_wall_time_is_longest_group(self):
-        t0 = time.monotonic()
-        r = self.gate_par("typecheck: sleep 2\nlint: sleep 2\nbuild: sleep 1\ntest: sleep 1\n")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertLess(time.monotonic() - t0, 4.5)  # tuần tự ≥ 6 s
 
     def test_red_when_any_group_red_first_group_code(self):
         r = self.gate_par("typecheck: echo TC\nlint: exit 5\nbuild: echo B\ntest: echo T\n")

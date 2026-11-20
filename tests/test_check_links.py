@@ -7,8 +7,8 @@ import importlib.util
 import io
 import random
 import re
+import sys
 import tempfile
-import time
 import unittest
 import urllib.error
 import urllib.request
@@ -17,6 +17,9 @@ from types import ModuleType
 import unittest.mock as mock
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+import cpu_budget
+
 SCRIPT = ROOT / "scripts" / "check-links.py"
 
 
@@ -160,10 +163,11 @@ class CheckLinksModuleTest(unittest.TestCase):
 
     def test_check_links_anchor_long_paragraph_is_linear(self):
         # Tự rà #242: gom đoạn bằng `[*para, body]` chép cả danh sách mỗi dòng → O(n²) (50 000 dòng mất 6 s).
-        self.write("b.md", "chu\n" * 200_000 + "===\n")
-        start = time.monotonic()
-        self.cl.anchors(self.repo / "b.md")
-        self.assertLess(time.monotonic() - start, 5)
+        def work(n: int) -> object:
+            self.write("b.md", "chu\n" * n + "===\n")
+            return self.cl.anchors(self.repo / "b.md")
+
+        cpu_budget.assert_not_quadratic(self, work, 50_000)
 
     def test_check_absolute_link_missing_is_error(self):
         self.write("a.md", "[x](/khong/co.md)\n")
@@ -278,10 +282,14 @@ class CheckLinksModuleTest(unittest.TestCase):
             fn(Counting(prose))
             self.assertLess(Counting.hits, 100, fn.__name__)
         long_line = ("`a` | \\` x " * 40000) + "`" * 3
-        start = time.monotonic()
         self.assertEqual(self.cl.mask_code_spans(long_line), ref_mask_code_spans(self.cl, long_line))
         self.assertEqual(self.cl.table_cells(long_line), ref_table_cells(long_line))
-        self.assertLess(time.monotonic() - start, 10.0)
+
+        def work(n: int) -> object:
+            line = ("`a` | \\` x " * n) + "`" * 3
+            return self.cl.mask_code_spans(line), self.cl.table_cells(line)
+
+        cpu_budget.assert_not_quadratic(self, work, 10_000)
 
     def test_external_urls_in_table_cells(self):
         """Review #452 🟠: `--external` không che lần hai dòng đã che theo ô — URL ở ô giữa vẫn được kiểm."""

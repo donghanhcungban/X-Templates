@@ -79,6 +79,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- `audit check`, `pr debt` và `autonomy-bench` đọc đủ sổ audit lưu trữ khi có dòng trống hay ghi chú `>` chen giữa bảng Phát hiện; trước đây mọi dòng sau ghi chú đầu tiên bị bỏ (AUD-HAR-448). Dự án đích có dòng sai nằm sau ghi chú (ID trùng, dòng không `đã sửa`) sẽ thấy `audit check` báo lỗi mới khi nâng khung.
+- Test của repo khung không còn trần giây cứng: bộ dò AST trong `tests/cpu_budget.py` bắt ngưỡng `monotonic`/`perf_counter`/`process_time`, trần tốc độ đổi sang kiểm độ phức tạp hoặc hành vi, hạn chống treo phải khai lý do (AUD-TEST-125). `scope.json` của bench tự hành chỉ còn ID bắt buộc, có test giữ (AUD-TEST-127).
 - Smoke của gói `web-api-ts` kiểm đúng origin của trang đăng nhập, API và health của bản dev trước khi ghi bằng chứng. Dự án đích đã tùy biến starter cần đối chiếu bài kiểm sở hữu tại dự án khi nâng khung.
 
 - `plan waves --handoff` kiểm bằng chứng của tiền nhiệm trong vòng hiện hành và chọn cùng cấp executor với `loop status`. Việc độc lập vẫn giao được. Dự án đích nhận thay đổi qua installer.

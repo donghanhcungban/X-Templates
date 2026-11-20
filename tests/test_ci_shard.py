@@ -15,7 +15,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -24,6 +23,7 @@ from typing import Dict, List
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
+import cpu_budget
 import xt
 from test_ci import CI, ci_jobs, matrix_shards
 
@@ -151,11 +151,17 @@ class ShardCliTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def run_xt(self, stdin: str, *args: str):
+    @contextlib.contextmanager
+    def captured(self, stdin: str):
+        """Vá stdin/stdout/stderr (toàn cục) ở luồng gọi; trả hai bộ đệm (out, err)."""
         out, err = io.StringIO(), io.StringIO()
         with unittest.mock.patch.object(sys, "stdin", io.StringIO(stdin)):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                rc = xt.main(list(args))
+                yield out, err
+
+    def run_xt(self, stdin: str, *args: str):
+        with self.captured(stdin) as (out, err):
+            rc = xt.main(list(args))
         return rc, out.getvalue(), err.getvalue()
 
     def test_plan_prints_shard(self):
@@ -225,13 +231,16 @@ class ShardCliTest(unittest.TestCase):
         """AUD-HAR-103 (BASE-ERR-004): một id treo quá `XT_RECORD_TIMEOUT` là đỏ — cả nhóm tiến trình bị dừng, không treo;
         biến sai → exit 2."""
         unit = 'case "$1" in hang) sleep 30 ;; esac'
-        with unittest.mock.patch.dict(os.environ, {"XT_RECORD_TIMEOUT": "1"}):
-            start = time.monotonic()
-            rc, _, err = self.run_xt("ok\nhang\n", "test-weights", "--unit", unit, "--out", str(self.f))
+        args = ["test-weights", "--unit", unit, "--out", str(self.f)]
+        with (
+            unittest.mock.patch.dict(os.environ, {"XT_RECORD_TIMEOUT": "1"}),
+            self.captured("ok\nhang\n") as (_, buf),
+        ):
+            rc = cpu_budget.run_with_deadline(self, lambda: xt.main(args), 20, hang="id `sleep 30` không bị dừng")
+        err = buf.getvalue()
         self.assertEqual(rc, 1, err)
         self.assertIn("1 id đỏ", err)
         self.assertIn("hang", err)
-        self.assertLess(time.monotonic() - start, 20)
         self.assertFalse(self.f.exists())
         for bad in ("x", "0", "-5"):
             with self.subTest(bad), unittest.mock.patch.dict(os.environ, {"XT_RECORD_TIMEOUT": bad}):
