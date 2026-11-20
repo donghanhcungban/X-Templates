@@ -247,6 +247,11 @@ def exercise(app, stage, baseline, env, workspace):
             verify_lock(app, baseline, env)
             if stage == 1:
                 run(app, [*XT, "loop", "verify", "--all"], env)
+                # Pilot chạy trong repo cục bộ mới, chưa mở PR cho đợt này.
+                prs = workspace / "mvp-prs.json"
+                prs.write_text("[]", encoding="utf-8")
+                decision = json.loads(run(app, [*XT, "loop", "next-step", "--prs", str(prs), "--json"], env))
+                assert decision["action"] == "stage-submit", decision["reason"]
                 verified = json.loads((app / ".autopilot/verified.json").read_text())
                 assert verified["ok"] and verified["mode"] == "all"
                 assert any(

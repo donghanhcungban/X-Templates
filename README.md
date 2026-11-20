@@ -67,8 +67,7 @@ python3 .xtemplates/scripts/xt.py blueprint-status BLUEPRINT.md
 `--new` tạo repo git, starter, blueprint quy mô S và sổ giai đoạn 1 (MVP). `PROJECT.md` lưu ý tưởng và
 dành bốn dòng Khung cho bước xác định MVP. Lệnh hoàn tất sau `doctor --offline`. Để chạy bản dev cần cài phụ
 thuộc của gói và có Docker Compose. Khi phát hành, kiểm các mục MUST bằng `blueprint-status BLUEPRINT.md --strict --run`.
-Khi làm tiếp trong Codex ở repo vừa tạo, chạy `python3 /tmp/x-templates/scripts/install.py /đường/dẫn/dự-án --harness codex`
-để cài skill vào dự án. Tại gốc sản phẩm, `python3 .xtemplates/scripts/xt_flow.py --json` đọc bằng chứng hiện có
+Với Codex, thêm `--harness codex` vào lệnh `--new`; skill và hook nằm ngay trong commit đầu. Repo đã có mã dùng `install.py <đích> --harness codex` để bổ sung chúng. Tại gốc sản phẩm, `python3 .xtemplates/scripts/xt_flow.py --json` đọc bằng chứng hiện có
 và cho biết bước tiếp theo thuộc về agent hay người duyệt.
 
 **Repo đã có mã.** Chạy `python3 /tmp/x-templates/scripts/install.py /đường/dẫn/dự-án --with-github`. Với bản ≤ 2.x,

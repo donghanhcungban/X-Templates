@@ -14,8 +14,8 @@ CODEX = Path(".agents/skills/factory/SKILL.md")
 
 
 class FactoryEntryTest(unittest.TestCase):
-    def test_new_project_then_codex_install_preserves_stage_and_idea(self):
-        """Làm theo hai lệnh của skill, kiểm cả repo sạch lẫn lần cài vào repo hiện hữu."""
+    def test_one_install_creates_clean_codex_project_and_resumes_in_place(self):
+        """Cài ngay harness trong commit đầu, rồi thử nâng repo hiện hữu."""
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "so-ghi-chu"
             idea = "Sổ ghi chú của nhóm thử nghiệm"
@@ -30,7 +30,10 @@ class FactoryEntryTest(unittest.TestCase):
                 return command(str(ROOT / "scripts/install.py"), str(target), *args, cwd=ROOT)
 
             cli = ".xtemplates/scripts/xt.py"
-            install("--new", "--pack", "web-api-ts", "--idea", idea)
+            install("--new", "--pack", "web-api-ts", "--idea", idea, "--harness", "codex")
+            self.assertEqual((target / CODEX).read_bytes(), (ROOT / CODEX).read_bytes())
+            self.assertEqual(subprocess.check_output(["git", "status", "--porcelain"], cwd=target), b"")
+            self.assertEqual(subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=target), b"1\n")
             original = json.loads(command(cli, "stage", "status", "--json"))["stage"]
             self.assertEqual((original["stage"], original["status"]), (1, "active"))
             project = (target / "PROJECT.md").read_text(encoding="utf-8")
