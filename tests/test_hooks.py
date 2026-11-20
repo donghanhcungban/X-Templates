@@ -4969,7 +4969,7 @@ class GuardDeltaAuditTest(unittest.TestCase):
         for cmd in (
             "gh api repos/{owner}/{repo}/rulesets --input f.json",
             "gh api repos/o/r/merges --input b.json",
-            "gh api repos/o/r/releases --input -",
+            "gh api repos/o/r/labels --input b.json",
             "gh api -X PUT repos/{owner}/{repo}/pulls/5/merge -f sha=abc --input b.json",
             "gh repo set-default evil/repo",
         ):
@@ -4977,9 +4977,105 @@ class GuardDeltaAuditTest(unittest.TestCase):
                 self.assertEqual(self.dec(cmd), "ask")
         # ghi ref với thân `--input` guard không đọc tại chỗ: có thể mang `force` → chặn như push --force (AUD-SEC-555)
         self.assertEqual(self.dec("gh api --input=b.json repos/o/r/git/refs"), "deny")
+        # tạo release với thân `--input`: `tag_name` guard không đọc được, có thể là tag phiên bản → chặn (F-144, S-517
+        # SPEC-factory-scale; D-424: tag `v*` chỉ do workflow phát hành tạo). Sửa release có sẵn với thân `--input`: có
+        # thể đổi `tag_name` hay phát hành bản nháp (GitHub tạo tag lúc đó) → cũng chặn (review độc lập 🟠4).
+        for cmd in ("gh api repos/o/r/releases --input -", "gh api repos/o/r/releases/5 --input b.json"):
+            with self.subTest(cmd):
+                self.assertEqual(self.dec(cmd), "deny")
         for cmd in ("gh api repos/o/r/pulls/5", "gh api -X GET search/issues --input q.json", "gh repo view"):
             with self.subTest(cmd):
                 self.assertEqual(self.dec(cmd), "")
+
+    # F-144 (SPEC-factory-scale §2.5, S-517, D-424): đường lách review độc lập tìm (🔴1–3, 🟠4–5, 🟢6) và ca đối chứng.
+    RELEASE_TAG_DENY = (
+        # 🔴1 `new` là tên gọi khác của `create` (gh 2.89); cờ repo trước lệnh con
+        "gh release new v1.2.3",
+        "gh release -R o/r new v1.2.3",
+        'gh release create "$T"',  # tag không đọc được
+        "gh release create `cat t`",
+        # 🔴2 graphql createRef nhắm tag phiên bản — nguyên văn, escape, biến, query/biến không đọc được
+        'gh api graphql -f query=\'mutation{createRef(input:{repositoryId:"R",name:"refs/tags/v9.9.9",oid:"a"}){x}}\'',
+        'gh api graphql -f query=\'mutation{createRef(input:{repositoryId:"R",name:"refs/tag\\u0073\\/v9.9.9",oid:"a"}){x}}\'',
+        'gh api graphql -f query=\'mutation{createRef(input:{repositoryId:"R",name:"refs/tags/\\u{76}9.9.9",oid:"a"}){x}}\'',
+        "gh api /graphql -f query='mutation($n:String!){createRef(input:{name:$n}){x}}' -f n=refs/tags/v9.9.9",
+        "gh api graphql -f query='mutation($n:String!){createRef(input:{name:$n}){x}}' -F n=@name.txt",
+        "gh api graphql -f query='mutation($n:String!){createRef(input:{name:$n}){x}}' -f n=\"$N\"",
+        "gh api graphql -f query='mutation($n:String!){createRef(input:{name:$n}){x}}' -f n={branch}",
+        'gh api graphql -f query="$(cat m.graphql)" -f q=createRef',
+        # escape ngoài Unicode giữ nguyên (không lỗi guard): tên không đọc được → chặn
+        "gh api graphql -f query='mutation{createRef(input:{name:\"refs/tags/\\u{110000}\"}){x}}'",
+        # 🔴3 `tag_name` đọc từ tệp/không đọc được
+        "gh api repos/o/r/releases -F tag_name=@f",
+        'gh api repos/o/r/releases -f tag_name="$T"',
+        "gh api 'repos/o/r/releases?tag_name=v1.2.3' -f name=x",
+        # 🟠4 sửa release có sẵn: đổi tag, phát hành bản nháp (tag không biết), `gh release edit`
+        "gh api -X PATCH repos/o/r/releases/5 -f tag_name=v4.0.0",
+        "gh api -X PATCH repos/o/r/releases/5 -F draft=false",
+        "gh api -X PATCH repos/o/r/releases/5 -f draft=true",  # chuỗi "true": GitHub đọc thế nào chưa xác minh
+        "gh api -X PATCH 'repos/o/r/releases/5?draft=false'",
+        "gh release edit draft1 --tag v1.2.3 --draft=false",
+        "gh release edit draft1 --tag=v4.0.0",
+        "gh release edit v1.2.3 --draft=false",
+        "gh release edit v1.2.3 --title x --draft=0",
+        'gh release edit "$T" --draft=false',
+        # 🟠5 trường lặp: gh gửi `-f` trước rồi `-F` — mọi giá trị đều xét
+        "gh api -F tag_name=v1.2.3 -f tag_name=x repos/o/r/releases",
+        "gh api -X POST repos/o/r/git/refs -F ref=refs/tags/v1.2.3 -f ref=refs/heads/x",
+        "gh api -X POST repos/o/r/git/refs -f 'ref[]=refs/tags/v1.2.3'",
+        # 🟢6 hậu tố SemVer — ruleset `tags.json` phủ `refs/tags/v*`
+        "gh release create v4.0.0-rc.1",
+        "git tag v4.0.0-rc.1",
+        "git push origin refs/tags/v1.2.3+build.5",
+        "gh api -X POST repos/o/r/git/refs -f ref=refs/tags/rel/v4.0.0",
+    )
+    RELEASE_TAG_OK = (
+        "gh release create nightly --notes x",
+        "gh release new nightly",
+        "gh release create nightly dist/v1.2.3.tar.gz",  # tài sản, không phải tag
+        "gh release edit v1.2.3 --notes x",  # sửa ghi chú release đã phát hành: không tạo tag
+        "gh release edit v1.2.3 --draft",
+        "gh release edit v1.2.3 --draft=true",
+        "gh release edit draft1 --draft=false --tag nightly2",
+        "gh api -X PATCH repos/o/r/releases/5 -f body=x",
+        "gh api -X PATCH repos/o/r/releases/5 -F draft=true",
+        "gh api repos/o/r/releases -f tag_name=nightly",
+        "gh api repos/o/r/releases/generate-notes -f tag_name=v1.2.3",
+        'gh api graphql -f query=\'query{repository(owner:"o",name:"r"){refs(refPrefix:"refs/tags/",first:5){nodes{name}}}}\'',
+        'gh api graphql -f query=\'mutation{createRef(input:{repositoryId:"R",name:"refs/heads/feat-x",oid:"a"}){x}}\'',
+        "gh api -X POST repos/o/r/git/refs -f ref=refs/tags/nightly -f sha=abc",
+        "gh api graphql -f query='mutation{addStar(input:{starrableId:\"R\"}){clientMutationId}}' -f v=refs/tags/v1.2.3",
+        "git tag v2ray-config",
+        "git tag --list v4.0.0",
+    )
+
+    def test_release_version_tag_paths(self):
+        """F-144: mọi đường tạo/đổi/phát hành tag phiên bản → deny RELEASE_TAG_WHY; tên thường, đọc thuần, sửa release
+        không chạm tag → không chặn oan (hỏi/cho qua như luật đối ngoại sẵn có)."""
+        for cmd in self.RELEASE_TAG_DENY:
+            with self.subTest(cmd):
+                self.assertEqual(self.dec(cmd), "deny")
+                argv = shlex.split(cmd)
+                # luật gh xét trực tiếp: vài dạng có mở rộng (`$T`, backtick) bị tập con chặn trước (ADR-0063)
+                if argv[0] == "gh":
+                    verdict = self.guard._external_rule("gh", argv[1:], str(self.root))
+                    self.assertEqual(verdict, ("deny", self.guard.RELEASE_TAG_WHY))
+                else:
+                    self.assertIn(
+                        self.guard.RELEASE_TAG_WHY, str(self.guard.bash_decision(cmd, str(self.root))["reason"])
+                    )
+        for cmd in self.RELEASE_TAG_OK:
+            with self.subTest(cmd):
+                out = self.guard.bash_decision(cmd, str(self.root))
+                self.assertNotIn(self.guard.RELEASE_TAG_WHY, str(out.get("reason", "")))
+                self.assertIn(out["decision"], ("", "ask", "allow"))
+
+    def test_release_version_tag_concurrent(self):
+        """Quyết định F-144 chạy đồng thời giống tuần tự (không trạng thái dùng chung giữa các lệnh)."""
+        cmds = list(self.RELEASE_TAG_DENY + self.RELEASE_TAG_OK) * 2
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            together = list(pool.map(self.dec, cmds))
+        self.assertEqual(together, [self.dec(c) for c in cmds])
 
     def _main(self, mode: str, payload: object) -> dict:
         out = io.StringIO()

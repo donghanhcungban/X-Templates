@@ -615,3 +615,10 @@
 - Chọn: Dùng một bảng 16 ID phân biệt ủy quyền gắn bằng chứng, trách nhiệm con người và kiểm tra tự động
 - Lý do (tiêu chí chất lượng cuối): G7 và admin-plan đọc cùng bảng; phần việc còn cần người hiện rõ và điều kiện sẵn có của environment, CODEOWNERS vẫn có hiệu lực.
 - Đường lùi: Đưa trần duyệt về mặc định và áp lại văn bản trước lần phân loại.
+
+### D-530 · 2026-11-20T15:07:17+00:00 · Luật F-144 có chặn tag major di động (v1, v1.2) như tag SemVer đầy đủ không?
+
+- Phương án: (1) Chặn mọi v<số>(.<số>)* như ruleset refs/tags/v* · (2) Chỉ chặn vX.Y.Z và hậu tố SemVer -/+; tag major để ruleset phía server giữ
+- Chọn: Chỉ chặn vX.Y.Z và hậu tố SemVer -/+; tag major để ruleset phía server giữ
+- Lý do (tiêu chí chất lượng cuối): Dự án làm GitHub Action phải dời tag major sau mỗi bản; chặn ở guard gây chặn oan liên tục. Ruleset tags.json vẫn bảo vệ refs/tags/v* ở server nên an toàn không giảm; bản phát hành có số đầy đủ mới cần chuỗi bằng chứng.
+- Đường lùi: Mở rộng RELEASE_VERSION_TAG sang v<số>(.<số>)* và đổi các ca release create v1 trong fixture sang deny

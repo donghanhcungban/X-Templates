@@ -98,8 +98,9 @@ chặn `--tags`/`--all`, repo chưa có ruleset cho tag. Thuộc tính bền là
 - `doctor` ở dự án đích báo khung `untagged` hoặc `verified: false`.
 - Việc phân phối tự động (nâng dự án đích — SPEC-factory-learning F-163) chỉ cài từ tag đã qua `release-verify`.
 - **Lớp chặn thêm** (không thay cho attestation): ruleset cho tag `v*` ở repo khung và mẫu dự án đích (mục `ruleset` của
-  `admin-plan` kiểm cả nó); luật guard cấm phiên agent tạo/đẩy `refs/tags/v*` (đường `git push`, API tạo ref, tạo
-  release), kèm ca trong `autonomy-bench`. Tag giả đã lọt (làm workflow thật báo "tag đã tồn tại") là việc người gỡ.
+  `admin-plan` kiểm cả nó); luật guard cấm phiên agent tạo/đẩy tag phiên bản `vX.Y.Z` (kể cả hậu tố SemVer `-`/`+`;
+  đường `git push`, API tạo ref, tạo/phát hành release), kèm ca trong `autonomy-bench`. Tag major di động (`v1`, `v1.2`)
+  để ruleset `v*` phía server giữ (D-530). Tag giả đã lọt (làm workflow thật báo "tag đã tồn tại") là việc người gỡ.
 
 ## 3. Tiêu chí chấp nhận
 

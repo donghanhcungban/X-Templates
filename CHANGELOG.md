@@ -12,9 +12,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 - Dự án có thể cấu hình trần duyệt giai đoạn 2/3 và trần ký M/L. Mỗi lần duyệt lưu SHA, tiêu chí đã đăng ký và bằng chứng. Máy ghi rõ lần ký mô phỏng. [Tiêu chí và quyền](docs/specs/SPEC-factory-scale.md).
 - Bảng trách nhiệm M/L giữ nguyên 16 ID và mức MUST. Tài liệu cập nhật WF-REVIEW-004, WF-REVIEW-007, WF-ENV-008, PM-HANDOVER-006 và PM-PLAN-005. G7 và `admin-plan` dùng chung bảng.
 - `release-verify` xác minh chữ ký và workflow của bản phát hành. Công cụ nâng khung mở PR khi archive và bằng chứng cho phép phân phối đều hợp lệ. Các dự án có thể chọn nâng trước hoặc đợi đủ thời gian theo dõi.
+- Guard chặn phiên agent tạo, đổi hoặc phát hành tag phiên bản `vX.Y.Z`, kể cả hậu tố SemVer như `v4.0.0-rc.1`. Luật phủ `git push`/`git tag`/`git update-ref`, `gh release create|new` và `gh release edit --tag`/`--draft=false`, REST `git/refs` và `…/releases(/<id>)`, GraphQL `createRef`/`updateRef`. Giá trị tag không đọc được (`--input`, `@tệp`, biến shell) cũng bị chặn. Tag phát hành vẫn đi qua workflow `release-tag.yml` (F-144, D-424).
 - Tùy chọn xuất số liệu SLO từ nguồn chỉ đọc gắn mẫu với receipt đang chạy. Dự án có thể dùng số liệu này để mở task tối ưu và kiểm fixture của sự cố.
 
 - Dự án có thể khóa SPEC và bộ nghiệm thu trước khi lập trình, rồi đối chiếu từng tệp với kết quả JUnit. CI gói đã bàn giao [MVP sổ ghi chú](docs/ops/FACTORY-PILOT-1.md) bằng git bundle. Bốn ca nghiệm thu chạy trên bản dev với PostgreSQL và Chromium.
+- `feedback routine-check` so ngày phản hồi từ các dự án đã đăng ký với PR báo cáo. Workflow đọc theo lịch hằng tuần và báo quá hạn khi có mục mới.
 
 - `plan waves --handoff` xuất spec, Gate và phạm vi file của đợt đầu trong một lệnh. Lịch ưu tiên chuỗi phụ thuộc dài khi giảm được số đợt. [ADR-0086](docs/adr/0086-plan-wave-handoff.md).
 

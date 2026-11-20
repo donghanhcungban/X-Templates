@@ -25160,6 +25160,16 @@
   {"id":"promotion-tag-push","origin":"audit","refs":["F-144"],"input":{"command":"git push origin refs/tags/v4.0.0"},"expect":{"allowed":false}},
   {"id":"promotion-tag-api","origin":"audit","refs":["F-144"],"input":{"command":"gh api -X POST repos/o/r/git/refs -f ref=refs/tags/v4.0.0"},"expect":{"allowed":false}},
   {"id":"promotion-tag-release","origin":"audit","refs":["F-144"],"input":{"command":"gh release create v4.0.0"},"expect":{"allowed":false}},
-  {"id":"promotion-tag-read","origin":"control","refs":["F-144"],"input":{"command":"git tag --list v4.0.0"},"expect":{"allowed":true}}
+  {"id":"promotion-tag-read","origin":"control","refs":["F-144"],"input":{"command":"git tag --list v4.0.0"},"expect":{"allowed":true}},
+  {"id":"promotion-tag-release-new-alias","origin":"adversarial-reviewer","refs":["F-144"],"input":{"command":"gh release new v1.2.3"},"expect":{"allowed":false},"note":"gh 2.89: `new` là tên gọi khác của `create`"},
+  {"id":"promotion-tag-graphql-create-ref","origin":"adversarial-reviewer","refs":["F-144"],"input":{"command":"gh api graphql -f query='mutation{createRef(input:{repositoryId:\"R\",name:\"refs/tags/v9.9.9\",oid:\"abc\"}){clientMutationId}}'"},"expect":{"allowed":false}},
+  {"id":"promotion-tag-api-field-file","origin":"adversarial-reviewer","refs":["F-144"],"input":{"command":"gh api repos/o/r/releases -F tag_name=@f"},"expect":{"allowed":false},"note":"tag_name đọc từ tệp: không đọc được → coi là tag phiên bản"},
+  {"id":"promotion-tag-api-release-patch","origin":"adversarial-reviewer","refs":["F-144"],"input":{"command":"gh api -X PATCH repos/o/r/releases/5 -f tag_name=v4.0.0"},"expect":{"allowed":false}},
+  {"id":"promotion-tag-release-edit-tag","origin":"adversarial-reviewer","refs":["F-144"],"input":{"command":"gh release edit draft1 --tag v1.2.3 --draft=false"},"expect":{"allowed":false}},
+  {"id":"promotion-tag-api-dup-field","origin":"adversarial-reviewer","refs":["F-144"],"input":{"command":"gh api -F tag_name=v1.2.3 -f tag_name=x repos/o/r/releases"},"expect":{"allowed":false},"note":"gh gửi -f trước rồi -F: mọi giá trị tag_name đều xét"},
+  {"id":"promotion-tag-prerelease","origin":"adversarial-reviewer","refs":["F-144"],"input":{"command":"gh release create v4.0.0-rc.1"},"expect":{"allowed":false}},
+  {"id":"promotion-tag-release-plain-name","origin":"control","refs":["F-144"],"input":{"command":"gh release create nightly --notes x"},"expect":{"allowed":true}},
+  {"id":"promotion-tag-graphql-read","origin":"control","refs":["F-144"],"input":{"command":"gh api graphql -f query='query{repository(owner:\"o\",name:\"r\"){refs(refPrefix:\"refs/tags/\",first:5){nodes{name}}}}'"},"expect":{"allowed":true}},
+  {"id":"promotion-tag-release-patch-body","origin":"control","refs":["F-144"],"input":{"command":"gh api -X PATCH repos/o/r/releases/5 -f body=x"},"expect":{"allowed":true}}
  ]
 }

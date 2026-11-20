@@ -1702,7 +1702,10 @@ class GhPostingStrictTest(unittest.TestCase):
         "gh pr create --title 'fix: x' --body-file notes.md --head feat/cd-pipeline",
         "gh pr create --title 'docs: x' --body \"$(cat <<'EOF'\ndấu `" + TAG + '=<sha>` do pr reviewed đăng\nEOF\n)"',
         "gh api graphql -f query='query($n: Int!) { viewer { login } }' -F n=$N",
-        "gh api repos/o/r/releases --input -",
+        # `--input -` tới endpoint không nhận bình luận PR không phải đăng dấu review. Release (`…/releases(/<id>)
+        # --input -`) nay bị chặn vì `tag_name`/`draft` không đọc được (F-144, S-517 SPEC-factory-scale) — ca đó ở
+        # GuardDeltaAuditTest.test_gh_api_input_is_write
+        "gh api repos/o/r/labels --input -",
         "gh pr comment \"$N\" --body 'xong'",
     )
 

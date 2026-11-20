@@ -227,6 +227,8 @@ CWD_RELATIVE: Dict[str, str] = {
             ("evidence-glob", ".autopilot/*"),
         )
     },
+    # S-112 (SPEC-factory-deploy): sổ triển khai cùng lớp `evidence` với STAGE.json — đích tương đối như sec992
+    "guard-deploy-ledger-write-step": "docs/ops/DEPLOYS.json tương đối → /tmp/docs/ops/DEPLOYS.json sau cd /tmp (S-112)",
     "guard-advrev-chmod-dirglob-guard": ".claude/*/guard.py tương đối → /tmp/.claude",
     "guard-advrev-truncate-dirglob-guard": ".claude/*/guard.py tương đối → /tmp/.claude",
     "guard-rev361b-dd-ap": ".autopilot/state.json tương đối",

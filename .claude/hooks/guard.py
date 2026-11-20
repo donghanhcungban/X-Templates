@@ -9031,8 +9031,18 @@ def _git_remote(args: List[str]) -> Tuple[str, str]:
     return "", ""
 
 
-RELEASE_VERSION_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+\Z")
+# F-144 (SPEC-factory-scale §2.5, S-517, D-424): tag phiên bản `vX.Y.Z`, cả hậu tố SemVer (`v4.0.0-rc.1`, `v1.2.3+b`)
+# — ruleset `tags.json` phủ `refs/tags/v*`. `v1`/`v1.2` (tag major di động) chưa phủ: tên thường dùng cho release thử.
+RELEASE_VERSION_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]*)?\Z")
 RELEASE_TAG_WHY = "tag phiên bản chỉ do workflow phát hành tạo sau khi duyệt promotion"
+
+
+def _release_tag_unsafe(name: str) -> bool:
+    """Tên tag (`v1.2.3`, `tags/…`, `refs/tags/…`) là tag phiên bản ở gốc hay đoạn cuối, hoặc guard không đọc chắc
+    (`$`, backtick, `@tệp`, placeholder `{…}`/`:branch` — "không đọc được thì coi là tag phiên bản", F-144)."""
+    tag = name.strip().removeprefix("refs/").removeprefix("tags/")
+    exact = RELEASE_VERSION_TAG.fullmatch(tag) or RELEASE_VERSION_TAG.fullmatch(tag.rsplit("/", 1)[-1])
+    return bool(exact) or "`" in name or _gh_branch_vague(name)
 
 
 def _push_ref_rule(ref: str, deleting: bool, cwd: Optional[str] = None) -> Tuple[str, str]:
@@ -12847,7 +12857,7 @@ def _gh_own_rule(args: List[str], root: str, cwd: str) -> Tuple[str, str]:
         return "deny", branch
     if merged is not None:
         return merged
-    if args[:2] == ["release", "create"] and any(RELEASE_VERSION_TAG.fullmatch(word) for word in args[2:]):
+    if _gh_release_cli_tag(args):
         return "deny", RELEASE_TAG_WHY
     if args[:2] == ["alias", "import"]:  # `alias set`: ADR-0063 lát C chặn trước
         return "ask", "gh alias đặt lệnh tắt — guard không thấy lệnh thật khi alias chạy"
@@ -12865,6 +12875,30 @@ def _gh_merge_rule(args: List[str], root: str) -> Optional[Tuple[str, str]]:
         return ("", "") if helped else gh_pr_merge_rule(args[2:], root)
     rest = _gh_pr_sub(args, "merge", args[:1] == ["pr"] and "merge" in args[2:4])
     return None if rest is None else _pr_flag_merge_rule(args, rest, root)
+
+
+# F-144: `gh release edit` (gh 2.89 `--help`) — cờ ăn giá trị, để đọc đúng tag của release (đối số vị trí đầu).
+GH_RELEASE_EDIT_VALUE_OPTS = (
+    *("-t", "--title", "-n", "--notes", "-F", "--notes-file", "--target", "--discussion-category", "--tag"),
+    *("-R", "--repo", "--hostname"),
+)
+PFLAG_TRUE = frozenset({"1", "t", "T", "TRUE", "true", "True"})  # strconv.ParseBool của pflag
+
+
+def _gh_release_cli_tag(args: List[str]) -> bool:
+    """F-144: `gh release create|new` (`new` là tên gọi khác của `create`) có từ là tag phiên bản hoặc tag (đối số vị
+    trí đầu) không đọc được; `gh release edit` đổi tag (`--tag`) sang tag phiên bản/không đọc được, hay phát hành bản
+    nháp (`--draft=false` — GitHub tạo tag lúc phát hành) mà tag của release là tag phiên bản/không đọc được."""
+    if args[:1] != ["release"] or args[1:2] not in (["create"], ["new"], ["edit"]):
+        return False
+    rest = args[2:]
+    if args[1] != "edit":
+        first = _positionals(rest, (*GH_UPLOADS[("release", "create")], *GH_GLOBAL_VALUE_OPTS))[:1]
+        return any(RELEASE_VERSION_TAG.fullmatch(word) for word in rest) or any(map(_release_tag_unsafe, first))
+    tags = _flag_values(rest, ("--tag",))
+    if any(a.startswith("--draft=") and a.partition("=")[2] not in PFLAG_TRUE for a in rest):
+        tags += _positionals(rest, GH_RELEASE_EDIT_VALUE_OPTS)[:1]
+    return any(map(_release_tag_unsafe, tags))
 
 
 # AUD-SEC-623: `gh repo sync --force` gọi `PATCH …/git/refs/heads/<b>` `force:true` (gh 2.89 "Hard reset the branch").
@@ -12902,17 +12936,68 @@ GH_API_CONTENTS_RE = re.compile(rf"/?{GH_REPO_PATH}/contents(?:/.*)?")
 GH_API_MAIN_WHY = "push thẳng nhánh chính qua `gh api` REST — khung yêu cầu đi qua PR (AUD-SEC-544)"
 
 
+# F-144: tạo (`…/releases`) và sửa (`…/releases/<id>`) release — `generate-notes` chỉ sinh ghi chú, không tạo tag.
+GH_API_RELEASE_RE = re.compile(rf"/?{GH_REPO_PATH}/releases(?:/(?!generate-notes/?\Z)[^/]+)?/?")
+# Mutation tạo ref qua graphql; đích tag sau khi giải escape chuỗi GraphQL (`\/`, `\u0076`, `\u{76}`).
+GRAPHQL_CREATE_REF_RE = re.compile(r"\bcreateRef\b")
+GRAPHQL_TAG_RE = re.compile(r"(?:refs/+)?tags/+([^\s\"'\\,()}]*)")
+GRAPHQL_UNICODE_RE = re.compile(r"\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})")
+
+
 def _gh_release_tag_write(args: List[str]) -> bool:
+    """F-144: `gh api` ghi (đối số sau `api`) tạo/đổi tag phiên bản: release REST, ref REST `git/refs`, graphql
+    `createRef`. Mọi giá trị của một trường đều xét (gh gửi `-f` trước rồi `-F` — trường lặp thì không biết bản nào
+    thắng); giá trị không đọc được tính là tag phiên bản."""
     pos = _positionals(args, GH_API_VALUE_FLAGS)
     path = _api_path(pos[0]) if len(pos) == 1 else ""
-    fields = dict(f.partition("=")[::2] for f in _gh_api_field_values(args))
-    if re.fullmatch(rf"/?{GH_REPO_PATH}/releases/?", path):
-        return bool(RELEASE_VERSION_TAG.fullmatch(fields.get("tag_name", ""))) or any(
-            a.startswith("--input") for a in args
-        )
+    if path.rstrip("/").rsplit("/", 1)[-1] == "graphql":
+        return _graphql_tag_create(args)
+    pairs = [f.partition("=") for f in _gh_api_field_values(args)]
+    if GH_API_RELEASE_RE.fullmatch(path):
+        return _gh_api_release_unsafe(args, pairs, pos[0], path)
     ref = GH_API_REF_RE.fullmatch(path)
-    target = ref[1] if ref else fields.get("ref", "") if GH_API_REF_WRITE_RE.fullmatch(path) else ""
-    return target.startswith(("tags/", "refs/tags/")) and bool(RELEASE_VERSION_TAG.fullmatch(target.split("/")[-1]))
+    refs = [v for k, _, v in pairs if _field_key(k) == "ref"] if GH_API_REF_WRITE_RE.fullmatch(path) else []
+    targets = [ref[1]] if ref else refs
+    return any(t.strip().startswith(("tags/", "refs/tags/")) and _release_tag_unsafe(t) for t in targets)
+
+
+def _field_key(key: str) -> str:
+    """Khoá trường `gh api` như GitHub đọc: bỏ hậu tố mảng/đối tượng `[…]` và khoảng trắng (chặt)."""
+    return key.split("[", 1)[0].strip()
+
+
+def _gh_api_release_unsafe(args: List[str], pairs: List[Tuple[str, str, str]], endpoint: str, path: str) -> bool:
+    """Release REST: thân `--input` (không đọc được); `tag_name` (trường hay query của endpoint) là tag phiên bản/không
+    đọc được; sửa release `<id>` mà `draft` khác `-F draft=true` (phát hành bản nháp tạo tag của nó — tag không biết)."""
+    if any(a.startswith("--input") for a in args):
+        return True
+    query = urllib.parse.parse_qsl(endpoint.split("#", 1)[0].partition("?")[2], keep_blank_values=True)
+    fields = [(k, v) for k, _, v in pairs] + query
+    if any(_field_key(k) == "tag_name" and _release_tag_unsafe(v) for k, v in fields):
+        return True
+    typed_true = {f for f in _gh_api_field_values(args, "F") if f.partition("=")[2] == "true"}
+    drafts = [f"{k}={v}" for k, v in fields if _field_key(k) == "draft"]
+    edits = bool(re.search(r"/releases/[^/]+/?\Z", path))
+    return edits and any(d not in typed_true for d in drafts)
+
+
+def _graphql_tag_create(args: List[str]) -> bool:
+    """Graphql `createRef`: đích `refs/tags/<tag phiên bản>` (sau giải escape), hoặc query/biến không đọc được
+    (`_graphql_opaque`, biến `$`/`@`/`{…}`) — tên ref có thể là tag phiên bản."""
+    text = " ".join(args)
+    if not GRAPHQL_CREATE_REF_RE.search(text):
+        return False
+    variables = [v for k, _, v in (f.partition("=") for f in _gh_api_field_values(args)) if k != "query"]
+    if _graphql_opaque(args) or any("`" in v or _gh_branch_vague(v) for v in variables):
+        return True
+    plain = re.sub(r"\\(.)", r"\1", GRAPHQL_UNICODE_RE.sub(_graphql_char, text))
+    return any(_release_tag_unsafe(t) for t in GRAPHQL_TAG_RE.findall(plain))
+
+
+def _graphql_char(m: "re.Match[str]") -> str:
+    """Escape unicode của chuỗi GraphQL thành ký tự; mã ngoài Unicode giữ nguyên (GitHub từ chối query đó)."""
+    code = int(m[1] or m[2], 16)
+    return chr(code) if code <= sys.maxunicode else m[0]
 
 
 def _gh_api_main_write(args: List[str]) -> bool:
