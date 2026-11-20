@@ -1,5 +1,6 @@
 """D-526. Stage 2/3 are opt-in and require a merged, unchanged subject and independent evidence."""
 
+import json
 import os
 import subprocess
 import sys
@@ -174,6 +175,50 @@ class StageMaxTest(TmpRepoCase):
         self.assertIn("xt.py stage approve --sha", action["reason"])
         (self.repo / "xt.yaml").write_text("stage_approval: agent\n")
         self.assertEqual(xt_flow.next_action(self.repo, stage, facts, {}, {})["owner"], "project-owner")
+
+    def test_blank_note_rejection_and_moving_head_refuse_without_recording(self):
+        sha = self.prepare(2)
+        self.git("push", "-q", "origin", "main")
+        before = (self.repo / xt.STAGE_LEDGER).read_bytes()
+        rc = self.evidence(("acceptance_lock", "PASS"), ("deploy", "PASS"))
+        for result, note, why in (
+            (rc, "   ", "ghi tiêu chí"),
+            ({**rc, "promotion": {"state": "rejected"}}, "đã kiểm", "NO-GO"),
+            ({**rc, "head": "0" * 40}, "đã kiểm", "HEAD đã đổi"),
+        ):
+            with self.subTest(why=why), mock.patch.object(xt, "release_check", return_value=result):
+                code, _, err = self.stage("approve", "--sha", sha[:12], "--note", note, agent=True)
+                self.assertEqual(code, 2, err)
+                self.assertIn(why, err)
+                self.assertEqual((self.repo / xt.STAGE_LEDGER).read_bytes(), before)
+
+    def test_scale_proof_rereads_local_lock_and_lost_submission_is_changed(self):
+        sha = self.prepare(2)
+        digest = self.led()["submitted"]["artifact_digest"]
+        conf = self.repo / "xt.yaml"
+        for content, why in ((b"stage_approval: human\n", "chỉ người duyệt"), (b"\xff\xfe", "decode")):
+            conf.write_bytes(content)
+            with self.subTest(why=why), self.assertRaisesRegex(xt.StageError, why):
+                xt._stage_scale_proof(self.repo, 2, sha, digest)
+        led = self.led()
+        led["submitted"]["sha"] = "0" * 40  # the submitted commit no longer exists in this clone
+        self.assertIsNone(xt._stage_changed(self.repo, led["submitted"]))
+        with self.assertRaisesRegex(xt.StageError, "không duyệt được bản đã đổi"):
+            xt._stage_approve(led, "0" * 12, xt.STAGE_AGENT_BY, "đã kiểm", self.repo)
+
+    def test_replayed_agent_approval_without_recorded_criteria_is_invalid(self):
+        sha = self.prepare(2)
+        self.git("push", "-q", "origin", "main")
+        with mock.patch.object(
+            xt, "release_check", return_value=self.evidence(("acceptance_lock", "PASS"), ("deploy", "PASS"))
+        ):
+            self.assertEqual(self.approve(sha)[0], 0)
+        led = self.led()
+        led["history"][-1].pop("criteria")
+        (self.repo / xt.STAGE_LEDGER).write_text(json.dumps(led))
+        code, _, err = self.stage("status")
+        self.assertNotEqual(code, 0)
+        self.assertIn("thiếu session hoặc bằng chứng", err)
 
     def test_codex_thread_is_an_agent_and_cannot_adopt_as_human(self):
         with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": "thread-123"}):

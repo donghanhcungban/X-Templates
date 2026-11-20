@@ -95,6 +95,29 @@ class InstallTest(unittest.TestCase):
             self.assertNotIn("Traceback", deploy.stderr)
             self.assertFalse(list(scripts.rglob("__pycache__")))
 
+    def test_interrupted_install_from_other_source_never_keeps_verified_receipt(self):
+        import xt_distribution
+
+        manifest = self.target / ".xtemplates" / "manifest.json"
+        manifest.parent.mkdir()
+        verified = {"repo": "o/framework", "tag": "v1.0.0", "commit": "a" * 40, "verified": True}
+        source = lambda: json.loads(manifest.read_text(encoding="utf-8"))["source"]
+        for new, kept in (({"untagged": "unknown"}, {"verified": False}), (verified, verified)):
+            manifest.write_text(json.dumps({"source": verified, "packs": {}}), encoding="utf-8")
+            with (
+                self.subTest(new=new),
+                mock.patch.object(xt_distribution, "install_source", return_value=new),
+                mock.patch.object(install, "install_framework", side_effect=OSError("interrupted")),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(OSError),
+            ):
+                self.run_install()
+            self.assertEqual(source(), kept)
+        with mock.patch.object(xt_distribution, "install_source", return_value={"untagged": "unknown"}):
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(self.run_install(), 0)
+        self.assertEqual(source(), {"untagged": "unknown"})
+
     def test_install_requires_cpython_315_minor_before_writing(self):
         for implementation, version in (("cpython", (3, 14, 10)), ("cpython", (3, 16, 0)), ("pypy", (3, 15, 2))):
             with (

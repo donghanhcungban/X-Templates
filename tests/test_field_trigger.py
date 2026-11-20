@@ -170,6 +170,9 @@ class FieldTriggerTest(TmpRepoCase):
         self.assertEqual(field.committed_field(xt, self.repo, ""), {})
         self.git("update-ref", "refs/remotes/origin/main", self.git("rev-parse", "main"))
         self.assertIn("field", field.committed_field(xt, self.repo, ""))
+        self.assertIn("field", xt._field_facts(self.repo, ""))
+        with mock.patch.object(xt, "SCRIPT_DIR", self.tmp):  # minimal framework install without xt_field.py
+            self.assertEqual(xt._field_facts(self.repo, ""), {})
         self.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
         self.assertIn("field", field.committed_field(xt, self.repo, ""))
 

@@ -258,6 +258,18 @@ class ProductionDeployTest(GithubFixture, ReleaseCase):
             self.assertIn("grant", self.call(rc=2))
         self.assertFalse((self.state / "calls").exists())
         self.assertEqual(self.ledger.read_bytes(), before)
+
+        def unsign_after_copy(*args):
+            materialize(*args)
+            data = json.loads(self.fixture_routes.read_bytes())
+            del data[f"contents/{self.sign}?ref={head}"]
+            self.fixture_routes.write_text(json.dumps(data))
+
+        self.fixture_routes.write_bytes(baseline)
+        with mock.patch.object(xt_deploy, "materialize_artifacts", side_effect=unsign_after_copy):
+            self.assertIn("chữ ký GO đã đổi trước khi triển khai", self.call(rc=2))
+        self.assertFalse((self.state / "calls").exists())
+        self.assertEqual(self.ledger.read_bytes(), before)
         self.fixture_routes.write_bytes(baseline)
         self.call()
         self.candidate(b"unhealthy")
