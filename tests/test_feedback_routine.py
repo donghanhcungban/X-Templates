@@ -4,12 +4,14 @@ import base64
 import datetime as dt
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.test_xt_cli import run_main, xt
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_xt_cli import run_main, xt
 
 
 class FeedbackRoutineTest(unittest.TestCase):

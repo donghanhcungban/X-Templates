@@ -1,12 +1,14 @@
 """D-529: đủ 16 ID, quyền thực thi và cổng người dùng chung một bảng."""
 
 import re
+import sys
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from tests.test_release_contract import ReleaseCase, xt
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_release_contract import ReleaseCase, xt
 import xt_ops_setup
 
 
