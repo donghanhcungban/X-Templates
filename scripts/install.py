@@ -838,9 +838,11 @@ def install_framework(xt_dir: Path, label: str | None) -> str:
         copy_files_replace(SRC / "research", linked_research(SRC), xt_dir / "research")
     drop_symlink(xt_dir / "scripts")
     (xt_dir / "scripts").mkdir(exist_ok=True)
-    for f in ("xt.py", "dev-task.sh", "check-links.py", "xt_adapter.py"):
+    optional_scripts = ("xt_adapter.py", "xt_flow.py", "xt_acceptance.py", "xt_ops_setup.py", "xt_release_ops.py")
+    for f in ("xt.py", "dev-task.sh", "check-links.py", *optional_scripts):
         drop_symlink(xt_dir / "scripts" / f)
-        if f == "xt_adapter.py" and not (SRC / "scripts" / f).is_file():  # khung tối giản/bản cũ: không có adapter
+        if f in optional_scripts and not (SRC / "scripts" / f).is_file():  # khung tối giản/bản cũ
+            (xt_dir / "scripts" / f).unlink(missing_ok=True)
             continue
         shutil.copy2(SRC / "scripts" / f, xt_dir / "scripts" / f)
     (xt_dir / "scripts" / "dev-task.sh").chmod(0o755)

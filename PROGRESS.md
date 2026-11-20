@@ -1,11 +1,11 @@
 # PROGRESS.md — Khung X-Templates
 
-> Giai đoạn hiện tại: G8 Vận hành & tiến hoá (khung 3.34.0, pha `harden` — D-136) · Cập nhật: 2026-11-19
+> Giai đoạn hiện tại: G8 Vận hành & tiến hoá (khung 3.34.0, pha `harden` — D-136) · Cập nhật: 2026-11-20
 
 ## Đang làm
 - 2026-11-19 **3.34.0 đã phát hành** (tag `v3.34.0` = `ef146b0`, agent ký GO-NO-GO §5 ở #674): harden ADR-0080 xong 14 đợt (D-494…D-509; guard mặc định chặn D-503; giới hạn đã biết ở `harness-files.md`, có hạn 2027-01-21). Audit delta 13 nhóm ở `fe5f1e8e` (SEC/TEST/DOC/HAR `rút gọn` — phần chưa rà ghi ở bảng nhóm của sổ); 🔴/🟠 mở 0; 🟠 chấp nhận AUD-DEP-037 (D-514).
 - ADR-0081 (D-511, #673) đã triển khai: `compose` không `--scale` giữ quy mô cũ (không đọc được → lỗi, AUD-HAR-437), chưa có thì S; `doctor` ở build không cảnh báo chậm MINOR/PATCH ([đo dự án đích](research/2026-11-19-target-project-speed.md)). Nâng khung kèm `actions/setup-python` 3.15.2 ở CI dự án gọi `xt.py` (ADR-0078).
-- **ADR-0075/0077** ([PLAN-factory-e2e](docs/autopilot/PLAN-factory-e2e.md)): `/factory`, bản dev gói web-api-ts, smoke + receipt và kiểm ghi chú bằng trình duyệt. Kế: đo pilot độc lập, tích hợp receipt vào release-check/registry. AUD-DOC-273/274 còn kiểm artifact trên VPS.
+- **Factory** ([ADR-0083](docs/adr/0083-factory-lifecycle-flow.md), D-521): ba giai đoạn, nghiệm thu trên repo mới, receipt vào release/registry, diễn tập bàn giao và kiểm SLO. Nợ và điều kiện lên production ở [PLAN](docs/autopilot/PLAN-factory-e2e.md).
 - Dự án đích ([registry](docs/ops/registry.json)): X-Company #114, xboss #747, dhcb #1506 đã nâng 3.34.0; hotel-manager #159 mở, chờ chủ dự án xử lý check đỏ có từ trước (`dep-audit` Next 16.x, ngoại lệ zod quá hạn, test `expected 410 to be 200`, `schema-compat`). Còn mở: AUD-TEST-061 (CodeQL); fixture host Codex/Gemini.
 - D-457: PLAN factory-A/BE đã lưu kho. `LOOP-ORCH-020`: chỉ tăng agent khi có số. 10 nhóm `cong-cu` chờ phân loại ([TARGETS](docs/ops/TARGETS.md)). Hoãn: T-1690/T-1691 (quét lại SEC-091…099); rà `seeker19110/stored` chờ chủ repo (hạn xét 2026-12-31).
 

@@ -27,8 +27,10 @@ Phiên bản pnpm và các gói npm nằm trong `starter/package.json` ở cây 
 | Worker | `src/worker.ts` | khoá ý định chống trùng, lease hết hạn → lấy lại, mỗi lần claim một `lease_token` (lần chạy cũ — kể cả cùng workerId — không hoàn tất/reset được lần chạy mới), crash giữa chừng → bản ghi `job_effects` đúng một lần (tác dụng phụ ra ngoài DB là at-least-once — handler phải lũy đẳng phía nhận), chết ở lần thử cuối → `failed` (không kẹt `running`), `reconcile` (`worker.test.ts`) |
 | Artifact | `scripts/build.ts` → `dist/app.tgz` + `.sha256` | cùng commit → cùng digest; `release_artifacts` của `xt.yaml` → hàng `artifacts` của `release-check` |
 
-Chạy cục bộ: `DATABASE_URL=postgres://…/postgres pnpm test` (vai trò có quyền `CREATE DATABASE`; mỗi file test tạo cơ sở
-riêng). Không có `DATABASE_URL` → test đỏ, không bỏ qua.
+Khi chạy cục bộ, đặt `DATABASE_URL=postgres://…/postgres` rồi chạy `pnpm test`. Tài khoản cần quyền
+`CREATE DATABASE` vì mỗi file test dùng một cơ sở dữ liệu riêng. Trên GitHub Actions, dự án mới tự cài Node và pnpm
+theo phiên bản đã ghim, cài phụ thuộc theo lockfile và dùng PostgreSQL 17. Nếu dự án chưa cấp `DATABASE_URL`,
+bộ test tạo container tạm trên loopback rồi xóa khi kết thúc, kể cả khi test đỏ.
 
 ## Chạy thử bản dev
 

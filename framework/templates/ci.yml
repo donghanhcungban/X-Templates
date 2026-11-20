@@ -61,10 +61,27 @@ jobs:
       # `setup` để đỏ sớm, không tốn thời gian cài phụ thuộc.
       - name: Cổng bắt buộc đã khai — `lint` và `test` trong xt.yaml không rỗng/no-op
         run: bash .xtemplates/scripts/dev-task.sh require lint test
+      - name: Toolchain của dự án
+        if: hashFiles('.github/actions/xt-ci-tools/action.yml') != ''
+        uses: ./.github/actions/xt-ci-tools
       - name: setup — khoá `setup:` của xt.yaml (vắng = bỏ qua)
         run: bash .xtemplates/scripts/dev-task.sh setup
       - name: gate-par — typecheck ∥ lint ∥ build → test (kèm ngưỡng coverage của `test`) đúng lệnh trong xt.yaml
-        run: bash .xtemplates/scripts/dev-task.sh gate-par
+        id: gate-checks
+        run: |
+          flow_pid=
+          if [[ -f docs/autopilot/STAGE.json && -f .xtemplates/scripts/xt_flow.py ]]; then
+            flow_file=$(mktemp)
+            trap 'rm -f "$flow_file"' EXIT
+            "$XT_FRAMEWORK_PYTHON" .xtemplates/scripts/xt_flow.py --github-summary > "$flow_file" &
+            flow_pid=$!
+          fi
+          gate_status=0
+          bash .xtemplates/scripts/dev-task.sh gate-par || gate_status=$?
+          if [[ -n $flow_pid ]] && ! { wait "$flow_pid" && cat "$flow_file" >> "$GITHUB_STEP_SUMMARY"; }; then
+            echo 'flow_error=true' >> "$GITHUB_OUTPUT"
+          fi
+          exit "$gate_status"
       # Sàn M/L (LOOP-HARNESS-023): khoá sàn khai riêng trong xt.yaml (`format_check`, `coverage`, kiểm kiểu theo stack) —
       # trước chỉ `loop verify` chạy nên CI xanh khi sàn đỏ (AUD-XFEAT-020). Lệnh trùng lệnh của gate-par bỏ qua; `e2e` có
       # job riêng; quy mô S/không blueprint → không áp; khoá thiếu chỉ cảnh báo (như doctor).
@@ -84,6 +101,18 @@ jobs:
       - name: Tài sản prompt (injection, ký tự ẩn, lệnh nguy hiểm, bí mật, bỏ hàng rào, gói/URL không ghim) — `xt.py prompt-assets-scan`
         if: hashFiles('prompt-assets-exempt.json') != ''
         run: '"$XT_FRAMEWORK_PYTHON" .xtemplates/scripts/xt.py prompt-assets-scan --exempt prompt-assets-exempt.json'
+      - name: Tóm tắt vòng đời dự án
+        if: ${{ !cancelled() && steps.framework-python.outcome == 'success' && (steps.gate-checks.outcome == 'skipped' || steps.gate-checks.outputs.flow_error == 'true') }}
+        env:
+          FLOW_ERROR: ${{ steps.gate-checks.outputs.flow_error }}
+        run: |
+          if [[ $FLOW_ERROR == true ]]; then
+            echo '::error::Không đọc được số liệu vòng đời. Xem lỗi của xt_flow.py ở bước gate-par.'
+            exit 1
+          fi
+          if [[ -f docs/autopilot/STAGE.json && -f .xtemplates/scripts/xt_flow.py ]]; then
+            "$XT_FRAMEWORK_PYTHON" .xtemplates/scripts/xt_flow.py --github-summary >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # E2E (QA-E2E-001, QA-E2E-029): chạy CÙNG LÚC với `gate`, không `needs` — lệnh `e2e` tự build và phục vụ (vd `webServer`
   # của Playwright). `e2e-mode`: `off` (chưa khai `e2e`) → bỏ qua; `shard` (lệnh dùng $XT_SHARD, vd
@@ -117,6 +146,9 @@ jobs:
           mode="$(bash .xtemplates/scripts/dev-task.sh e2e-mode)"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "e2e-mode: $mode"
+      - name: Toolchain của dự án
+        if: (steps.mode.outputs.mode == 'shard' || (steps.mode.outputs.mode == 'whole' && matrix.shard == 1)) && hashFiles('.github/actions/xt-ci-tools/action.yml') != ''
+        uses: ./.github/actions/xt-ci-tools
       - if: steps.mode.outputs.mode == 'shard' || (steps.mode.outputs.mode == 'whole' && matrix.shard == 1)
         name: setup — khoá `setup:` của xt.yaml (vắng = bỏ qua)
         run: bash .xtemplates/scripts/dev-task.sh setup
