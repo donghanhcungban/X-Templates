@@ -580,3 +580,10 @@
 - Chọn: Dùng watch lúc viết, giữ nghiệm thu bản đóng gói, xếp lớp test nặng trước và gom Gate một lượt
 - Lý do (tiêu chí chất lượng cuối): Giảm việc lặp, giữ tập test và thứ tự Gate theo PLAN.
 - Đường lùi: Hoàn tác thay đổi của lượt này.
+
+### D-524 · 2026-11-20T05:33:18+00:00 · Xếp việc và chuẩn bị ngữ cảnh cho đợt code kế như thế nào?
+
+- Phương án: (1) Xếp toàn bộ theo tầng và đọc ngữ cảnh từng task · (2) So với lịch ưu tiên chuỗi phụ thuộc dài, chọn ít đợt hơn và lấy ngữ cảnh của đợt đầu trong một lệnh
+- Chọn: So với lịch ưu tiên chuỗi phụ thuộc dài, chọn ít đợt hơn và lấy ngữ cảnh của đợt đầu trong một lệnh
+- Lý do (tiêu chí chất lượng cuối): Phát lại 42 PLAN ở trần 4. Giữ lịch cũ khi hoà, kiểm giai đoạn trước khi xuất gói giao việc.
+- Đường lùi: Hoàn tác thay đổi plan waves và dùng context --task.

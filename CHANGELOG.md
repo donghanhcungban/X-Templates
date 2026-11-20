@@ -8,6 +8,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- `plan waves --handoff` xuất spec, Gate và phạm vi file của đợt đầu trong một lệnh. Lịch ưu tiên chuỗi phụ thuộc dài khi giảm được số đợt. [ADR-0086](docs/adr/0086-plan-wave-handoff.md).
+
 - Gói `web-api-ts` có `pnpm dev` để thử thay đổi ngay trên loopback và `pnpm test:watch` để chạy lại test khi lưu. Quy trình `/factory` dùng hai lệnh trong lúc viết mã; bước trình MVP tiếp tục kiểm bản đóng gói.
 - `loop verify` gom Gate tương đương trong một lần duyệt PLAN. Trong mỗi shard CI, lớp test có trọng số lớn được giao trước. [ADR-0085](docs/adr/0085-fast-development-feedback.md).
 

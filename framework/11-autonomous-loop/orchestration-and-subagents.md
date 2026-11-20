@@ -3,7 +3,7 @@ title: Điều phối: subagent, worktree, song song, không lồng
 kind: module
 prefix: LOOP-ORCH
 applies_to: [all]
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Điều phối: subagent, worktree, song song, không lồng
@@ -81,6 +81,10 @@ Xếp đợt bằng máy: `xt.py plan waves [--plan P] [--max N] [--json]` chia 
 `sau:` đã thoả, `files:` đôi một không giao (cùng phép so của `loop next`), ≤ N task (mặc định 4, ADR-0061; trần cứng 5 — `LOOP-ORCH-008`), task thiếu `files:`
 đứng riêng; task trên chu trình, ghi chú hỏng hoặc đã defer vào mục bị chặn kèm lý do. Không cần vòng đang chạy; đợt
 nhiều task chạy theo mô hình B, đợt một task theo mô hình A.
+
+Khi chuẩn bị viết mã, thêm `--handoff` để lấy một JSON gồm ngữ cảnh từng task của đợt đầu (spec, Gate, file, topology, tier),
+tổng số đợt và các việc bị chặn. Lệnh đọc sổ giai đoạn và tình trạng vòng đang chạy. Sau khi ghi Gate, chạy lại trên PLAN hiện hành.
+Để xem toàn bộ lịch, dùng `--json`. Máy ưu tiên chuỗi phụ thuộc dài khi cách đó giảm được số đợt với cùng giới hạn người và file.
 
 Giới hạn: ≤ 5 subagent đồng thời (stored 23 §2, 03 §5; RAM/IO máy và ngân sách context phiên chính), độ sâu lồng = 1
 (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` hoặc không cấp tool `Agent` cho subagent — cách thứ hai là cách repo

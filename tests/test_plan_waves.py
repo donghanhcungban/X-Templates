@@ -169,6 +169,80 @@ class PlanWavesTest(unittest.TestCase):
         out = self.check_invariant(lines)
         self.assertEqual(self.ids(out), [["T-002", "T-006"], ["T-003"], ["T-004"]])
 
+    def test_critical_chain_fills_spare_slot(self):
+        # Lịch theo tầng xếp T-003 sau hai việc độc lập, rồi còn hai tầng phải chờ.
+        lines = [
+            task("T-001", files=["a"]),
+            task("T-002", files=["b"]),
+            task("T-003", files=["c"]),
+            task("T-004", after=["T-003"], files=["d"]),
+            task("T-005", after=["T-004"], files=["e"]),
+        ]
+        self.assertEqual(
+            self.ids(self.check_invariant(lines, mx=2)), [["T-003", "T-001"], ["T-004", "T-002"], ["T-005"]]
+        )
+
+    def test_falls_back_when_long_chain_order_adds_a_wave(self):
+        lines = [
+            task("T-001", files=["a"]),
+            task("T-002", files=["c"]),
+            task("T-003", files=["b"]),
+            task("T-004", after=["T-002"], files=["a"]),
+            task("T-005", files=["a"]),
+            task("T-006", after=["T-003"], files=["a"]),
+        ]
+        self.assertEqual(
+            self.ids(self.check_invariant(lines, mx=2)), [["T-001", "T-002"], ["T-003", "T-005"], ["T-004"], ["T-006"]]
+        )
+
+    def test_long_reverse_chain_has_one_wave_per_dependency(self):
+        lines = [task("T-1000", files=["f"])]
+        for i in range(1001, 2100):
+            lines.append(task(f"T-{i}", after=[f"T-{i - 1}"], files=["f"]))
+        self.assertEqual(self.ids(self.check_invariant(lines[::-1])), [[f"T-{i}"] for i in range(1000, 2100)])
+
+    def test_handoff_batches_first_wave_context_and_blocked_tasks(self):
+        path = self.base / "plan.md"
+        write(
+            path,
+            "\n".join(
+                [
+                    task("T-004", after=["T-001"], files=["later"]),
+                    task("T-001", files=["one"]),
+                    task("T-002", files=["two"]),
+                    task("T-003", files=["held"]),
+                ]
+            ),
+        )
+        xt.write_state({"active": True, "deferred": {"T-003": {"reason": "chờ"}}, "plan": "plan.md"}, self.base)
+        rc, out, err = self.run_main("plan", "waves", "--handoff")
+        self.assertEqual((rc, err), (0, ""))
+        result = json.loads(out)
+        self.assertEqual(result["wave_count"], 2)
+        self.assertEqual(result["blocked"], [{"id": "T-003", "reason": "đã defer: chờ"}])
+        self.assertEqual([p["task"] for p in result["tasks"]], ["T-001", "T-002"])
+        for packet in result["tasks"]:
+            rc, individual, err = self.run_main("context", "--task", packet["task"], "--json")
+            self.assertEqual((rc, err), (0, ""))
+            self.assertEqual(packet, {**json.loads(individual), "topology": "self", "tier": "default"})
+        write(path, task("T-003", files=["held"]))
+        self.assertEqual(json.loads(self.run_main("plan", "waves", "--handoff")[1])["tasks"], [])
+
+    def test_handoff_refuses_ambiguous_or_locked_work(self):
+        path = self.base / "plan.md"
+        args = ("plan", "waves", "--handoff", "--plan", "plan.md")
+        write(path, "\n".join([task("T-001", after=["T-001"], files=["a"]), task("T-001", "x", files=["b"])]))
+        self.assertIn("ID task trùng", self.run_main(*args)[2])
+        write(path, "Giai đoạn sản phẩm: 2 (C-001)\n" + task("T-001", files=["a"]))
+        self.assertEqual(self.run_main("stage", "init")[0], 0)
+        rc, out, err = self.run_main(*args)
+        self.assertEqual((rc, out), (2, ""))
+        self.assertIn("đang mở giai đoạn 1", err)
+        xt.write_state({"active": True, "blocked": True, "blocked_reason": "cần xác nhận"}, self.base)
+        self.assertIn("cần xác nhận", self.run_main(*args)[2])
+        write(xt.state_dir(self.base) / "state.json", "{")
+        self.assertIn("state.json", self.run_main(*args)[2])
+
     def test_deferred_and_propagation(self):
         """Task defer bị chặn kèm lý do; task chờ nó bị chặn lan; dep chặn liệt kê đủ."""
         lines = [

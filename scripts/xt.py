@@ -140,6 +140,7 @@ import unicodedata
 import urllib.parse
 from collections import Counter
 from dataclasses import dataclass, field
+from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import (
     Any,
@@ -1766,13 +1767,6 @@ def _plan_blocked(opens: List[Dict[str, Any]], deferred: Dict[str, Any], cyc: se
     return {t["id"]: blocked[t["id"]] for t in opens if t["id"] in blocked}
 
 
-def _plan_level(tid: str, deps: Dict[str, List[str]], memo: Dict[str, int]) -> int:
-    """Tầng phụ thuộc: 0 nếu không có dependency mở trong file, else 1 + max tầng các dependency."""
-    if tid not in memo:
-        memo[tid] = 1 + max((_plan_level(d, deps, memo) for d in deps[tid]), default=-1)
-    return memo[tid]
-
-
 def _fits_group(t: Dict[str, Any], group: List[Dict[str, Any]], max_parallel: int) -> bool:
     """`t` vào được nhóm: còn chỗ, không ai thiếu `files:`, `files:` đôi một không giao."""
     if len(group) >= max_parallel or not t["files"] or not all(g["files"] for g in group):
@@ -1792,6 +1786,47 @@ def _pack_level(level_tasks: List[Dict[str, Any]], max_parallel: int) -> List[Li
     return groups
 
 
+def _schedule_waves(live: List[Dict[str, Any]], limit: int) -> List[List[Dict[str, Any]]]:
+    """So lịch theo tầng với lịch ưu tiên chuỗi phụ thuộc dài. Khi bằng số đợt, giữ thứ tự cũ."""
+    ids = {t["id"] for t in live}
+    deps = {t["id"]: [d for d in t["after"] if d in ids] for t in live}
+    order = list(TopologicalSorter(deps).static_order())
+    levels: Dict[str, int] = {}
+    for tid in order:
+        levels[tid] = 1 + max((levels[d] for d in deps[tid]), default=-1)
+    layers: Dict[int, List[Dict[str, Any]]] = {}
+    for t in live:
+        layers.setdefault(levels[t["id"]], []).append(t)
+    baseline = [group for level in sorted(layers) for group in _pack_level(layers[level], limit)]
+    # Đã chạm cận dưới theo số tầng hoặc sức chứa: lịch khác không thể ít đợt hơn.
+    if limit <= 1 or len(baseline) <= max(len(layers), (len(live) + limit - 1) // limit):
+        return baseline
+    remaining = dict.fromkeys(order, 1)
+    for tid in reversed(order):
+        for d in deps[tid]:
+            remaining[d] = max(remaining[d], 1 + remaining[tid])
+    # Điểm của mọi tiền nhiệm lớn hơn hậu nhiệm. sorted ổn định nên hoà điểm theo thứ tự PLAN.
+    ranked = sorted(live, key=lambda t: -remaining[t["id"]])
+    candidate = _pack_after_dependencies(ranked, deps, limit)
+    return candidate if len(candidate) < len(baseline) else baseline
+
+
+def _pack_after_dependencies(
+    ranked: List[Dict[str, Any]], deps: Dict[str, List[str]], limit: int
+) -> List[List[Dict[str, Any]]]:
+    groups: List[List[Dict[str, Any]]] = []
+    placed: Dict[str, int] = {}
+    for task in ranked:
+        tid = task["id"]
+        first = 1 + max((placed[d] for d in deps[tid]), default=-1)
+        index = next((i for i in range(first, len(groups)) if _fits_group(task, groups[i], limit)), len(groups))
+        if index == len(groups):
+            groups.append([])
+        groups[index].append(task)
+        placed[tid] = index
+    return groups
+
+
 def plan_waves(
     tasks: List[Dict[str, Any]], deferred: Dict[str, Any], max_parallel: int = WAVE_MAX_DEFAULT
 ) -> Dict[str, Any]:
@@ -1800,19 +1835,13 @@ def plan_waves(
     opens = [t for t in tasks if t["state"] in PLAN_OPEN_STATES]
     blocked = _plan_blocked(opens, deferred, set(plan_cycle_nodes(tasks)))
     live = [t for t in opens if t["id"] not in blocked]
-    ids = {t["id"] for t in live}
-    deps = {t["id"]: [d for d in t["after"] if d in ids] for t in live}
-    memo: Dict[str, int] = {}
-    levels = {t["id"]: _plan_level(t["id"], deps, memo) for t in live}
-    waves: List[Dict[str, Any]] = []
-    for lv in sorted(set(levels.values())):
-        for group in _pack_level([t for t in live if levels[t["id"]] == lv], max_parallel):
-            waves.append(
-                {
-                    "wave": len(waves) + 1,
-                    "tasks": [{k: t[k] for k in ("id", "title", "tier", "topology", "files")} for t in group],
-                }
-            )
+    waves = [
+        {
+            "wave": number,
+            "tasks": [{k: t[k] for k in ("id", "title", "tier", "topology", "files")} for t in group],
+        }
+        for number, group in enumerate(_schedule_waves(live, max_parallel), 1)
+    ]
     return {"waves": waves, "blocked": [{"id": k, "reason": v} for k, v in blocked.items()]}
 
 
@@ -8833,7 +8862,7 @@ def context_pack(t: Dict[str, Any], base: Path) -> Dict[str, Any]:
 
 
 def cmd_context(args: argparse.Namespace) -> int:
-    base = project_dir()
+    base = loop_root(project_dir())
     plan = base / (args.plan or str((read_state(base) or {}).get("plan") or "docs/autopilot/PLAN.md"))
     if not plan.is_file():
         print(f"✗ Không thấy PLAN: {plan}", file=sys.stderr)
@@ -10023,16 +10052,55 @@ def _plan_waves_print(out: Dict[str, Any]) -> None:
     print(f"{n + len(out['blocked'])} task mở → {len(out['waves'])} đợt ({len(out['blocked'])} bị chặn)")
 
 
+def _handoff_problem(base: Path, plan: Path, st: Optional[Dict[str, Any]]) -> str:
+    if st is None and (state_dir(base) / "state.json").exists():
+        return "Không đọc được state.json — khôi phục sổ vòng trước khi giao việc"
+    if st and st.get("active"):
+        stop = _verdict_loop_state(st, base)
+        if stop:
+            return str(stop["reason"])
+    return stage_plan_problem(base, str(plan))
+
+
+def _wave_handoff(tasks: List[Dict[str, Any]], deferred: Dict[str, Any], limit: int, base: Path) -> Dict[str, Any]:
+    """Gói ngữ cảnh của riêng đợt đầu. Giữ lại các việc bị chặn để phiên chính xử lý."""
+    by_id = {t["id"]: t for t in tasks}
+    if len(by_id) != len(tasks):
+        raise ValueError("ID task trùng trong PLAN — sửa trước khi giao việc")
+    schedule = plan_waves(tasks, deferred, limit)
+    waves = schedule["waves"]
+    first: Dict[str, Any] = next(iter(waves), {"tasks": []})
+    return {
+        "wave_count": len(waves),
+        "tasks": [
+            {**context_pack(by_id[t["id"]], base), "topology": t["topology"], "tier": t["tier"]} for t in first["tasks"]
+        ],
+        "blocked": schedule["blocked"],
+    }
+
+
 def _plan_waves(args: argparse.Namespace, base: Path) -> int:
     if not 1 <= args.max <= WAVE_MAX_HARD:
         print(f"✗ --max phải trong 1..{WAVE_MAX_HARD} (trần cứng LOOP-ORCH-008)", file=sys.stderr)
         return 2
-    st = read_state(base) or {}
-    plan = base / (args.plan or str(st.get("plan") or "docs/autopilot/PLAN.md"))
+    st = read_state(base)
+    plan = base / (args.plan or str((st or {}).get("plan") or "docs/autopilot/PLAN.md"))
     if not plan.is_file():
         print(f"✗ Không thấy PLAN: {plan}", file=sys.stderr)
         return 2
-    out = plan_waves(parse_plan(plan), _deferred(st), args.max)
+    if args.handoff and (locked := _handoff_problem(base, plan, st)):
+        print(f"✗ {locked}", file=sys.stderr)
+        return 2
+    tasks = parse_plan(plan)
+    deferred = _deferred(st or {})
+    if args.handoff:
+        try:
+            print(json.dumps(_wave_handoff(tasks, deferred, args.max, base), ensure_ascii=False))
+        except ValueError as exc:
+            print(f"✗ {exc}", file=sys.stderr)
+            return 2
+        return 0
+    out = plan_waves(tasks, deferred, args.max)
     if args.json:
         print(json.dumps(out, ensure_ascii=False))
     else:
@@ -10045,7 +10113,7 @@ PLAN_HANDLERS: Dict[str, Callable[[argparse.Namespace, Path], int]] = {"waves": 
 
 def cmd_plan(args: argparse.Namespace) -> int:
     handler = PLAN_HANDLERS.get(args.plan_cmd)
-    return handler(args, project_dir()) if handler else 2
+    return handler(args, loop_root(project_dir())) if handler else 2
 
 
 CHANGELOG_GROUPS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
@@ -21418,6 +21486,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"số task tối đa mỗi đợt (mặc định {WAVE_MAX_DEFAULT}, ADR-0061)",
     )
     pw.add_argument("--json", action="store_true")
+    pw.add_argument("--handoff", action="store_true", help="in JSON gói ngữ cảnh của đợt đầu khi giai đoạn cho phép")
     pw.set_defaults(fn=cmd_plan)
     plp = sub.add_parser("loop")
     lsub = plp.add_subparsers(dest="loop_cmd", required=True)
