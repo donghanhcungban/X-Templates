@@ -7,9 +7,9 @@ on:
     branches: [main]
     paths:
       - VERSION
-      - 'GO-NO-GO*.md'
-      - 'docs/GO-NO-GO*.md'
-      - 'docs/ops/GO-NO-GO*.md'
+      - "GO-NO-GO*.md"
+      - "docs/GO-NO-GO*.md"
+      - "docs/ops/GO-NO-GO*.md"
   workflow_dispatch:
     inputs:
       sha:
