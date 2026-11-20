@@ -783,16 +783,12 @@ def _gitfile_target(path: str, root: str) -> bool:
     return posixpath.basename(_norm_path(path)) == ".git" or posixpath.basename(rel_path(path, root)) == ".git"
 
 
-# AUD-SEC-497 (D-390): dòng ký §5 của `GO-NO-GO*.md` là của người (mẫu GO-NO-GO §5: "con người, không phải agent";
-# ADR-0068 §Quyết định 3a: máy không tự nâng `pending_human` thành `approved`) — agent tự ghi thì `release-check` ra
-# `promotion: approved` không người duyệt. Write làm xuất hiện dòng ký mới hay đổi dòng ký → deny; xoá dòng ký, sửa
-# phần khác → cho chạy. Edit/MultiEdit/NotebookEdit, Bash ghi file đó → deny (guard không so chắc nội dung, D-418).
-# Bản sao tối thiểu của `GO_SIGN_ROW_RE`/`_go_sign_rows` ở scripts/xt.py (guard chỉ stdlib, không import xt): dòng bảng
-# `| vai trò | tên | quyết định | YYYY-MM-DD |` (MỘT dòng) có ô tên và ô ngày khác rỗng, trong mục `## 5` tới `## ` kế.
-# AUD-SEC-615: hai họ dòng ký so RIÊNG (chặn khi hợp các hiệu khác rỗng): luật thô cũ và đúng phần `release-check`
-# thấy — `_go_shown`, bản chép `_markdown_shown` của xt (bỏ chú thích HTML, khối rào/thụt, khối HTML ẩn; regex `GO_*`
-# dưới đây chép `HTML_COMMENT_TOKEN_RE`, `SHOWN_*_RE`, `HTML_HIDDEN_RE`; test đồng bộ: tests/test_guard_go_no_go.py).
-# Lỗi khi đọc → deny (không để hook fail-open).
+# AUD-SEC-497 (D-390): dòng ký §5 của `GO-NO-GO*.md` là của người (ADR-0068 §Quyết định 3a) — agent tự ghi thì
+# `release-check` ra `promotion: approved` không người duyệt. Write thêm/đổi dòng ký → deny; xoá dòng ký, sửa phần khác
+# → qua. Edit/MultiEdit/NotebookEdit, Bash ghi file đó → deny (D-418). Bản sao `GO_SIGN_ROW_RE`/`_go_sign_rows` của xt
+# (guard chỉ stdlib). AUD-SEC-615: so RIÊNG luật thô và phần `release-check` thấy (`_go_shown` chép `_markdown_shown`;
+# regex `GO_*` chép `HTML_COMMENT_TOKEN_RE`, `SHOWN_*_RE`, `HTML_HIDDEN_RE` — đồng bộ: tests/test_guard_go_no_go.py).
+# Lỗi khi đọc → deny (không fail-open).
 GO_COMMENT_TOKEN_RE = re.compile(r"<!---?>|<!--|--!?>|`+")
 GO_FENCE_RE = re.compile(r"^((?:[ ]*+(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ ])))*+)[ ]*+(`{3,}|~{3,})(.*)$")
 GO_CLOSE_RE = re.compile(r"(`{3,}|~{3,})\s*\Z")
@@ -6382,21 +6378,12 @@ IMPLICIT_LOAD_WHY = (
     " lệnh — guard không đọc tệp lúc chạy (AUD-SEC-416, ADR-0067); viết lại: ghi tệp bằng công cụ Write rồi chạy ở lệnh"
     " Bash riêng"
 )
-# Tệp công cụ nạp NGẦM (không nhắc trên dòng lệnh) — danh sách đếm được; nguồn (đọc 2026-11-03): GNU make manual §3.2
-# "What Name to Give Your Makefile"; npm docs `package.json` (scripts) + `npmrc` (per-project config); pytest docs
-# "Configuration" (rootdir/inifile: pytest.ini, pyproject.toml, tox.ini, setup.cfg) + "conftest.py"; Python `site`
-# module (sitecustomize, usercustomize, `.pth`); bash(1) INVOCATION (login: ~/.bash_profile, ~/.bash_login,
-# ~/.profile, ~/.bash_logout; tương tác: ~/.bashrc); zsh(1) STARTUP/SHUTDOWN FILES (`.zshenv` mọi lần chạy); Cargo Book
-# "Build Scripts" (build.rs) + "Configuration" (.cargo/config.toml, .cargo/config); gitattributes(5) (filter/diff
-# driver); pip `install .` (setup.py, pyproject.toml build backend, setup.cfg); tox (tox.ini/tox.toml `commands`),
-# pre-commit (`repo: local` chạy lệnh), just (justfile), rake (Rakefile), Bundler (Gemfile là mã Ruby), Gradle (build
-# script Groovy/Kotlin), Maven (pom.xml — plugin exec). Không thêm tsc (không chắc). AUD-SEC-418 (review #429): `node
-# --run` (Node ≥ 22 chạy `scripts` của package.json); Bun (`bun run`/`test`/`install` — package.json scripts, bunfig.toml
-# `preload`); nox (noxfile.py là mã Python); invoke (tasks.py); Composer (composer.json `scripts` chạy khi install/update);
-# CMake (CMakeLists.txt — `execute_process`); Go `test`/`generate`/`run` (biên dịch và chạy mọi `*.go` của gói,
-# `//go:generate`; go.mod không chạy mã — không thêm, `go build` không chạy mã — không tính); `deno task`
-# (deno.json/deno.jsonc `tasks`); go-task `task` (Taskfile.yml…); `script -c CMD` chạy CMD qua shell (`script -qc 'bash
-# -i'` nạp ~/.bashrc).
+# Tệp công cụ nạp NGẦM (không nhắc trên dòng lệnh) — danh sách đếm được; nguồn (đọc 2026-11-03): GNU make §3.2; npm
+# `package.json`/`npmrc`; pytest "Configuration" + "conftest.py"; Python `site`; bash(1) INVOCATION; zsh(1) STARTUP FILES;
+# Cargo Book "Build Scripts"/"Configuration"; gitattributes(5); pip `install .`; tox, pre-commit (`repo: local`), just,
+# rake, Bundler, Gradle, Maven (plugin exec). Không thêm tsc (không chắc). AUD-SEC-418 (review #429): `node --run` (Node
+# ≥ 22), Bun (scripts, bunfig `preload`), nox, invoke, Composer `scripts`, CMake `execute_process`, Go `test`/`generate`/
+# `run` (go.mod, `go build` không chạy mã — không tính), `deno task`, go-task; `script -c CMD` chạy CMD qua shell.
 IMPLICIT_LOADS: Dict[str, Tuple[str, ...]] = {
     "make": ("GNUmakefile", "makefile", "Makefile"),
     "npm": ("package.json", ".npmrc"),
@@ -6890,9 +6877,11 @@ def _argv_shell_check(
     của luật cũ: HOOK_BYPASS…). Chữ lỏng (guard tự dựng) không qua tập con. Cờ bỏ hook đã đặt trong `res` đi theo lỗi
     (review #433 R1 — adapter host khác đọc `push_no_verify`). Câu hỏi mã BUDGET (`gh pr close 5 ${a[@]}` — AUD-SEC-598)
     không tính: nó là ask ở strict, lỗi tập con là deny ở mọi chính sách. Câu hỏi của luật hàng rào mới (AUD-SEC-988/989,
-    `_new_fence_ask`) cũng không tính: thêm luật không được làm deny BUDGET của lệnh cũ thành ask ở strict."""
+    `_new_fence_ask`; AUD-SEC-996a FOLLOW_TAGS_MARK) cũng không tính: thêm luật không được làm deny BUDGET của lệnh cũ
+    thành ask ở strict."""
     why = _argv_shell_why(cmd, tokens, root, cwd) if strict else ""
-    if why and not _asks_denied([a for a in asks if reason_code("ask", a) != BUDGET and not _new_fence_ask(a)]):
+    kept = [a for a in asks if reason_code("ask", a) != BUDGET and not _new_fence_ask(a) and FOLLOW_TAGS_MARK not in a]
+    if why and not _asks_denied(kept):
         err = ScanTooComplex(f"ngoài tập con guard đọc chắc — {why} (ADR-0063)")
         setattr(err, "flags", {k: True for k in ("no_verify", "push_no_verify") if res.get(k)})
         raise err
@@ -9015,13 +9004,25 @@ GIT_CONFIG_READ = {
 
 
 def _git_config(args: List[str]) -> Tuple[str, str]:
-    """config: đặt `push.default`/`remote.<r>.push|mirror` = push nhánh chính ngầm cho mọi `git push` sau (AUD-SEC-047)."""
+    """config: đặt `push.default`/`remote.<r>.push|mirror` = push nhánh chính ngầm cho mọi `git push` sau (AUD-SEC-047),
+    `push.followTags` (AUD-SEC-996a)."""
     if set(args) & GIT_CONFIG_READ:
         return "", ""
     pos = [a for a in _positionals(args) if a not in ("set", "--add")]
     if pos[:1] and PUSH_SPREAD_RE.fullmatch("=".join(pos[:2]) if len(pos) > 1 else pos[0] + "=true"):
         return "ask", f"đặt cấu hình push — {PUSH_ALL_WHY}"
+    written = _git_config_write(["git", "config", *args])
+    if written[1:] and _follow_tags_on(written[0], written[1]):
+        return "ask", f"đặt cấu hình push — {FOLLOW_TAGS_WHY}"
     return "", ""
+
+
+FOLLOW_TAGS_MARK = "tag chú thích kèm nhánh (AUD-SEC-996a)"  # dấu: không che BUDGET (`_argv_shell_check`)
+FOLLOW_TAGS_WHY = f"{PUSH_ALL_WHY} — `--follow-tags`/`push.followTags` đẩy {FOLLOW_TAGS_MARK}"
+
+
+def _follow_tags_on(key: str, value: str) -> bool:  # giá trị lạ/rỗng (`-c k` không `=`) tính là bật
+    return key.strip().lower() == "push.followtags" and value.strip().lower() not in ("false", "no", "off", "0")
 
 
 def _git_remote(args: List[str]) -> Tuple[str, str]:
@@ -9035,24 +9036,33 @@ def _git_remote(args: List[str]) -> Tuple[str, str]:
 # — ruleset `tags.json` phủ `refs/tags/v*`. `v1`/`v1.2` (tag major di động) chưa phủ: tên thường dùng cho release thử.
 RELEASE_VERSION_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]*)?\Z")
 RELEASE_TAG_WHY = "tag phiên bản chỉ do workflow phát hành tạo sau khi duyệt promotion"
+GLOB_UNIT_RE = re.compile(r"\[[^\]]*\]|[*?\[]")
+TAG_LIKE_RE = re.compile(r"v?[0-9.]*(?:[-+][0-9A-Za-z.+-]*)?")
+
+
+def _tag_glob(word: str) -> bool:
+    """AUD-SEC-996b: glob bash bung theo tệp (`touch v1.2.3`) có thể ra tag phiên bản — đoạn (tách `/`, `:`) có glob mà
+    chữ còn lại dạng tag (`v1.2.?`, `v*`, `[v]1.2.3`) hay đoạn khác là tag (`HEAD?refs/tags/v1.2.3`); `?d`, `x?a=1`: luật cũ."""
+    segs = re.split("[/:]", word) if GLOB_UNIT_RE.search(word) else []
+    lits = [GLOB_UNIT_RE.sub("", s) for s in segs if GLOB_UNIT_RE.search(s)]
+    tagged = any(TAG_LIKE_RE.fullmatch(x) and re.search("[v0-9]", x) for x in lits)
+    return tagged or any(map(RELEASE_VERSION_TAG.fullmatch, segs))
 
 
 def _release_tag_unsafe(name: str) -> bool:
     """Tên tag (`v1.2.3`, `tags/…`, `refs/tags/…`) là tag phiên bản ở gốc hay đoạn cuối, hoặc guard không đọc chắc
-    (`$`, backtick, `@tệp`, placeholder `{…}`/`:branch` — "không đọc được thì coi là tag phiên bản", F-144)."""
+    (`$`, backtick, `@tệp`, placeholder `{…}`/`:branch`, `_tag_glob` — "không đọc được thì coi là tag phiên bản", F-144)."""
     tag = name.strip().removeprefix("refs/").removeprefix("tags/")
     exact = RELEASE_VERSION_TAG.fullmatch(tag) or RELEASE_VERSION_TAG.fullmatch(tag.rsplit("/", 1)[-1])
-    return bool(exact) or "`" in name or _gh_branch_vague(name)
+    return bool(exact) or "`" in name or _gh_branch_vague(name) or _tag_glob(name)
 
 
 def _push_ref_rule(ref: str, deleting: bool, cwd: Optional[str] = None) -> Tuple[str, str]:
-    """Một refspec của push: đích là nhánh chính → deny nếu xoá, ask nếu đẩy thẳng. Đích `HEAD`/`@` = nhánh hiện tại."""
+    """Một refspec của push: đích là nhánh chính → deny nếu xoá, ask nếu đẩy thẳng. Đích `HEAD`/`@` = nhánh hiện tại.
+    Tag phiên bản, `_tag_glob` → deny (F-144)."""
     dst = ref.split(":", 1)[1] if ":" in ref else ref
-    if (
-        not deleting
-        and not ref.startswith(":")
-        and RELEASE_VERSION_TAG.fullmatch(dst.removeprefix("refs/tags/").removeprefix("tags/"))
-    ):
+    tag = RELEASE_VERSION_TAG.fullmatch(dst.removeprefix("refs/tags/").removeprefix("tags/"))
+    if not deleting and not ref.startswith(":") and (tag or _tag_glob(ref)):
         return "deny", RELEASE_TAG_WHY
     dst = dst.removeprefix("refs/").removeprefix("heads/")  # git phân giải `heads/main` thành refs/heads/main
     if dst in ("HEAD", "@"):
@@ -9175,8 +9185,12 @@ def _git_push(args: List[str], cwd: Optional[str] = None) -> Tuple[str, str]:
         return "deny", REMOTE_DELETE_WHY.format(gone, _current_branch(cwd) or "không rõ")
     spread = any("*" in r or r == ":" for r in refs[1:])  # refspec glob, `:` = matching (AUD-SEC-047)
     spread = spread or (PUSH_CONFIG_FLAG in args and not refs[1:])  # cấu hình push chỉ có hiệu lực khi không có refspec
-    if spread or {"--all", "--branches", "--tags"} & set(args):
-        return "ask", PUSH_ALL_WHY
+    spread = spread or bool({"--all", "--branches", "--tags"} & set(args))
+    every = ("ask", PUSH_ALL_WHY) if spread else ("ask", FOLLOW_TAGS_WHY) if "--follow-tags" in args else ("", "")
+    return _stricter(every, _push_refspecs_rule(args, refs, flags, cwd))  # deny theo ref thắng ask PUSH_ALL
+
+
+def _push_refspecs_rule(args: List[str], refs: List[str], flags: str, cwd: Optional[str]) -> Tuple[str, str]:
     deleting = "--delete" in args or "d" in flags
     cfg = ("", "") if refs[1:] or _push_dry_run(args) else _push_cfg_rule(cwd)  # T-3952 F3
     if cfg[0]:
@@ -9447,25 +9461,13 @@ def _git_credential(sub: str, args: List[str]) -> Tuple[str, str]:
     return ("deny", GIT_CRED_WHY) if action and action in args else ("", "")
 
 
-# AUD-SEC-119 (T-3563): Gate mẫu tối ưu đọc script/baseline từ `origin/main` (optimization-loop.md), nhưng ref remote là
-# ref CỤC BỘ: `update-ref refs/remotes/origin/main HEAD`, `fetch . HEAD:refs/remotes/origin/main`, `push . HEAD:origin/main`
-# ghi thẳng nó; `tag`/`branch`/`checkout -b`/`switch -c`/`worktree add -b`/`stash branch`/`update-ref` tạo ref cùng tên mà
-# git giải trước (`$GIT_DIR/<tên>`, `refs/<tên>`, `refs/tags/`, `refs/heads/` trước `refs/remotes/` — gitrevisions). Chặn
-# (deny ở mọi chính sách và mọi pha, không nới ở pha build): ghi/xoá ref dưới `refs/remotes/` (cả `remote set-head <r>
-# <nhánh>|-d` — ADR-0071, D-361; `-a` hỏi máy chủ thì qua), tạo/đổi tên/sao chép ref có tên ngắn `<remote>/…`. Tên remote: `git remote` ở repo của lệnh ∪ REMOTE_NAMES (đọc lỗi vẫn giữ tên mặc định), so
-# không phân biệt hoa thường (macOS: `refs/heads/Origin/main` là cùng file với ref git tìm khi giải `origin/main`).
-# Cho qua: `fetch origin [main]` (refspec cấu hình cập nhật `origin/main`), refspec đúng dạng cấu hình
-# `[+]refs/heads/X:refs/remotes/<R>/X` khi <R> là remote ĐÃ cấu hình (tên khác là đường dẫn: `./origin`); xoá/đổi tên ref
-# giả đi (`branch -D origin/x`, `tag -d`, `branch -dr` — Gate đỏ chứ không xanh giả); upstream/điểm bắt đầu là ref remote.
-# Ghi thẳng `.git/packed-refs`, `.git/refs/remotes/**` và đổi URL/refspec/insteadOf của remote: chặn từ D-366 (khối
-# REMOTE_CFG dưới, GIT_HOOK_PATTERNS). Giới hạn đã biết (lệnh cố ý né, D-015 — harness-files.md): ghi thẳng file
-# `.git/refs/heads|tags/…`/`.git/<remote>/…`, `.git/refs/replace/…`, `fast-import`; ref trong biến/thay lệnh. Alias git (lệnh con khác tên) được mở và xét như lệnh thật
-# (khối "Alias git" dưới); đối số từ stdin (`xargs`/`parallel`/`find -exec {}`) → UNRESOLVED_TARGET (khối "Đối số không
-# thấy"). Giới hạn của alias: tệp cấu hình tạo trong CÙNG lệnh Bash rồi mới dùng (`printf … > f && GIT_CONFIG_GLOBAL=f
-# git y …` — lúc guard đọc, tệp chưa có), lệnh con là biến (`git $S …`), lệnh xoá biến môi trường (`env -i/-u`, `unset`),
-# `includeIf "onbranch:"` định nghĩa alias, thư mục repo là biến (đọc ở gốc dự án), git cũ thiếu một lệnh dựng sẵn trong
-# GIT_BUILTINS (alias trùng tên đó chạy mà guard không tra), alias `!` quét ở thư mục của lệnh chứ không ở gốc repo. Rào
-# thật của vòng tối ưu là `perf trial` (ADR-0052 §7).
+# AUD-SEC-119 (T-3563): Gate tối ưu đọc từ `origin/main`, mà ref remote là ref CỤC BỘ — `update-ref`/`fetch .`/`push .`
+# ghi thẳng nó; `tag`/`branch`/`checkout -b`/`switch -c`/`worktree add -b`/`stash branch` tạo ref cùng tên git giải trước
+# (gitrevisions). Deny mọi chính sách/pha: ghi/xoá ref dưới `refs/remotes/` (cả `remote set-head` — ADR-0071, D-361; `-a`
+# qua), tạo ref tên ngắn `<remote>/…` (tên remote: `git remote` ∪ REMOTE_NAMES, so không phân biệt hoa thường — macOS).
+# Cho qua: `fetch origin [main]`, refspec đúng dạng cấu hình của remote ĐÃ cấu hình, xoá/đổi tên ref giả. Ghi thẳng
+# `.git/…`, đổi URL remote: D-366. Giới hạn đã biết (D-015, alias — nhà: harness-files.md); rào thật: `perf trial`
+# (ADR-0052 §7).
 REMOTE_REF_MARK = "ghi ref theo dõi remote"  # dấu của mã REMOTE_REF_FORGE (REASON_CODES)
 REMOTE_REF_WHY = REMOTE_REF_MARK + " / tạo ref trùng tên remote ({}) — giả `<remote>/<nhánh>` mà Gate đọc (AUD-SEC-119)"
 UNRESOLVED_REF_MARK = "ref đến từ stdin/xargs/find, guard không thấy"  # dấu của UNRESOLVED_TARGET
@@ -9754,13 +9756,39 @@ def _canonical_fetch(repo: str, spec: str, remotes: FrozenSet[str]) -> bool:
 def _fetch_names(args: List[str], cwd: Optional[str]) -> RefNames:
     """fetch/pull: đích của refspec tường minh (kể cả `--refmap`), trừ dạng cấu hình của remote đã cấu hình; `--stdin`
     → None. `fetch origin main` (không `:`) không có đích tường minh."""
+    read = _fetch_refspecs(args)
+    if read is None:
+        return None
+    repo, every = read
+    specs = [s for s in every if ":" in s]
+    remotes = _configured_remotes(cwd) if specs else frozenset()
+    return [s.split(":", 1)[1] for s in specs if not _canonical_fetch(repo, s, remotes)]
+
+
+def _fetch_refspecs(args: List[str]) -> Optional[Tuple[str, List[str]]]:
+    """(remote, mọi refspec kể cả `--refmap`); `--stdin` → None."""
     flags, pos, vals = _parse_opts(args, "joXs", FETCH_VALUE_OPTS)
     if _has_opt(flags, {"--stdin"}):
         return None
-    specs = [s for s in pos[1:] + [v for k, v in vals if _long_match(k, ("--refmap",))] if ":" in s]
-    remotes = _configured_remotes(cwd) if specs else frozenset()
-    repo = pos[0] if pos else ""
-    return [s.split(":", 1)[1] for s in specs if not _canonical_fetch(repo, s, remotes)]
+    return (pos[0] if pos else ""), pos[1:] + [v for k, v in vals if _long_match(k, ("--refmap",))]
+
+
+def _fetch_tag_write(sub: str, args: List[str]) -> bool:
+    """F-144 (AUD-SEC-996): fetch/pull (hai cách đọc như `_pull_names`) ghi tag phiên bản/không đọc chắc."""
+    if sub not in ("fetch", "pull"):
+        return False
+    readings = [args, [a for a in args if a not in OPTS_END]] if sub == "pull" else [args]
+    return any(_fetch_spec_tag(s) for r in readings for s in (_fetch_refspecs(r) or ("", []))[1])
+
+
+def _fetch_spec_tag(spec: str) -> bool:
+    """Đích `[refs/]tags/` là tag phiên bản; có `*` mà không phải `tags/*:tags/*` (git thay phần khớp mẫu nguồn vào
+    đích: `x*`→`*` biến `xv1.2.3` thành `v1.2.3`); hay `_tag_glob`. Đích trần là `refs/heads/…`."""
+    src, _, dst = spec.lstrip("+").partition(":")
+    short = dst.removeprefix("refs/")
+    tag = short[5:] if short.startswith("tags/") else ""
+    copy = tag == "*" and src.removeprefix("refs/") == "tags/*"
+    return bool(RELEASE_VERSION_TAG.fullmatch(tag) or "*" in tag and not copy) or _tag_glob(spec)
 
 
 def _pull_names(args: List[str], cwd: Optional[str]) -> RefNames:
@@ -9832,12 +9860,16 @@ def _remote_ref_rule(sub: str, args: List[str], cwd: Optional[str]) -> Tuple[str
         return "ask", UNRESOLVED_ARGS_WHY.format(sub, "--stdin")
     if any(FIND_FOUND in x for x in names):
         return "ask", UNRESOLVED_ARGS_WHY.format(sub, "đối số `{}` của find -exec")
-    if sub in ("tag", "update-ref", "symbolic-ref") and any(
-        RELEASE_VERSION_TAG.fullmatch(name if sub == "tag" else name.removeprefix("refs/tags/")) for name in names
-    ):
+    if any(_release_ref_write(sub, name) for name in names) or _fetch_tag_write(sub, args):
         return "deny", RELEASE_TAG_WHY
     hit = _remote_ref_hit(names, cwd)
     return ("deny", REMOTE_REF_WHY.format(hit) + _fetch_hint(sub, hit)) if hit else ("", "")
+
+
+def _release_ref_write(sub: str, name: str) -> bool:  # F-144: tạo ref là tag phiên bản/có glob
+    if sub not in ("tag", "update-ref", "symbolic-ref"):
+        return False
+    return bool(RELEASE_VERSION_TAG.fullmatch(name.removeprefix("refs/tags/"))) or _tag_glob(name)
 
 
 def _fetch_hint(sub: str, hit: str) -> str:
@@ -9850,14 +9882,10 @@ def _fetch_hint(sub: str, hit: str) -> str:
     return f"; dạng được cho qua: `git {sub} <remote đã cấu hình> {spec}`"
 
 
-# D-366 (review #442 🔴, AUD-SEC-523): `perf trial` lấy gốc vòng từ máy chủ `origin` (`ls-remote`) và, ngoại tuyến, từ
-# `refs/remotes/origin/HEAD` — đổi NƠI ref theo dõi remote đến từ là giả gốc vòng như ghi thẳng ref. Chặn (deny, mọi pha):
-# `remote set-url|set-branches` (mọi remote), `remote add|rename|remove|rm` đụng `origin`; `git config` ghi/xoá khoá
-# `remote.<r>.url|pushurl|fetch`, `url.<x>.insteadOf|pushInsteadOf` (mọi phạm vi/tệp), xoá/đổi tên section `remote.*`/
-# `url.*`; cùng khoá đặt một lần (`git -c`, `--config-env`, `GIT_CONFIG_KEY_<i>`/`GIT_CONFIG_PARAMETERS` gán cho BẤT KỲ
-# lệnh nào — `GIT_CONFIG_COUNT=1 … python3 xt.py perf trial start`). Ghi thẳng `.git/packed-refs`, `.git/refs/remotes/**`
-# theo luật tệp metadata Git (GIT_HOOK_PATTERNS). Cho qua: đọc (`remote -v`, `config --get remote.origin.url`), `fetch`.
-# Giới hạn còn lại (ADR-0071 §1): cùng uid sửa file trong `.git` ngoài mọi kênh guard thấy — lớp hai là sandbox (ADR-0067).
+# D-366 (review #442 🔴, AUD-SEC-523): `perf trial` lấy gốc vòng từ `origin` — đổi NƠI ref remote đến là giả gốc vòng.
+# Deny mọi pha: `remote set-url|set-branches`, `remote add|rename|remove|rm` đụng `origin`; ghi/xoá khoá
+# `remote.<r>.url|pushurl|fetch`, `url.<x>.insteadOf|pushInsteadOf`, section `remote.*`/`url.*`, cả đặt một lần cho BẤT KỲ
+# lệnh nào. Cho qua: đọc, `fetch`. Giới hạn (ADR-0071 §1): cùng uid sửa `.git` — lớp hai là sandbox (ADR-0067).
 REMOTE_CFG_KEY_RE = re.compile(r"remote\..+\.(?:url|pushurl|fetch)|url\..+\.(?:insteadof|pushinsteadof)", re.I | re.S)
 REMOTE_CFG_WHY = (
     REMOTE_REF_MARK + " gián tiếp: đổi URL/refspec/insteadOf của remote ({}) — gốc vòng `perf trial` (D-366)"
@@ -9900,23 +9928,13 @@ def remote_config_oneshot(argv: List[str], n: List[str], exported: Optional[Dict
     return ("deny", REMOTE_CFG_WHY.format(f"cấu hình một lần `{hit}`")) if hit else ("", "")
 
 
-# Alias git (AUD-SEC-119, review T-3563, review #306): `git -c alias.x=update-ref x refs/remotes/origin/main HEAD` chạy
-# `update-ref` dưới tên khác. Guard mở alias như git (git.c `run_argv` + alias.c `alias_lookup`, đo trên git 2.43): lệnh
-# con dựng sẵn KHÔNG BAO GIỜ là alias; MỌI tên khác — bất kể hình dạng (`a.b`, `y_x.z`, `1.x`) — đều được tra. Bảng
-# alias do CHÍNH git dựng (`_git_alias_table`): `git -C <repo> [-c/--config-env/--git-dir/--bare của lệnh, giữ thứ tự]
-# config --list -z` với môi trường của guard ghi đè bởi biến cấu hình của lệnh (ALIAS_ENV_RE + biến mà `--config-env`
-# trỏ tới; gán đầu lệnh ∪ `export` trước đó) — `GIT_CONFIG_COUNT` (git bỏ `KEY_<i>` với i ≥ COUNT, bỏ hết khi thiếu
-# COUNT), include/includeIf, thứ tự ưu tiên đều do git xử lý. Tên so như alias.c: cả phần sau `alias.` so strcasecmp
-# (subsection `alias.A.B` gọi bằng `git a.b`), mục sau thắng; mục không giá trị bị bỏ qua (git dừng — chiều chặt). Thay
-# vào, lặp tới lệnh dựng sẵn rồi xét bản viết lại như lệnh thật; alias `!` là shell → quét như shell lồng. `git config
-# --list` chỉ đọc tệp: không chạy fsmonitor/pager/hook/credential/textconv (test đối chứng với git thật); khoá chạy lệnh
-# đặt một lần qua mọi kênh là HOOK_BYPASS (`_git_exec_config`). Không giải được (đọc lỗi/quá hạn/hết ngân sách TỔNG
-# ALIAS_SECONDS của cả quyết định, khoá hay giá trị đổi bảng alias là biến/thay lệnh, alias vòng hay sâu quá
-# ALIAS_MAX_DEPTH, lệnh con là file `find` tìm thấy) → UNRESOLVED_TARGET (strict hỏi, mặc định chặn). Đặt alias trỏ
-# `update-ref`, `symbolic-ref` trần hay giá trị đã đủ đối số ghi ref remote (`git config alias.f 'fetch .
-# HEAD:refs/remotes/origin/main'`) → chặn lúc đặt; `tag`/`branch`/`fetch` trần thì chỉ xét được lúc dùng. Danh sách lệnh
-# dựng sẵn: `git --list-cmds=builtins` của git 2.43, đóng — lệnh dựng sẵn của git mới hơn mà danh sách thiếu vẫn bị tra
-# alias (chiều chặt); `git-<tên>` trong PATH được git chạy trước alias, guard vẫn tra alias (chiều chặt).
+# Alias git (AUD-SEC-119, review T-3563, #306): `git -c alias.x=update-ref x …` chạy `update-ref` dưới tên khác. Guard mở
+# alias như git 2.43 (git.c `run_argv`, alias.c `alias_lookup`): lệnh dựng sẵn không bao giờ là alias, mọi tên khác đều
+# tra. Bảng alias do CHÍNH git dựng (`_git_alias_table`: `git config --list -z` với cờ/biến cấu hình của lệnh — chỉ đọc
+# tệp, không chạy hook/pager); tên so strcasecmp, mục sau thắng; lặp tới lệnh dựng sẵn rồi xét bản viết lại; alias `!`
+# quét như shell lồng. Không giải được (lỗi/quá ALIAS_SECONDS, biến/thay lệnh, vòng/sâu quá ALIAS_MAX_DEPTH, file `find`)
+# → UNRESOLVED_TARGET. Đặt alias trỏ `update-ref`/`symbolic-ref` trần hay đủ đối số ghi ref remote → chặn lúc đặt.
+# GIT_BUILTINS: `git --list-cmds=builtins` 2.43, đóng — thiếu thì vẫn tra alias (chiều chặt).
 GIT_BUILTINS = frozenset(
     """add am annotate apply archive bisect blame branch bugreport bundle cat-file check-attr check-ignore check-mailmap
     check-ref-format checkout checkout--worker checkout-index cherry cherry-pick clean clone column commit commit-graph
@@ -10197,9 +10215,10 @@ GIT_RULES: Dict[str, GitRule] = {
 
 
 # git nhận tuỳ chọn dài viết tắt (`reset --ha`, `push --mirr`, `clean --fo`): viết tắt của tuỳ chọn nguy hiểm → coi là
-# tuỳ chọn đó (AUD-SEC-023). Thứ tự: ngắn trước, để `--forc` thành `--force`.
+# tuỳ chọn đó (AUD-SEC-023). Thứ tự: ngắn trước, để `--forc` thành `--force` (`--fo` không thành `--follow-tags`).
 GIT_DANGER_LONG = (
     *("--all", "--hard", "--tags", "--force", "--prune", "--delete", "--mirror", "--branches", "--discard-changes"),
+    "--follow-tags",
 )
 
 
@@ -12893,12 +12912,54 @@ def _gh_release_cli_tag(args: List[str]) -> bool:
         return False
     rest = args[2:]
     if args[1] != "edit":
-        first = _positionals(rest, (*GH_UPLOADS[("release", "create")], *GH_GLOBAL_VALUE_OPTS))[:1]
-        return any(RELEASE_VERSION_TAG.fullmatch(word) for word in rest) or any(map(_release_tag_unsafe, first))
+        valued = (*GH_UPLOADS[("release", "create")], *GH_GLOBAL_VALUE_OPTS)
+        words, pos = _gh_release_create_words(rest, valued)
+        first = _positionals(rest, valued)[:1] + pos[:1]  # cách đọc cũ ∪ pflag
+        return any(RELEASE_VERSION_TAG.fullmatch(word) for word in words) or any(map(_release_tag_unsafe, first))
     tags = _flag_values(rest, ("--tag",))
     if any(a.startswith("--draft=") and a.partition("=")[2] not in PFLAG_TRUE for a in rest):
         tags += _positionals(rest, GH_RELEASE_EDIT_VALUE_OPTS)[:1]
     return any(map(_release_tag_unsafe, tags))
+
+
+GH_RELEASE_CREATE_SHORT_BOOL = frozenset("dp")  # gh 2.95 `release create --help`
+
+
+def _gh_release_create_words(rest: List[str], valued: Tuple[str, ...]) -> Tuple[List[str], List[str]]:
+    """(từ trừ giá trị cờ, đối số vị trí) đọc như pflag (AUD-SEC-998): cờ ăn giá trị nuốt từ kế kể cả `-…` (`-pn
+    --title v1.2.3`: tag `v1.2.3`); chữ lạ trong cụm → (`rest`, []) — xét mọi từ."""
+    shorts = frozenset(o[1] for o in valued if len(o) == 2)
+    words: List[str] = []
+    pos: List[str] = []
+    i = 0
+    while i < len(rest):
+        a, i = rest[i], i + 1
+        if a == "--":
+            return words + rest[i:], pos + rest[i:]
+        eats = _pflag_eats(a, valued, shorts)
+        if eats is None:
+            return rest, []
+        words.append(a)
+        pos += [] if a.startswith("-") and len(a) > 1 else [a]
+        i += eats
+    return words, pos
+
+
+def _pflag_eats(a: str, valued: Tuple[str, ...], shorts: FrozenSet[str]) -> Optional[int]:
+    """Số từ kế `a` nuốt (0/1); chữ lạ trong cụm → None."""
+    if a[:2] == "--":
+        return int("=" not in a and a in valued)
+    if a[:1] != "-" or len(a) == 1:
+        return 0
+    body = a[1:]
+    for j, c in enumerate(body):
+        if c in shorts:
+            return int(j + 1 == len(body))  # giữa cụm: phần còn lại là giá trị
+        if c not in GH_RELEASE_CREATE_SHORT_BOOL:
+            return None
+        if body[j + 1 : j + 2] == "=":  # `-p=true`
+            return 0
+    return 0
 
 
 # AUD-SEC-623: `gh repo sync --force` gọi `PATCH …/git/refs/heads/<b>` `force:true` (gh 2.89 "Hard reset the branch").
@@ -12955,10 +13016,12 @@ def _gh_release_tag_write(args: List[str]) -> bool:
     pairs = [f.partition("=") for f in _gh_api_field_values(args)]
     if GH_API_RELEASE_RE.fullmatch(path):
         return _gh_api_release_unsafe(args, pairs, pos[0], path)
+    if not GH_API_REF_WRITE_RE.fullmatch(path):
+        return False
     ref = GH_API_REF_RE.fullmatch(path)
-    refs = [v for k, _, v in pairs if _field_key(k) == "ref"] if GH_API_REF_WRITE_RE.fullmatch(path) else []
-    targets = [ref[1]] if ref else refs
-    return any(t.strip().startswith(("tags/", "refs/tags/")) and _release_tag_unsafe(t) for t in targets)
+    targets = [ref[1]] if ref else [v for k, _, v in pairs if _field_key(k) == "ref"]
+    tag = any(t.strip().startswith(("tags/", "refs/tags/")) and _release_tag_unsafe(t) for t in targets)
+    return tag or any(map(_tag_glob, [pos[0], *targets]))
 
 
 def _field_key(key: str) -> str:
@@ -13005,13 +13068,15 @@ def _gh_api_main_write(args: List[str]) -> bool:
     đọc tệp), `{…}` (gh thay `{branch}` bằng nhánh đang đứng) — tính là nhánh chính."""
     pos = _positionals(args, GH_API_VALUE_FLAGS)
     path = _api_path(pos[0]) if len(pos) == 1 else ""
-    fields = dict(f.partition("=")[::2] for f in _gh_api_field_values(args))
-    if GH_API_CONTENTS_RE.fullmatch(path):
-        branch = fields.get("branch")
-        return branch is None or branch.strip() in MCP_MAIN_BRANCHES or _gh_branch_vague(branch)
+    fields = [(k, v) for k, _, v in (f.partition("=") for f in _gh_api_field_values(args))]
+    if GH_API_CONTENTS_RE.fullmatch(path):  # AUD-SEC-997b: mọi giá trị trường lặp/mảng
+        branches = [v for k, v in fields if _field_key(k) == "branch"]
+        default = all(k != "branch" for k, _ in fields)
+        return default or any(b.strip() in MCP_MAIN_BRANCHES or _gh_branch_vague(b) for b in branches)
     ref = GH_API_REF_RE.fullmatch(path)
-    target = ref.group(1) if ref else fields.get("ref", "") if GH_API_REF_WRITE_RE.fullmatch(path) else ""
-    return target.removeprefix("refs/").removeprefix("heads/") in MAIN_BRANCHES or _gh_branch_vague(target)
+    refs = [v for k, v in fields if _field_key(k) == "ref"] if GH_API_REF_WRITE_RE.fullmatch(path) else []
+    targets = [ref.group(1)] if ref else refs
+    return any(t.removeprefix("refs/").removeprefix("heads/") in MAIN_BRANCHES or _gh_branch_vague(t) for t in targets)
 
 
 # AUD-SEC-831: gh thay `:owner`/`:repo`/`:branch` như `{owner}`/`{repo}`/`{branch}` (placeholderRE của `gh api`).
@@ -21981,6 +22046,9 @@ GH_UPLOADS: Dict[Tuple[str, ...], Tuple[str, ...]] = {
         "--notes-start-tag",
     ),
 }
+# AUD-SEC-997a: `new` = `create` (gh 2.95 `--help` ALIASES)
+GH_UPLOADS[("release", "new")] = GH_UPLOADS[("release", "create")]
+GH_UPLOADS[("gist", "new")] = GH_UPLOADS[("gist", "create")]
 GH_UPLOAD_VALUE_OPTS = (*GH_GLOBAL_VALUE_OPTS, *{o for v in GH_UPLOADS.values() for o in v})
 # Cờ `gh` đọc file để đăng (`--body-file`/`--notes-file`/`-F` của issue/pr/release; `-F k=@f` của `workflow run`).
 GH_FILE_FLAGS = ("--body-file", "--notes-file", "-F")
@@ -22033,7 +22101,7 @@ def _gh_reading_uploads(args: List[str]) -> List[str]:
         return _gh_api_files(args)
     opts = GH_UPLOADS.get(head)
     files = [] if opts is None else [f.split("#", 1)[0] for f in _positionals(args, (*GH_GLOBAL_VALUE_OPTS, *opts))[2:]]
-    if head == ("gist", "create") and (not files or "-" in args):  # `cat .env | gh gist create` (AUD-SEC-075)
+    if head in (("gist", "create"), ("gist", "new")) and (not files or "-" in args):  # `cat .env | gh gist create`
         files.append("-")
     return files + _gh_flag_files(args)
 
@@ -22788,7 +22856,10 @@ def _push_lock_rule(argv: List[str], n: List[str], env: Dict[str, str]) -> Tuple
     explicit = any("$" not in r and "`" not in r for r in _push_refs(n[2:])[1:])
     pairs = [(k.strip(), v.strip()) for k, v in _git_oneshot_config(argv, env)]
     hit = next((k for k, v in pairs if _push_lock_key(k, v, explicit)), "")
-    return ("ask", f"{PUSH_ALL_WHY} — {PUSH_LOCK_WHY.format(hit)}") if hit else ("", "")
+    if hit:
+        return "ask", f"{PUSH_ALL_WHY} — {PUSH_LOCK_WHY.format(hit)}"
+    follow = next((k for k, v in pairs if _follow_tags_on(k, v)), "")  # cả khi có refspec
+    return ("ask", f"{FOLLOW_TAGS_WHY} — {PUSH_LOCK_WHY.format(follow)}") if follow else ("", "")
 
 
 # F3: `git push` không refspec đọc cấu hình HIỆU LỰC của repo (chỉ đọc, có hạn giờ): mirror → ép; `remote.*.push`/
