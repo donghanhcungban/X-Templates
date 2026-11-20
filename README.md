@@ -83,7 +83,7 @@ Khi cài vào repo có sẵn và tạo `xt.yaml` lần đầu, `--preset safe` c
 `install.py <dự-án> --preset safe --plan`. Sau cài đặt, khai lệnh thật ở `xt.yaml`, chạy `doctor` rồi kiểm Gate
 ([ADR-0055](docs/adr/0055-optional-install-policy-presets.md)).
 
-Quy mô quyết định khối lượng: `web-app` có 70 MUST ở **S** (prototype), 473 ở **M** (production), 1.146 ở **L** (đo 2026-10-19).
+Quy mô quyết định khối lượng: `web-app` có 70 MUST ở **S** (prototype), 473 ở **M** (production), 1.154 ở **L** (đo 2026-11-20).
 `--out BLUEPRINT.md` ghi file chính chỉ chứa MUST theo quy mô (web-app + ecommerce: 41 KB ở S thay vì ~690 KB) và
 `BLUEPRINT-BACKLOG.md` chứa SHOULD/MAY ([ADR-0012](docs/adr/0012-blueprint-by-scale-and-task-iteration-cap.md)).
 Ghép thêm module ngoài hồ sơ bằng `--add`, ví dụ web app có tính năng AI: `--add "13-ai-engineering/*"`.
@@ -289,7 +289,7 @@ python3 -m unittest discover -s tests    # chỉ test (cổng test còn đòi co
 - [ADR-0044](docs/adr/0044-reviewer-higher-capability.md): reviewer năng lực cao hơn người viết (bậc model, hoặc cùng họ effort cao hơn) thay "khác họ".
 - [ADR-0045](docs/adr/0045-split-by-context-measure-before-fold.md): tách agent con chỉ vì context; đổi kiến trúc agent qua eval so sánh; đo trước khi đổi mặc định giao việc.
 - [ADR-0046](docs/adr/0046-autopilot-build-complete-harden.md): `/autopilot` = pha build, `done` không đòi hết MUST blueprint; `/complete` = pha harden (audit, nợ review, hoàn thiện, `release-check`, GO-NO-GO); sàn an toàn không đổi.
-- [ADR-0047](docs/adr/0047-build-loop-until-audit-clean.md): pha build không chờ người — mẫu dự án đích `merge_hard_exceptions: auto`; `/autopilot` lặp đợt build → `/audit delta` → đợt kế tới khi hết việc và audit toàn diện sạch, rồi **đề xuất** `/complete` (không tự chạy); `loop init` đợt kế (sau `loop verify --all` trên cây có PLAN mới) không bị vòng `done` chặn và mang việc chờ người cùng ID; tag phát hành tự tạo khi `VERSION` đổi trên `main`.
+- [ADR-0047](docs/adr/0047-build-loop-until-audit-clean.md): pha build không chờ người — mẫu dự án đích `merge_hard_exceptions: auto`; `/autopilot` lặp đợt build → `/audit delta` → đợt kế tới khi hết việc và audit toàn diện sạch, rồi **đề xuất** `/complete` (không tự chạy); `loop init` đợt kế (sau `loop verify --all` trên cây có PLAN mới) không bị vòng `done` chặn và mang việc chờ người cùng ID; workflow gắn tag sau khi ứng viên trên `main` có kết quả GO và phê duyệt khớp nội dung.
 - [ADR-0048](docs/adr/0048-optimize-skill-and-field-loop.md): `/optimize` chỉ cho ngân sách đang đỏ có số (`release-check` hàng `perf`, `docs/ops/FIELD-<ngày>.json` do người xuất — agent không cầm khoá production; giai đoạn sản phẩm 3 thêm mục tiêu chưa đỏ, `LOOP-OPT-017`); người xác nhận spec/UX/bảo mật **một lần** ở `GO-NO-GO.md`; bản chỉ tối ưu nghiệm thu delta; `LOOP-OPT-005` MUST@M.
 - [ADR-0049](docs/adr/0049-workflow-in-fanout-skills.md): `/audit` và `/research` nhiều mục dùng tool Workflow khi người gõ trực tiếp và có tool (cùng luật nhánh subagent: agent chỉ đọc, lô ≤ 5, phiên chính gộp và quyết; gọi từ `/autopilot`/`/complete` → subagent); không bật `ultracode` mặc định.
 - [ADR-0050](docs/adr/0050-raise-dir-size-caps.md): trần tổng byte thư mục (`scripts/`, `.claude/hooks/`, `framework/11-autonomous-loop/`) nâng thêm 1 MiB mỗi nhóm theo chủ repo; trần từng file nạp đầu phiên giữ nguyên.

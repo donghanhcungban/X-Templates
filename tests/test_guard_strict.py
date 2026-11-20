@@ -134,6 +134,10 @@ class StrictSubsetDenyTest(unittest.TestCase):
             with self.subTest(cmd=cmd):
                 self.assertIn("ADR-0063", str(decide(cmd)["reason"]))
 
+    def test_nested_shell_ifs_reason(self):
+        self.assertIn("AUD-SEC-239", guard._strict_why("""sh -c 'echo "$IFS"'"""))
+        self.assertEqual(guard._strict_why("sh -c 'echo ok'"), "")
+
     def test_review_lot_a_bypasses(self):
         """Review lát A 🔴: lệnh bọc/gán biến/chuỗi trùng không làm script nguyên văn thành lỏng; `$$'` là PID + nháy
         đơn; `case` trong `$(…)`."""

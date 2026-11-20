@@ -16,8 +16,7 @@
 ## Bảo vệ nhánh `main`
 `.github/rulesets/main.json` là ruleset **import được** (Settings → Rules → Rulesets → New ruleset → Import a ruleset): bắt buộc PR, chỉ squash,
 required check `quality` · `protection-guard` · `gitleaks` · `dep-audit` · `pack-npm-audit`, cấm xoá/force-push, không ai bypass (`merge-gate.yml` chỉ là stub tạm giữ context cũ tới khi chủ repo gỡ khỏi ruleset sống — D-122, ADR-0036). Job `protection-guard` kiểm (1) mọi required check là job có thật
-(đổi tên job mà quên sửa ruleset = khoá `main` vĩnh viễn trong khi CI vẫn xanh) — **đỏ** nếu lệch; (2) ruleset có đang hiệu lực không — hiện chỉ
-**cảnh báo** để repo mới chưa import vẫn merge được; muốn ép buộc, đổi `::warning` thành `exit 1` trong `ci.yml`.
+(đổi tên job mà quên sửa ruleset = khoá `main` vĩnh viễn trong khi CI vẫn xanh) — **đỏ** nếu lệch; (2) đối chiếu từng loại quy tắc và tên required check với cấu hình đang áp dụng trên GitHub. CI cảnh báo khi thiếu mục hoặc không đọc được API. Chủ repo bổ sung đúng mục còn thiếu trong Settings → Rules → Rulesets.
 
 `required_approving_review_count` = 0 vì repo một người: GitHub không cho tự duyệt PR của mình và `bypass_actors` rỗng, đặt 1 sẽ khoá mọi PR.
 Nâng lên ≥ 1 ngay khi có người thứ hai (sửa JSON qua PR rồi import lại).

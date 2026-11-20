@@ -74,6 +74,24 @@ def matches(candidate: Doc, other: Any) -> bool:
     return isinstance(other, dict) and all(candidate.get(k) == other.get(k) for k in ("content", "digest"))
 
 
+def approved_for_tag(core: ModuleType, base: Path, main: Path, target: str) -> bool:
+    """Verify a merged source release in a read-only job. An unsigned version bump waits for its signoff PR."""
+    version = (base / "VERSION").read_text(encoding="utf-8").strip()
+    if dict(core._go_no_go_docs(base, version)) != dict(core._go_no_go_docs(main, version)):
+        raise ValueError(f"Quyết định GO-NO-GO của v{version} đã đổi trên main. Kiểm lại commit có chữ ký hiện hành.")
+    release = core.release_check(base, core.RELEASE_SIGN_BLUEPRINT, core.RELEASE_SIGN_STATUS)
+    subject = release["subject"]
+    if release["head"] != target or subject["head"] != target or not subject["content"]:
+        raise ValueError("release-check chưa xác nhận đúng SHA và nội dung ứng viên")
+    promotion = release["promotion"]
+    if release["go"] and promotion["state"] == "pending_human" and release["human"] == ["go_no_go"]:
+        print(f"v{version} đang chờ chữ ký GO-NO-GO. Khi PR ký duyệt merge, workflow sẽ kiểm lại.")
+        return False
+    if release["verdict"] != "GO" or promotion["state"] != "approved":
+        raise ValueError(f"v{version}: {release['verdict']} · {promotion['state']} · {', '.join(promotion['reasons'])}")
+    return True
+
+
 def release_report(base: Path, path: str | None, candidate: Doc) -> bool:
     if not path:
         return False

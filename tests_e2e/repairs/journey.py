@@ -13,6 +13,12 @@ def check() -> dict:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get("XT_E2E_CHROMIUM"))
 
+        with browser.new_context(java_script_enabled=False) as session:
+            page = session.new_page()
+            page.goto(url + "/repairs")
+            for form in ("#login", "#report"):
+                expect(page.locator(form)).to_have_js_property("method", "post")
+
         def login(context, name):
             page = context.new_page()
             page.set_default_timeout(4000)

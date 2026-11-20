@@ -10062,21 +10062,33 @@ def _handoff_problem(base: Path, plan: Path, st: Optional[Dict[str, Any]]) -> st
     return stage_plan_problem(base, str(plan))
 
 
-def _wave_handoff(tasks: List[Dict[str, Any]], deferred: Dict[str, Any], limit: int, base: Path) -> Dict[str, Any]:
-    """Gói ngữ cảnh của riêng đợt đầu. Giữ lại các việc bị chặn để phiên chính xử lý."""
+def _wave_handoff(tasks: List[Dict[str, Any]], st: Dict[str, Any], limit: int, base: Path) -> Dict[str, Any]:
+    """Giao việc từ PLAN đang chạy theo cùng bằng chứng và tầng executor như loop status."""
     by_id = {t["id"]: t for t in tasks}
     if len(by_id) != len(tasks):
         raise ValueError("ID task trùng trong PLAN — sửa trước khi giao việc")
-    schedule = plan_waves(tasks, deferred, limit)
+    deferred = _deferred(st)
+    unverified: Dict[str, str] = {}
+    if st.get("active"):
+        carried = set(st.get("carried") or [])
+        for t in tasks:
+            if t["state"] not in PLAN_OPEN_STATES:
+                since = "" if t["id"] in carried else str(st.get("started") or "")
+                problem = _verdict_task(t, base, deferred, since)
+                if problem:
+                    unverified[t["id"]] = problem["reason"]
+    # Tiền nhiệm chưa được kiểm chứng vẫn là việc mở bị chặn. Dùng cùng quy tắc lan chặn như task defer.
+    pending = [{**t, "state": " "} if t["id"] in unverified else t for t in tasks]
+    schedule = plan_waves(pending, {**deferred, **unverified}, limit)
     waves = schedule["waves"]
-    first: Dict[str, Any] = next(iter(waves), {"tasks": []})
-    return {
-        "wave_count": len(waves),
-        "tasks": [
-            {**context_pack(by_id[t["id"]], base), "topology": t["topology"], "tier": t["tier"]} for t in first["tasks"]
-        ],
-        "blocked": schedule["blocked"],
-    }
+    packets = []
+    for t in waves[0]["tasks"] if waves else []:
+        task = by_id[t["id"]]
+        choice = executor_choice(task, base, st) if st.get("active") else {"topology": t["topology"], "tier": t["tier"]}
+        packets.append({**context_pack(task, base), **choice})
+    for block in schedule["blocked"]:
+        block["reason"] = unverified.get(block["id"], block["reason"])
+    return {"wave_count": len(waves), "tasks": packets, "blocked": schedule["blocked"]}
 
 
 def _plan_waves(args: argparse.Namespace, base: Path) -> int:
@@ -10092,15 +10104,17 @@ def _plan_waves(args: argparse.Namespace, base: Path) -> int:
         print(f"✗ {locked}", file=sys.stderr)
         return 2
     tasks = parse_plan(plan)
-    deferred = _deferred(st or {})
     if args.handoff:
+        # Một PLAN xem riêng có thể dùng lại cùng ID với sổ vòng hiện tại.
+        loop_plan = base / str((st or {}).get("plan") or "docs/autopilot/PLAN.md")
+        handoff_state = (st or {}) if plan.resolve() == loop_plan.resolve() else {}
         try:
-            print(json.dumps(_wave_handoff(tasks, deferred, args.max, base), ensure_ascii=False))
+            print(json.dumps(_wave_handoff(tasks, handoff_state, args.max, base), ensure_ascii=False))
         except ValueError as exc:
             print(f"✗ {exc}", file=sys.stderr)
             return 2
         return 0
-    out = plan_waves(tasks, deferred, args.max)
+    out = plan_waves(tasks, _deferred(st or {}), args.max)
     if args.json:
         print(json.dumps(out, ensure_ascii=False))
     else:
@@ -16851,7 +16865,11 @@ def _steward_one(pr_arg: str, repo: str, base: Path, apply: bool, gh_repo: List[
     cmds = [c[:3] + gh_repo + c[3:] if c[:3] == ["gh", "pr", "merge"] else c for c in steward]
     target = str(pr.get("baseRefName") or "main")
     # như trigger `push` của release-tag.yml: chỉ nhánh `main` (nhánh khác: job bị bỏ qua, bản cũ thiếu input → 422)
-    tag = is_release_pr(pr) and (base / RELEASE_WORKFLOW_FILE).is_file()
+    signoff = any(
+        str(Path(path).parent) in GO_NO_GO_DIRS and fnmatch.fnmatchcase(Path(path).name, "GO-NO-GO*.md")
+        for path in _risky_paths(pr)
+    )
+    tag = target == "main" and (is_release_pr(pr) or signoff) and (base / RELEASE_WORKFLOW_FILE).is_file()
     return _steward_apply(out, d, repo, cmds if apply else [], target, tag)
 
 

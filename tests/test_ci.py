@@ -113,6 +113,28 @@ class QualityAggregateTest(unittest.TestCase):
         self.assertEqual(job_key(self.jobs["protection-guard"], "name"), "protection-guard")
         self.assertEqual(job_key(self.jobs["protection-guard"], "if"), "")  # luôn chạy, không phụ thuộc job khác
 
+    def test_protection_guard_reports_missing_live_checks(self):
+        body = self.jobs["protection-guard"]
+        query = body.split("jq -r --slurpfile wanted .github/rulesets/main.json '", 1)[1].split(
+            '\' "$RUNNER_TEMP/live-rules.json"', 1
+        )[0]
+        rules = json.loads(RULESET.read_text(encoding="utf-8"))["rules"]
+        contexts = next(
+            r["parameters"]["required_status_checks"] for r in rules if r["type"] == "required_status_checks"
+        )
+        for missing in (False, True):
+            if missing:
+                contexts[:] = [c for c in contexts if c["context"] != "pack-npm-audit"]
+            result = subprocess.run(
+                ["jq", "-r", "--slurpfile", "wanted", str(RULESET), query],
+                input=json.dumps([rules[:2], rules[2:]]),
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            expected = "::warning::Thiếu required check trên GitHub: pack-npm-audit" if missing else ""
+            self.assertEqual(result.stdout.strip(), expected)
+
     def test_every_job_has_short_timeout(self):
         for name, body in self.jobs.items():
             with self.subTest(job=name):
@@ -333,6 +355,16 @@ class SupplyChainArtifactsTest(unittest.TestCase):
         self.assertLess(body.index("git archive --format=tar.gz"), attest)
         self.assertLess(attest, body.index('git push origin "refs/tags/'))
         self.assertIn("subject-path: ${{ steps.tag.outputs.archive }}", body)
+        verify, publish = body.split("\n  tag:\n", 1)
+        self.assertIn("approved_for_tag(xt, Path.cwd()", verify)
+        self.assertNotIn("contents: write", verify)
+        self.assertNotIn("XT_RELEASE_TOKEN", verify)
+        self.assertIn("needs: approve", publish)
+        self.assertIn("if: needs.approve.outputs.approved == 'true'", publish)
+        self.assertNotIn("python3", publish)
+        self.assertIn('"$TARGET"', publish.split("git archive --format=tar.gz", 1)[1].splitlines()[0])
+        for path in ("GO-NO-GO*.md", "docs/GO-NO-GO*.md", "docs/ops/GO-NO-GO*.md"):
+            self.assertIn(f"      - '{path}'", verify)
 
 
 class MergeGateStubTest(unittest.TestCase):

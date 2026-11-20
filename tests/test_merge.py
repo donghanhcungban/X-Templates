@@ -4855,6 +4855,16 @@ class StewardDispatchCiTest(unittest.TestCase):
         tag = ["gh", "api", "-X", "POST", "repos/{owner}/{repo}/actions/workflows/release-tag.yml/dispatches"]
         self.assertEqual(gh.writes[2], tag + ["-f", "ref=main", "-f", f"inputs[sha]={self.MERGED}"])
 
+    def test_steward_dispatch_tag_after_separate_signoff(self):
+        self.github_token()
+        for path in ("GO-NO-GO.md", "docs/GO-NO-GO.md", "docs/ops/GO-NO-GO-v1.2.3.md", "notes/GO-NO-GO.md"):
+            with self.subTest(path=path):
+                gh = SeqGh([{}, {}, {"merged": True, "merge_commit_sha": self.MERGED}], raw=self.version_pr((path,)))
+                with gh.patch():
+                    rc, out, _ = run_main("pr", "steward", "--apply")
+                self.assertEqual(rc, 0, out)
+                self.assertEqual("dispatch tag ✓" in out, not path.startswith("notes/"))
+
     def test_steward_no_tag_dispatch_without_version_workflow_or_with_token(self):
         for name, raw, env in (
             ("không đổi VERSION", self.version_pr(("CHANGELOG.md", "tests/test_version.py")), "off"),
