@@ -8,13 +8,14 @@ DENY: mẫu tái hiện mà guard ở `1326c02e` cho chạy (trừ mục giữ c
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import tempfile
-import time
 import unittest
 import unittest.mock as mock
 from pathlib import Path
+from typing import Iterator
 
 ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("XT_GUARD_PHASE", "harden")
@@ -27,13 +28,25 @@ H = chr(126)  # `~` dựng bằng chr: chữ xoá home không nằm nguyên văn
 CL = "." + "claude"  # thư mục hàng rào
 
 
-def decide(cmd: str, root: Path = ROOT, env: dict | None = None) -> dict:
-    cmd = cmd.replace("@H", H).replace("@C", CL).replace("@R", str(root))
+@contextlib.contextmanager
+def pinned(root: Path = ROOT, env: dict | None = None) -> Iterator[None]:
+    """Ghim môi trường và nhánh cho guard. Bản vá toàn cục: mở ở luồng gọi, không trong `fn` của `run_with_deadline`."""
     with (
         mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(root), "XT_GUARD_POLICY": "", **(env or {})}),
         mock.patch.object(guard, "_current_branch", return_value="feat"),
     ):
-        return guard.apply_policy(guard.bash_decision(cmd, str(root), str(root)))
+        yield
+
+
+def guard_decide(cmd: str, root: Path = ROOT) -> dict:
+    """Lời gọi thuần (không vá, không thay `@H/@C/@R`) — dùng trong `pinned()`."""
+    return guard.apply_policy(guard.bash_decision(cmd, str(root), str(root)))
+
+
+def decide(cmd: str, root: Path = ROOT, env: dict | None = None) -> dict:
+    cmd = cmd.replace("@H", H).replace("@C", CL).replace("@R", str(root))
+    with pinned(root, env):
+        return guard_decide(cmd, root)
 
 
 DENY = (
@@ -239,9 +252,10 @@ class SignOff6PerfTest(unittest.TestCase):
         part = "git add a{0}.md && cp b{0}.txt c{0}.txt && mv d{0}.txt e{0}.txt && cd sub{0} && cd .."
         cmd = f"cd {ROOT} && " + " && ".join(part.format(i) for i in range(1200))
         self.assertGreater(len(cmd), 100_000)
-        start = time.monotonic()
-        d = decide(cmd)
-        self.assertLess(time.monotonic() - start, 20)
+        with pinned():
+            d = cpu_budget.run_with_deadline(
+                self, lambda: guard_decide(cmd), 20, hang="guard bỏ qua hạn DECISION_SECONDS 15 s, quét không dừng"
+            )
         self.assertEqual((d["decision"], d.get("code")), ("deny", "BUDGET"))
 
     def test_deadline_applies_everywhere(self):
@@ -267,9 +281,13 @@ class SignOff6FifoTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             os.mkfifo(os.path.join(tmp, "zqfifo"))
             Path(tmp, "notes.txt").write_text("a\n", encoding="utf-8")
-            start = time.monotonic()
-            d = decide('sed -i "s/a/$(cat zqfifo)/" notes.txt', root=Path(tmp))
-            self.assertLess(time.monotonic() - start, 5)
+            with pinned(Path(tmp)):
+                d = cpu_budget.run_with_deadline(
+                    self,
+                    lambda: guard_decide('sed -i "s/a/$(cat zqfifo)/" notes.txt', root=Path(tmp)),
+                    5,
+                    hang="guard đọc FIFO không ai ghi",
+                )
             self.assertEqual((d["decision"], d.get("code")), ("deny", "BUDGET"))
 
     def test_read_small(self):
