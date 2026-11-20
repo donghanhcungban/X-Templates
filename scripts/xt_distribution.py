@@ -71,7 +71,7 @@ def clone_source(temp: Path, repo: str) -> Path:
     return git
 
 
-def trusted_archive(git: Path, repo: str, tag: str, temp: Path, promotion: bool = False) -> tuple[str, Path]:
+def verified_archive(git: Path, repo: str, tag: str, temp: Path, promotion: bool = False) -> tuple[str, Path]:
     if not TAG.fullmatch(tag):
         raise DistributionError("tag cần có dạng vX.Y.Z", 2)
     ref = f"refs/tags/{tag}"
@@ -211,7 +211,7 @@ def install_source(src: Path) -> dict[str, Any]:
             return source
         with tempfile.TemporaryDirectory() as tmp:
             temp = Path(tmp)
-            signed_head, archive = trusted_archive(clone_source(temp, repo), repo, tag, temp)
+            signed_head, archive = verified_archive(clone_source(temp, repo), repo, tag, temp)
             source["verified"] = signed_head == head and matches_checkout(src, tag, archive)
     except OSError, ValueError, subprocess.SubprocessError:
         pass  # a normal development install remains usable offline
@@ -352,7 +352,7 @@ def run(core: Any, args: argparse.Namespace) -> int:
             if args.cmd == "release-verify":
                 repo = args.repo
                 git = clone_source(temp, repo)
-                head, _ = trusted_archive(git, repo, args.tag, temp)
+                head, _ = verified_archive(git, repo, args.tag, temp)
                 print(f"{repo} {args.tag} {head}: attestation hợp lệ")
                 return 0
             manifest = read_manifest(base)
@@ -365,7 +365,7 @@ def run(core: Any, args: argparse.Namespace) -> int:
             newer, tags = tags_for_wave(git, label, wave, soak, int(dt.datetime.now(dt.UTC).timestamp()))
             for tag in tags:
                 try:
-                    head, archive = trusted_archive(git, repo, tag, temp, promotion=True)
+                    head, archive = verified_archive(git, repo, tag, temp, promotion=True)
                 except DistributionError as exc:
                     if exc.code != 1:
                         raise

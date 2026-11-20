@@ -136,9 +136,9 @@ class PromotionGateTest(ReleaseFixture):
 
     def test_install_receipt_does_not_reuse_a_retargeted_tag_or_unavailable_verifier(self):
         self.sign("v1.0.0")
-        with mock.patch.object(dist, "trusted_archive", return_value=("0" * 40, self.temp / "unused")):
+        with mock.patch.object(dist, "verified_archive", return_value=("0" * 40, self.temp / "unused")):
             self.assertFalse(dist.install_source(self.up)["verified"])
-        with mock.patch.object(dist, "trusted_archive", side_effect=FileNotFoundError("gh")):
+        with mock.patch.object(dist, "verified_archive", side_effect=FileNotFoundError("gh")):
             self.assertFalse(dist.install_source(self.up)["verified"])
             self.assertEqual(xt.main(["release-verify", "--tag", "v1.0.0", "--repo", "test/framework"]), 3)
 

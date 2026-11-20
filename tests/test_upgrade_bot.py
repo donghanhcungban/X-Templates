@@ -6,9 +6,12 @@ import contextlib
 import datetime as dt
 import json
 import os
+import sys
+from pathlib import Path
 from unittest import mock
 
-from tests.test_promotion_gate import ReleaseFixture, dist, xt
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_promotion_gate import ReleaseFixture, dist, xt
 
 
 class UpgradeTest(ReleaseFixture):
@@ -71,7 +74,7 @@ class UpgradeTest(ReleaseFixture):
         self.signed.clear()
         with mock.patch.object(dist, "publish_upgrade") as publish:
             self.assertEqual(xt.main(["upgrade", "open-pr"]), 11)
-            with mock.patch.object(dist, "trusted_archive", side_effect=dist.DistributionError("network")):
+            with mock.patch.object(dist, "verified_archive", side_effect=dist.DistributionError("network")):
                 self.assertEqual(xt.main(["upgrade", "open-pr"]), 3)
             publish.assert_not_called()
         (self.project / "xt.yaml").write_text("upgrade_wave: invalid\n")
