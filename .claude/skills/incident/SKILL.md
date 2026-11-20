@@ -27,7 +27,11 @@ argument-hint: "<triệu chứng | cảnh báo | link sự cố>"
 ## 4. Post-mortem và khắc phục
 9. Viết theo `POST-MORTEM.md`, không đổ lỗi (`OPS-IR-007`): tác động, dòng thời gian, nguyên nhân, điều đã tốt, điều may mắn.
 10. Hành động khắc phục có chủ + hạn (`OPS-IR-008`), ưu tiên **cổng máy**: test hồi quy, cảnh báo mới, guard, kiểm trong CI.
-    Mỗi hành động thành task trong PLAN hoặc issue.
+    Mỗi hành động thành task trong PLAN hoặc issue. Trước khi đóng, chạy
+    `python3 .xtemplates/scripts/xt.py incident check docs/ops/POST-MORTEM-<ngày>-<slug>.md`
+    (repo khung dùng `scripts/xt.py`). Hành động phòng ngừa ghi `đường/dẫn::tên ca` có thật hoặc
+    “không kiểm thử được — lý do cụ thể”. Chạy ca hồi quy trong Gate của bản sửa. Khi cùng lỗi của gói đã có bằng chứng ở hai dự án,
+    thêm fixture vào `mutants.json` của gói và kiểm CI phát hiện đúng ca.
 11. Bài học về công cụ/môi trường → `TRAPS.md`; runbook thiếu bước → sửa `RUNBOOK.md` trong cùng PR.
 
 ## Báo cáo

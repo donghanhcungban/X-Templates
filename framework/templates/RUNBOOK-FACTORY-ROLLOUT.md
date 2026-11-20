@@ -45,7 +45,9 @@ python3 "$XT" rollout-drill --env prod --release "$evidence_dir/release.json" \
 
 `--require-ready` trả 1 nếu thiếu một điều kiện. Kiểm gồm lệnh đích, tên secret, grant và HEAD trên nhánh mặc định, checkout sạch, báo cáo GO cùng ứng viên và xác nhận GO-NO-GO đã ký đúng subject trên nhánh được bảo vệ. `ready_for_pipeline_review` đưa ứng viên đến bước kiểm của pipeline sở hữu đích. `deployed_to_target` luôn là `false` trong diễn tập. JSON có thể dùng làm đầu vào đối chiếu `subject.digest`; đây là báo cáo cục bộ, chưa chứng thực nguồn CI.
 
-Pipeline được chủ dự án ủy quyền xác minh lại quyền, chữ ký, commit và digest ngay trước khi thay đổi môi trường. Nó lấy đúng artifact đã nghiệm thu, triển khai, smoke nghiệp vụ rồi đọc danh tính của ứng dụng từ đích bằng một phép kiểm riêng. Nếu phải quay lui, pipeline khôi phục artifact đã giữ và kiểm lại digest được phục vụ. Lưu receipt cùng URL lần chạy trong sổ của dự án theo ADR-0077. Nếu pipeline chưa xuất được receipt tương ứng, chưa thể đánh giá cửa sổ production bằng `ops-check`. Khung hiện cung cấp adapter cho dev của gói web; việc cấp quyền và kích hoạt pipeline production do dự án sở hữu.
+Pipeline do chủ dự án cấu hình chạy `python3 "$XT" deploy run --env prod --json` trên checkout điều phối có trạng thái bền ở `.git/xt-preview/`. Các lệnh `deploy_prod`, `smoke_prod`, `digest_prod` và `rollback_prod` nằm trong `xt.yaml` đã merge. CLI kiểm lại grant hiện hành trên GitHub, chữ ký và digest của bản đã qua dev. Smoke đỏ sẽ thử phục hồi byte của bản trước và kiểm lại digest phục vụ. Khi đích ở trạng thái `unknown`, dùng sổ để xử lý sự cố. Khi cần chủ động quay lui, chạy `python3 "$XT" deploy rollback --env prod --json`.
+
+Lưu receipt `docs/ops/DEPLOYS.json` lên nhánh mặc định qua quy trình review của dự án trước lần triển khai kế tiếp. Dùng cùng checkout điều phối hoặc khôi phục kho artifact đã lưu để quay lui. Giữ một pipeline ghi cho mỗi đích. Ngoài checkout này, dự án quản lý kho artifact bền vững và quyền truy cập dịch vụ production.
 
 ## Phản hồi vận hành
 

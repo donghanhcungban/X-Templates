@@ -53,7 +53,7 @@ Yếu tố góp phần khác: <...>
 ## 6. Hành động (mỗi dòng một issue có chủ + hạn)
 | Hành động | Loại (vá / phòng ngừa / phát hiện / quy trình) | Chủ | Hạn | Issue | Trạng thái |
 |---|---|---|---|---|---|
-| <...> | phòng ngừa | <tên> | <ngày> | #<n> | mở |
+| <mô tả> · `tests/<file>::<tên ca>` hoặc “không kiểm thử được — <lý do cụ thể>” | phòng ngừa | <tên> | <ngày> | #<n> | mở |
 
 ## 7. Hàng rào mới (bắt buộc ≥ 1)
 - <test hồi quy `tests/...` / rule lint / hook / cảnh báo mới / mục checklist> — PR #<n>

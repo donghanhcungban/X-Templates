@@ -594,3 +594,38 @@
 - Chọn: Khóa SPEC và tệp nghiệm thu trước khi viết mã, đối chiếu từng tệp với JUnit khi kiểm
 - Lý do (tiêu chí chất lượng cuối): Tổng số ca có thể giữ nguyên dù bỏ một tệp. Ánh xạ testcase về tệp trong phạm vi giúp phát hiện sai lệch và vẫn hỗ trợ classname ánh xạ duy nhất.
 - Đường lùi: Hoàn tác tính năng opt-in và giữ kiểm commit độc lập hiện có.
+
+### D-526 · 2026-11-20T10:21:45+00:00 · Quy mô và giai đoạn nào cho phép agent tự duyệt khi có bằng chứng máy?
+
+- Phương án: (1) Chỉ duyệt MVP và quy mô S · (2) Hai trần độc lập, cấu hình phải được bật trên nhánh mặc định; M/L và giai đoạn 2/3 phải đủ bằng chứng
+- Chọn: Hai trần độc lập, cấu hình phải được bật trên nhánh mặc định; M/L và giai đoạn 2/3 phải đủ bằng chứng
+- Lý do (tiêu chí chất lượng cuối): Dự án chủ động tăng tốc ở giai đoạn đã sẵn sàng; mặc định giữ S và giai đoạn 1. L đòi thêm 14 ngày số đo thực.
+- Đường lùi: Giảm các trần trên nhánh mặc định và đưa quyết định lại cho người phụ trách.
+
+### D-527 · 2026-11-20T10:21:47+00:00 · Lúc nào adapter được thay đổi một môi trường đã được ủy quyền?
+
+- Phương án: (1) Dùng receipt cũ và quyền được đọc khi bắt đầu · (2) Kiểm lại quyền tại thời điểm gọi lệnh, dùng đúng bytes đã thử, kiểm lại digest qua đích
+- Chọn: Kiểm lại quyền tại thời điểm gọi lệnh, dùng đúng bytes đã thử, kiểm lại digest qua đích
+- Lý do (tiêu chí chất lượng cuối): Quyền có thể thay đổi khi smoke và build chạy. Receipt phải chứng minh bản phục vụ thật. Mất quyền sau khi chạm đích thì ghi chưa rõ và dừng.
+- Đường lùi: Tắt adapter và chẩn đoán phiên bản đang chạy bằng kênh vận hành của môi trường.
+
+### D-529 · 2026-11-20T10:21:48+00:00 · Các MUST ở M/L yêu cầu con người được thực thi như thế nào?
+
+- Phương án: (1) Yêu cầu cùng một lần xác nhận thủ công ở mọi mục · (2) Dùng một bảng 16 ID phân biệt ủy quyền gắn bằng chứng, trách nhiệm con người và kiểm tra tự động
+- Chọn: Dùng một bảng 16 ID phân biệt ủy quyền gắn bằng chứng, trách nhiệm con người và kiểm tra tự động
+- Lý do (tiêu chí chất lượng cuối): G7 và admin-plan đọc cùng bảng; phần việc còn cần người hiện rõ và điều kiện sẵn có của environment, CODEOWNERS vẫn có hiệu lực.
+- Đường lùi: Đưa trần duyệt về mặc định và áp lại văn bản trước lần phân loại.
+
+### D-530 · 2026-11-20T15:07:17+00:00 · F-144 có chặn tag major di động (v1, v1.2) không?
+
+- Phương án: (1) Chặn cả tag major v<số>(.<số>)* · (2) Chỉ chặn vX.Y.Z kể cả hậu tố SemVer
+- Chọn: Chỉ chặn vX.Y.Z kể cả hậu tố SemVer
+- Lý do (tiêu chí chất lượng cuối): Dự án Action dời tag major mỗi bản, chặn ở guard là chặn oan; ruleset v* phía server vẫn giữ.
+- Đường lùi: Mở RELEASE_VERSION_TAG sang v<số>(.<số>)* và đổi ca fixture.
+
+### D-531 · 2026-11-20T16:16:56+00:00 · Agent duyệt giai đoạn 2/3 khi khoá chưa hiệu lực: sửa mã hay nới e2e?
+
+- Phương án: (1) Nới assert e2e · (2) Kiểm khoá ở mọi giai đoạn, trước kiểm cây và trần
+- Chọn: Kiểm khoá ở mọi giai đoạn, trước kiểm cây và trần
+- Lý do (tiêu chí chất lượng cuối): S-507 ghi exit 2, chỉ người; PR đổi thứ tự mà không có quyết định. Siết lại là cách hiểu chặt hơn.
+- Đường lùi: Chỉ kiểm ở giai đoạn 1 và nới assert e2e.

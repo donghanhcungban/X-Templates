@@ -12,6 +12,9 @@ from typing import Any
 
 if __name__ == "__main__":
     sys.dont_write_bytecode = True
+    script_dir = str(Path(__file__).resolve().parent)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
 
 import xt
 
@@ -165,11 +168,15 @@ def next_action(base: Path, stage: Doc | None, facts: Doc, opt: Doc, env_states:
                 "coordinator",
                 "Chưa xác nhận được cây hiện tại khớp bản đã nộp. Đối chiếu xt.py stage status; nếu đã đổi, mở lại và trình đúng bản.",
             )
-        if stage["stage"] == 1 and xt._xt_keys(base).get(xt.STAGE_APPROVAL_KEY) == xt.STAGE_AGENT_BY:
+        keys = xt._xt_keys(base)
+        if keys.get(xt.STAGE_APPROVAL_KEY) == xt.STAGE_AGENT_BY and stage["stage"] <= 1 + xt._ceiling(
+            "stage_approval_max", keys
+        ):
             return action(
                 "check-approval-policy",
                 "coordinator",
-                f"Bản {observed['sha']} đang chờ. Chạy xt.py loop next-step với dữ liệu PR để công cụ kiểm quyền nghiệm thu trên nhánh chính.",
+                f"Bản {observed['sha']} đang chờ. Đối chiếu tiêu chí giai đoạn {stage['stage']}, rồi chạy "
+                f"xt.py stage approve --sha {observed['sha']} --note <bằng chứng>. Lệnh sẽ đọc quyền ở nhánh chính và kiểm đúng ứng viên.",
             )
         return action(
             "review-submission",
@@ -222,7 +229,13 @@ def release_rows(doc: Any) -> dict[str, Doc]:
     if len(by_id) != len(rows) or not set(xt.RELEASE_ROWS).issubset(by_id):
         raise ValueError("Thiếu hoặc trùng hàng trong báo cáo nghiệm thu")
     fails = [r["id"] for r in rows if r.get("level") == "BLOCKER" and r["result"] == "FAIL"]
-    human = [r["id"] for r in rows if r.get("level") == "BLOCKER" and r["result"] == "N/A"]
+    waived = doc.get("waived", {})
+    waivable = {
+        key for key, _ in xt.RELEASE_RUN_KEYS if by_id[key]["result"] == "N/A" and by_id[key]["level"] == "BLOCKER"
+    }
+    if not isinstance(waived, dict) or not set(waived) <= waivable:
+        raise ValueError("Danh sách miễn không hợp lệ")
+    human = [r["id"] for r in rows if r.get("level") == "BLOCKER" and r["result"] == "N/A" and r["id"] not in waived]
     verdict = "NO-GO" if fails else "GO (chờ người)" if human else "GO"
     if (doc.get("fails"), doc.get("human"), doc.get("verdict")) != (fails, human, verdict) or doc.get("go") is not (
         not fails
@@ -254,6 +267,8 @@ def bind_release_document(base: Path, doc: Any) -> Doc:
         or doc.get("artifacts") != artifacts
     ):
         raise ValueError("Snapshot release không khớp HEAD, cây mã hoặc artifact hiện tại; chạy lại release-check")
+    if doc.get("waived", {}) != xt._human_na_waivers(base, doc["rows"], subject):
+        raise ValueError("Miễn N/A không khớp chữ ký §5 của người trên ứng viên")
     # Các nguồn này có thể thay đổi dù cùng commit (sổ vòng không theo git hoặc sổ giai đoạn được miễn vân tay).
     local_rows = [tree, xt._release_stage(base), xt._release_verify(base), *xt._release_deploy(base, subject)]
     if artifact_row is not None:

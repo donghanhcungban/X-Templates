@@ -1,5 +1,7 @@
 # ADR-0069: Agent tự nghiệm thu giai đoạn sản phẩm khi `xt.yaml` khai `stage_approval: agent`
 
+- **Cập nhật D-526.** Mặc định agent chỉ duyệt MVP. Chủ dự án có thể bật trần 2 hoặc 3 trên nhánh mặc định qua PR người merge. Các tiêu chí đã đăng ký được kiểm trên ứng viên đã merge, và sổ lưu SHA, phiên và bằng chứng. `init --adopt` vẫn dành cho người.
+
 - **Trạng thái:** Đã chấp nhận 2026-11-04 (chủ dự án: "cho phép Agent quyết định khi nào đã đạt và tuyên bố đạt MVP";
   phiên chính chốt cách làm theo tiêu chí chất lượng cuối, ADR-0008 — **D-352**; ghi lúc đầu là D-342 rồi D-347, đánh số lại khi gộp
   `main` vì #438 đã dùng D-342 và #439 đã dùng D-347). [ADR-0075](0075-end-to-end-factory.md) (2026-11-11) đề xuất mở

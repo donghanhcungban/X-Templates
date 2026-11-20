@@ -174,6 +174,27 @@ class StageAgentApprovalCliTest(TmpRepoCase):
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.led()["stage"], 3)
 
+    def test_stage_two_without_effective_lock_is_human_only(self):
+        """S-507 / ADR-0058: khoá chưa hiệu lực (chỉ cây khai, nhánh chính của remote chưa có; hay không có remote như
+        bản mô phỏng của pilot) → agent duyệt giai đoạn 2 bị từ chối vì quyền, trước khi xét trần, cây hay chạy cổng."""
+        self.stage("init", "--adopt", "2", "--evidence", "người nghiệm thu MVP")
+        self.set_key("agent", push=False)
+        sha = self.submit()
+        cases = [("remote chưa khai", None), ("không có remote", ("remote", "remove", "origin"))]
+        for label, change in cases:
+            with self.subTest(label), unittest.mock.patch.object(xt, "release_check", side_effect=AssertionError):
+                if change:
+                    self.git(*change)
+                    (self.repo / "f.txt").write_text("đổi sau bản trình\n", encoding="utf-8")
+                rc, _, err = self.stage("approve", "--sha", sha, "--note", "giai đoạn 2", agent=True)
+                self.assertEqual(rc, 2)
+                self.assertIn("chỉ người duyệt", err)
+                self.assertEqual((self.led()["stage"], self.led()["status"]), (2, "awaiting_approval"))
+        self.git("checkout", "-q", "--", "f.txt")
+        rc, _, err = self.stage("approve", "--sha", sha, "--note", "người duyệt giai đoạn 2")
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.led()["stage"], 3)
+
     def test_set_head_does_not_grant_key(self):
         """Review harden F2: `git remote set-head origin <nhánh agent>` không cấp khoá — chỉ đọc `origin/main|master`."""
         self.set_key("human")

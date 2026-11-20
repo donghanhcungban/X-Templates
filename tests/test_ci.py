@@ -364,7 +364,7 @@ class SupplyChainArtifactsTest(unittest.TestCase):
         self.assertNotIn("python3", publish)
         self.assertIn('"$TARGET"', publish.split("git archive --format=tar.gz", 1)[1].splitlines()[0])
         for path in ("GO-NO-GO*.md", "docs/GO-NO-GO*.md", "docs/ops/GO-NO-GO*.md"):
-            self.assertIn(f"      - '{path}'", verify)
+            self.assertIn(f'      - "{path}"', verify)  # nháy kép theo biome của gói (tệp cài vào dự án đích)
 
 
 class MergeGateStubTest(unittest.TestCase):

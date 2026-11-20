@@ -268,9 +268,9 @@ def exercise(app, stage, baseline, env, workspace):
     submitted_after = time.monotonic() - started
     state = stage_status(app, env)
     assert (state["stage"], state["status"], state["submitted"]["sha"]) == (stage, "awaiting_approval", head)
-    assert state["submitted"]["smoke"] == "`python3 acceptance/journey.py` exit 0"
+    assert state["submitted"]["smoke"] == "`python3 acceptance/journey.py` exit 0", state["submitted"]
     denied = run(app, [*XT, "stage", "approve", "--sha", head, "--note", "Verify human boundary"], env, 2)
-    assert "chỉ người duyệt" in denied
+    assert "chỉ người duyệt" in denied, f"stage {stage}: {denied}"
     assert stage_status(app, env) == state
     result = {
         "stage": stage,

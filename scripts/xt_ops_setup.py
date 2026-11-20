@@ -22,21 +22,17 @@ Doc = dict[str, Any]
 OK, MISSING, UNKNOWN, SKIP, OPTIONAL = "đạt", "thiếu", "không đọc được", "không áp dụng", "tuỳ chọn"
 BLOCKS = (MISSING, UNKNOWN)
 NAME = re.compile(r"[A-Z][A-Z0-9_]{0,99}")
-HUMAN = {
-    "OPS-IR-006",
-    "OPS-IAC-006",
-    "SEC-TM-007",
-    "SEC-LOG-013",
-    "CMP-AUDIT-004",
-    "CMP-AI-001",
-    "UX-A11Y-017",
-    "WF-TEAM-006",
-}
 KEYS = {
     "release_signoff": ("agent", "Cho agent ký khi bằng chứng đạt điều kiện của phiên bản khung."),
-    "release_signoff_scale": ("L", "Đề nghị mở rộng phạm vi ký tới L khi khung hỗ trợ."),
+    "release_signoff_scale": (
+        "L",
+        "Đề nghị trần L. Cần bằng chứng vận hành trên ứng viên đã merge và 14 ngày đo lỗi lọt.",
+    ),
     "stage_approval": ("agent", "Cho agent nghiệm thu giai đoạn trong giới hạn khung."),
-    "stage_approval_max": ("3", "Đề nghị mở rộng giai đoạn tối đa khi khung hỗ trợ."),
+    "stage_approval_max": (
+        "3",
+        "Đề nghị trần 3. Cần bộ nghiệm thu khoá, receipt dev và kết quả perf trên ứng viên đã merge.",
+    ),
     "merge_hard_exceptions": ("auto", "Cho steward merge ngoại lệ cứng khi các cổng đạt."),
 }
 
@@ -205,9 +201,13 @@ def local_items(core: ModuleType, base: Path) -> list[Doc]:
     bp = base / "BLUEPRINT.md"
     if bp.is_file():
         result = core.blueprint_status(bp)
-        ids = sorted(HUMAN.intersection(result["open_must"]))
-        if not result["bad_lines"] and not result["bad_waivers"]:
-            human = MISSING if ids else OK
+        try:
+            ids = sorted(core.human_must_ids().intersection(result["open_must"]))
+        except (OSError, ValueError):
+            pass  # Giữ UNKNOWN nếu không đọc được danh mục của đúng bản khung.
+        else:
+            if not result["bad_lines"] and not result["bad_waivers"]:
+                human = MISSING if ids else OK
     doc = core.read_state(base)
     if doc is not None:
         waits = sorted(key for key in core._deferred(doc) if core.DEFER_ID_RE.fullmatch(key))
@@ -378,6 +378,10 @@ def owner_script(doc: Doc) -> str:
         lines.extend(
             [
                 "# Chỉ đặt XT_NEW_RULESET_FILE sau khi kiểm đúng ruleset này chưa tồn tại trên repo đã chọn.",
+                "# Với tag, điền trước actor_id của đúng GitHub App cấp XT_RELEASE_TOKEN vào bypass_actors.",
+                'if test "${XT_NEW_RULESET_FILE:-}" = ".github/rulesets/tags.json"; then',
+                """  jq -e '.bypass_actors | length == 1 and .[0].actor_type == "Integration" and (.[0].actor_id > 0) and .[0].bypass_mode == "always"' "$XT_NEW_RULESET_FILE" >/dev/null || exit 2""",
+                "fi",
                 'case "${XT_NEW_RULESET_FILE:-}" in',
                 "  .github/rulesets/main.json|.github/rulesets/tags.json)",
                 "    export GH_REPO",

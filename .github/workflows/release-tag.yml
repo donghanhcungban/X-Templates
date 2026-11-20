@@ -7,9 +7,9 @@ on:
     branches: [main]
     paths:
       - VERSION
-      - 'GO-NO-GO*.md'
-      - 'docs/GO-NO-GO*.md'
-      - 'docs/ops/GO-NO-GO*.md'
+      - "GO-NO-GO*.md"
+      - "docs/GO-NO-GO*.md"
+      - "docs/ops/GO-NO-GO*.md"
   workflow_dispatch:
     inputs:
       sha:
@@ -67,7 +67,10 @@ jobs:
           python-version: "3.15.2"
       - name: Công cụ cho các lệnh kiểm blueprint
         if: steps.candidate.outputs.target != ''
-        run: pip install --quiet --require-hashes -r "$RUNNER_TEMP/candidate/requirements-dev.txt"
+        run: |
+          if test -f "$RUNNER_TEMP/candidate/requirements-dev.txt"; then
+            pip install --quiet --require-hashes -r "$RUNNER_TEMP/candidate/requirements-dev.txt"
+          fi
       - name: Xác nhận promotion của đúng SHA và chữ ký còn hiệu lực trên main
         id: approval
         if: steps.candidate.outputs.target != ''
@@ -77,7 +80,10 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/candidate"
-          PYTHONPATH="$GITHUB_WORKSPACE/scripts" python3 -P - <<'PY'
+          # Dự án đích đã cài CLI ở .xtemplates/scripts; chỉ nạp mã kiểm trong checkout nhánh chính.
+          cli="$GITHUB_WORKSPACE/.xtemplates/scripts"
+          if test -f "$GITHUB_WORKSPACE/framework/00-method/README.md"; then cli="$GITHUB_WORKSPACE/scripts"; fi
+          PYTHONPATH="$cli" python3 -P - <<'PY'
           import os
           from pathlib import Path
           import xt
@@ -144,6 +150,24 @@ jobs:
         if: steps.tag.outputs.archive != ''
         with:
           subject-path: ${{ steps.tag.outputs.archive }}
+      - name: Ghi biên nhận promotion gắn với đúng archive
+        id: receipt
+        if: steps.tag.outputs.archive != ''
+        env:
+          ARCHIVE: ${{ steps.tag.outputs.archive }}
+          TARGET: ${{ needs.approve.outputs.target }}
+          V: ${{ needs.approve.outputs.version }}
+        run: |
+          set -euo pipefail
+          receipt="$RUNNER_TEMP/X-Templates-v$V.promotion.json"
+          digest=$(sha256sum "$ARCHIVE" | cut -d' ' -f1)
+          printf '{"repo":"%s","tag":"v%s","commit":"%s","sha256":"%s","promotion":"approved"}\n' \
+            "${GITHUB_REPOSITORY,,}" "$V" "$TARGET" "$digest" > "$receipt"
+          echo "file=$receipt" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.receipt.outputs.file != ''
+        with:
+          subject-path: ${{ steps.receipt.outputs.file }}
       - name: Đẩy tag
         if: steps.tag.outputs.archive != ''
         env:

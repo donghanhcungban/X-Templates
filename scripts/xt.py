@@ -5329,6 +5329,9 @@ def _doctor_xt_yaml(base: Path, fw: Path) -> List[Finding]:
     keys = {m[1]: m[2] for m in lines}
     out = _doctor_gate_tools(keys) + _doctor_yaml_layout(text, lines)
     scalars = {k: yaml_scalar(v) for k, v in keys.items()}
+    for key, choices in APPROVAL_CEILINGS.items():
+        if scalars.get(key) and scalars[key] not in choices:
+            out.append(Finding("xt-yaml", "error", f"{key}: {scalars[key]} — cần một trong {', '.join(choices)}"))
     phase_err = delivery_phase_error(scalars)
     if phase_err:
         out.append(Finding("xt-yaml", "error", phase_err + " — sửa thành build hoặc harden"))
@@ -5726,6 +5729,19 @@ def latest_framework_tag() -> Optional[Tuple[int, int, int]]:
     return max(vers) if vers else None
 
 
+def _doctor_distribution(base: Path) -> List[Finding]:
+    path = base / ".xtemplates" / "manifest.json"
+    if not path.is_file():
+        return []
+    try:
+        source = json.loads(path.read_text(encoding="utf-8"))["source"]
+    except (OSError, KeyError, TypeError, ValueError):
+        source = None
+    if isinstance(source, dict) and source.get("verified") is True:
+        return []
+    return [Finding("provenance", "warn", "nguồn khung chưa xác minh attestation của tag phát hành")]
+
+
 def _doctor_version(base: Path) -> List[Finding]:
     """Khung đã cài (`.xtemplates/VERSION`) cũ hơn bản phát hành mới nhất → cảnh báo chạy lại `install.py`
     (LOOP-HARNESS-020, D-040). Chỉ ở dự án đích; nhãn không phải SemVer hay không đọc được tag → bỏ qua (fail-open).
@@ -5900,6 +5916,7 @@ def doctor_findings(base: Path, fw: Path, deep: bool = True, offline: bool = Fal
     (validate khung, cú pháp hook, progress-check, đọc tag phát hành qua mạng) — dùng ở `loop init`.
     `offline=True` chỉ bỏ tra tag mới qua mạng; giữ mọi kiểm sâu cục bộ (F-111, D-453)."""
     out = _doctor_runtime() + _doctor_scripts() + _doctor_settings(base, deep) + _doctor_harness_parts(base)
+    out += _doctor_distribution(base)
     out += _doctor_docs(base, fw) + _doctor_xt_yaml(base, fw) + _doctor_gate_floor(base) + _doctor_gitignore(base)
     out += _doctor_state(base) + _doctor_legacy(base) + _doctor_git(base) + _doctor_merge(base) + _doctor_memory(base)
     out += _doctor_orchestration(base) + _doctor_sandbox(base)
@@ -6258,7 +6275,7 @@ HARD_RISK_LABELS = {"risk:auth", "risk:payment", "risk:pii", "risk:crypto", "ris
 # Harness agent: "session"/"permission" ở đây là phiên/quyền của agent (`.claude/hooks/session-start.sh`), không phải
 # xác thực của ứng dụng — miễn nhóm "auth"; vẫn vào làn chuẩn qua "cổng/CI" (D-020).
 HARD_KEY = "merge_hard_exceptions"
-HARD_KEY_REASON = f"đổi `{HARD_KEY}`/`stage_approval`/`release_signoff` trong xt.yaml hoặc hiệu lực ủy quyền production trong PLAN.md (ADR-0020, ADR-0022, ADR-0069, ADR-0074) — luôn người merge"
+HARD_KEY_REASON = f"đổi `{HARD_KEY}`/`stage_approval`/`stage_approval_max`/`release_signoff`/`release_signoff_scale` trong xt.yaml hoặc hiệu lực ủy quyền production trong PLAN.md (ADR-0020, ADR-0022, ADR-0069, ADR-0074) — luôn người merge"
 TRUNCATED_REASON = (
     "danh sách file của PR bị cắt (quá giới hạn REST) — không xác minh được ủy quyền/khoá, luôn người merge"
 )
@@ -6900,7 +6917,9 @@ def _plan_grants_changed(f: Dict[str, Any], repo: str, base_sha: str, head_sha: 
 HARD_GATED_KEYS = (
     HARD_KEY,
     "stage_approval",
+    "stage_approval_max",
     "release_signoff",
+    "release_signoff_scale",
 )  # khoá chỉ người đổi: ngoại lệ cứng (ADR-0020), quyền tự duyệt giai đoạn (ADR-0069) và tự ký phát hành (ADR-0074)
 
 
@@ -8120,6 +8139,15 @@ def _batch_verdict(base: Path, st: Dict[str, Any]) -> Dict[str, Any]:
     return _with_pending_human(v, base, st) if v["verdict"] == "done" else v
 
 
+def _field_facts(base: Path, plan: str) -> Dict[str, Any]:
+    if not (SCRIPT_DIR / "xt_field.py").is_file():
+        return {}
+    _sibling_imports()
+    import xt_field
+
+    return xt_field.committed_field(sys.modules[__name__], base, plan)
+
+
 def next_step_facts(
     base: Path,
     st: Dict[str, Any],
@@ -8142,6 +8170,7 @@ def next_step_facts(
         "verdict": {k: v[k] for k in ("verdict", "reason", "task") if k in v},
         "final_check": final_check(base) if v["verdict"] in ("done", PENDING_HUMAN) else None,
         "prs": prs,
+        **_field_facts(base, st.get("plan") or "docs/autopilot/PLAN.md"),
         "audit": _audit_facts(base, status),
         "open_must": len(_open_must(base, st)),
         "harden": harden_work(base, st, status) if harden else [],
@@ -8621,6 +8650,8 @@ def _stage_changed(base: Path, sub: Dict[str, Any]) -> Optional[List[str]]:
     """File đổi so với bản trình (trừ sổ/PROGRESS/GO-NO-GO/DECISIONS). So theo vân tay NỘI DUNG ghi lúc `submit` trước —
     bền qua squash-merge, clone mới/nông, nhánh đã xoá (review #330); vân tay khớp → []. Khác → liệt kê theo SHA khi
     SHA còn trong repo, không thì một mục mô tả. Bản trình cũ không có vân tay mà SHA mất → None (không so được)."""
+    if "artifact_digest" in sub:
+        return _submitted_source_changes(base, sub["sha"])
     fp = sub.get("tree")
     if fp and evidence_fingerprint(base, (STAGE_LEDGER,)) == fp:
         return []
@@ -8628,6 +8659,30 @@ def _stage_changed(base: Path, sub: Dict[str, Any]) -> Optional[List[str]]:
     if changed is not None:
         return [c for c in changed if c != STAGE_LEDGER] or ([STAGE_DIFF_UNKNOWN] if fp else [])
     return [STAGE_DIFF_UNKNOWN] if fp else None
+
+
+def _submitted_source_changes(base: Path, sha: str) -> Optional[List[str]]:
+    """A stage 2/3 receipt may be recorded after submit. Only canonical decision metadata is excluded."""
+    args = (
+        "--no-replace-objects",
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-renames",
+        "--ignore-submodules=none",
+        "--relative",
+        "--name-only",
+        "-z",
+        sha,
+        "--",
+        ".",
+    )
+    changed = _git(base, *args, env=_go_git_env())
+    untracked = _git(base, "ls-files", "--others", "--exclude-standard", "-z", "--", ".", env=_go_git_env())
+    if changed.returncode or untracked.returncode:
+        return None
+    paths = set(filter(None, (changed.stdout + untracked.stdout).split("\0")))
+    return sorted(p for p in paths if p != STAGE_LEDGER and not _subject_excluded(p, deploy_enabled=True))
 
 
 def _stale_submission(f: Dict[str, Any], loop: StepPart) -> StepPart:
@@ -8754,7 +8809,13 @@ def _next_step_part(f: Dict[str, Any], harden: bool) -> Dict[str, Any]:
             # chỉ sổ/PROGRESS đổi (hay không so được) sau bản đã kiểm lại cuối lúc `submit`, hoặc container mới chưa bật
             # vòng: không bắt chạy lại mọi Gate/lập đợt mới — vẫn chờ người (review #330)
             loop = None
-    part = loop or _step_prs(f) or _step_batch(f, harden)
+    field = f.get("field") if (f.get("stage") or {}).get("stage", 3) == 3 else None
+    if field and f["verdict"]["verdict"] == "inactive":
+        loop = None
+    part = loop or _step_prs(f)
+    if part is None and field:
+        part = {"action": "optimize", "reason": f"{field['source']} vượt ngân sách: " + ", ".join(field["breaches"])}
+    part = part or _step_batch(f, harden)
     if part is None and harden:
         part = _step_signoff(f)
     pending = f"; {f['verdict']['reason']}" if f["verdict"]["verdict"] == PENDING_HUMAN else ""
@@ -12744,13 +12805,19 @@ STAGE_CYCLE_RE = re.compile(r"C-\d{3,}")
 STAGE_SHA_RE = COMMIT_SHA_RE  # SHA-1 hoặc SHA-256 (`--object-format=sha256`) — một định nghĩa (review #329)
 # Dòng khai của PLAN: `Giai đoạn sản phẩm: 2 (C-001)` (có thể nằm trong `> …`) — đúng MỘT dòng mỗi PLAN.
 PLAN_STAGE_RE = re.compile(r"^\s*>?\s*Giai đoạn sản phẩm:\s*([1-3])\s*\((C-\d{3,})\)", re.MULTILINE)
-STAGE_AGENT_ENV = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT")  # biến môi trường mà phiên agent mang
+STAGE_AGENT_ENV = (
+    "CLAUDECODE",
+    "CLAUDE_CODE_SESSION_ID",
+    "CODEX_THREAD_ID",
+    "AI_AGENT",
+)  # biến môi trường mà phiên agent mang
 STAGE_DIFF_UNKNOWN = "(nội dung khác bản trình)"  # vân tay lệch mà diff theo SHA không chỉ ra file (hay SHA mất)
 STAGE_HUMAN_ONLY = "chỉ người duyệt — chạy ở terminal của chủ dự án, ngoài phiên agent (ADR-0058)"
 # ADR-0069 (chủ dự án 2026-11-04, D-352): xt.yaml `stage_approval: agent` → agent tự nghiệm thu giai đoạn bằng `stage approve`
 # (bản trình phải còn nguyên); vắng/khác → chỉ người. `init --adopt` luôn chỉ người.
 STAGE_APPROVAL_KEY = "stage_approval"
 STAGE_AGENT_BY = "agent"
+APPROVAL_CEILINGS = {"stage_approval_max": ("1", "2", "3"), "release_signoff_scale": ("S", "M", "L")}
 # Nhánh chính của remote, ref đầu tiên đọc được — không `origin/HEAD`: `git remote set-head` lật được (review harden F2).
 STAGE_MAIN_REFS = ("origin/main", "origin/master")
 
@@ -12766,11 +12833,30 @@ def agent_session() -> bool:
     return any(k in os.environ for k in STAGE_AGENT_ENV)
 
 
+def _stage_actor() -> Dict[str, str]:
+    """Record the actual harness identifier when supplied. An invocation ID identifies only this decision."""
+    session = session_id() or os.environ.get("CODEX_THREAD_ID", "").strip()
+    if session:
+        return {"session": session}
+    return {
+        "session": "",
+        "decision_id": os.urandom(16).hex(),
+        "agent_environment": next((key for key in STAGE_AGENT_ENV if key in os.environ), ""),
+    }
+
+
 def stage_agent_approval(base: Path) -> bool:
     """`stage_approval: agent` có hiệu lực khi CẢ xt.yaml ở cây làm việc LẪN bản đã commit ở nhánh chính của remote
     (`STAGE_MAIN_REFS`, ref đầu tiên đọc được) đều khai — như `delivery_phase` của guard: phiên không tự cấp quyền duyệt
     cho mình (ADR-0069). Không đọc được xt.yaml hay không có remote → chỉ người (ADR-0058)."""
-    return _main_key_is(base, STAGE_APPROVAL_KEY, STAGE_AGENT_BY, fresh=True)
+    if agent_session():
+        try:
+            return _xt_keys(base).get(STAGE_APPROVAL_KEY) == STAGE_AGENT_BY and (
+                _scale_origin(base, ()).get(STAGE_APPROVAL_KEY) == STAGE_AGENT_BY
+            )
+        except (ValueError, OSError):
+            return False
+    return _main_key_is(base, STAGE_APPROVAL_KEY, STAGE_AGENT_BY)
 
 
 def _fetch_main_refs(base: Path) -> bool:
@@ -12806,7 +12892,7 @@ def _stage_first(ev: Dict[str, Any], r: Dict[str, Any]) -> str:
     if kind == "init" and stage == 1:
         r.update(cycle=ev["cycle"], stage=1, status="active", sha=None)
         return ""
-    if kind == "adopt" and stage in (2, 3) and ev.get("by") and ev.get("evidence"):
+    if kind == "adopt" and stage in (2, 3) and ev.get("by") not in (None, "", STAGE_AGENT_BY) and ev.get("evidence"):
         r.update(cycle=ev["cycle"], stage=stage, status="active", sha=None)
         return ""
     return "sự kiện đầu phải là `init` giai đoạn 1 hoặc `adopt` 2|3 có `by` + `evidence`"
@@ -12831,6 +12917,8 @@ def _stage_step(ev: Dict[str, Any], r: Dict[str, Any]) -> str:
     elif kind == "reopen" and r["status"] == "awaiting_approval":
         r.update(status="active", sha=None)
     elif kind == "approve" and r["status"] == "awaiting_approval" and sha == r["sha"] and ev.get("by"):
+        if r["stage"] > 1 and ev["by"] == STAGE_AGENT_BY and not _stage_recorded_criteria(ev):
+            return "duyệt bởi agent thiếu session hoặc bằng chứng gắn bản trình"
         done = r["stage"] == 3
         r.update(stage=r["stage"] if done else r["stage"] + 1, status="completed" if done else "active", sha=None)
     else:
@@ -12956,7 +13044,7 @@ def _stage_by(base: Path) -> str:
             )
         except (OSError, subprocess.TimeoutExpired):
             continue
-        if r.stdout.strip():
+        if r.stdout.strip() and r.stdout.strip().casefold() != STAGE_AGENT_BY:
             return r.stdout.strip()
     raise StageError("không biết người duyệt — đặt `git config user.email` trước")
 
@@ -13116,7 +13204,7 @@ def _stage_approve(
 ) -> Dict[str, Any]:
     """Duyệt bản đã trình. `agent_base` (khoá `stage_approval: agent` bật — ADR-0069) → bản trình phải còn nguyên trên cây
     (vân tay/SHA khớp, không file đổi) với MỌI người duyệt: né biến môi trường agent không duyệt được bản đã đổi (review
-    harden F1); agent (`by` = `agent`) chỉ duyệt giai đoạn 1 — "tuyên bố đạt MVP" (F6), sự kiện ghi `session`."""
+    harden F1); D-526: giai đoạn 2/3 cần thêm trần, ứng viên trên remote và bằng chứng đã đăng ký."""
     if led is None or led["status"] != "awaiting_approval":
         raise StageError("không có giai đoạn chờ duyệt — agent trình bằng `xt.py stage submit` trước")
     want = led["submitted"]["sha"]
@@ -13125,8 +13213,6 @@ def _stage_approve(
     if not want.startswith(sha.lower()):
         raise StageError(f"--sha {sha!r} không phải bản đã trình ({want[:12]}) — duyệt đúng bản đã chạy thử")
     agent = by == STAGE_AGENT_BY
-    if agent and led["stage"] != 1:
-        raise StageError(f"agent chỉ tự nghiệm thu MVP (giai đoạn 1) — giai đoạn {led['stage']} {STAGE_HUMAN_ONLY}")
     extra: Dict[str, Any] = {}
     if agent_base is not None:
         changed = _stage_changed(agent_base, led["submitted"])
@@ -13136,8 +13222,12 @@ def _stage_approve(
                 f"{who} không duyệt được bản đã đổi — {_changed_note(changed, want)}: `stage reopen --reason …`, làm"
                 " xong, kiểm lại cuối rồi `stage submit` lại (ADR-0069)"
             )
+    if agent and led["stage"] > 1:
+        if agent_base is None or not note.strip():
+            raise StageError("duyệt giai đoạn cần khoá quyền và ghi tiêu chí đã nghiệm thu trong --note")
+        extra["criteria"] = _stage_scale_proof(agent_base, led["stage"], want, led["submitted"].get("artifact_digest"))
     if agent:
-        extra["session"] = session_id()
+        extra.update(_stage_actor())
     _stage_event(led, "approve", sha=want, by=by, note=note, **extra)
     led["submitted"] = None
     if led["stage"] == 3:
@@ -13145,6 +13235,101 @@ def _stage_approve(
     else:
         led.update(stage=led["stage"] + 1, status="active")
     return led
+
+
+def _stage_criteria(stage: int) -> Tuple[str, ...]:
+    return ("acceptance_lock", "deploy") + (("perf",) if stage == 3 else ())
+
+
+def _stage_recorded_criteria(ev: Dict[str, Any]) -> bool:
+    proof = ev.get("criteria")
+    if not isinstance(proof, dict) or not isinstance(proof.get("rows"), dict):
+        return False
+    return bool(
+        (
+            ev.get("session")
+            or (
+                ev.get("agent_environment") in STAGE_AGENT_ENV
+                and re.fullmatch("[a-f0-9]{32}", str(ev.get("decision_id", "")))
+            )
+        )
+        and ev.get("note")
+        and proof.get("submitted") == ev["sha"]
+        and _deploy_sha256(proof.get("artifact_digest"))
+        and STAGE_SHA_RE.fullmatch(str(proof.get("head", "")))
+        and all(proof["rows"].get(key) for key in _stage_criteria(ev["stage"]))
+    )
+
+
+def _stage_scale_proof(base: Path, stage: int, submitted: str, digest: Optional[str]) -> Dict[str, Any]:
+    """D-526: the checked checkout and submitted revision must both belong to the current default branch."""
+    key = "stage_approval_max"
+    try:
+        local = _xt_keys(base)
+    except (OSError, ValueError) as exc:
+        raise StageError(str(exc)) from exc
+    if local.get(STAGE_APPROVAL_KEY) != STAGE_AGENT_BY:
+        raise StageError(f"`stage approve` {STAGE_HUMAN_ONLY}")
+    maximum = _ceiling(key, local) + 1
+    if stage > maximum:
+        limit = "agent chỉ tự nghiệm thu MVP (giai đoạn 1) — " if maximum == 1 else ""
+        raise StageError(f"{limit}giai đoạn {stage} vượt `{key}` ({maximum})")
+    head = _stage_clean_head(base)
+    try:
+        _scale_permission(base, key, str(stage), (submitted, head))
+        rc = release_check(base, RELEASE_SIGN_BLUEPRINT, RELEASE_SIGN_STATUS, unchecked_must="fail")
+        if rc["promotion"]["state"] == "rejected":
+            raise ValueError("người đã từ chối (NO-GO)")
+        evidence = _scale_rows(rc, _stage_criteria(stage))
+        if not _deploy_sha256(digest) or rc["subject"].get("digest") != digest:
+            raise ValueError("digest artifact không khớp bản trình — build rồi stage reopen/submit lại")
+        if rc["head"] != head or _stage_clean_head(base) != head:
+            raise ValueError("HEAD đã đổi trong khi kiểm")
+        _scale_permission(base, key, str(stage), (submitted, head))
+    except (OSError, ValueError) as exc:
+        raise StageError(str(exc)) from exc
+    return {"head": head, "submitted": submitted, "artifact_digest": digest, "rows": evidence}
+
+
+def _ceiling(key: str, cfg: Dict[str, str]) -> int:
+    levels = APPROVAL_CEILINGS[key]
+    value = cfg.get(key, "")
+    return levels.index(value) if value in levels else 0
+
+
+def _scale_permission(base: Path, key: str, level: str, candidates: Sequence[str]) -> None:
+    remote = _scale_origin(base, candidates)
+    principal = STAGE_APPROVAL_KEY if key == "stage_approval_max" else RELEASE_SIGNOFF_KEY
+    if remote.get(principal) != STAGE_AGENT_BY or _ceiling(key, remote) < APPROVAL_CEILINGS[key].index(level):
+        raise ValueError(f"{level} vượt quyền `{key}` ở nhánh chính của remote")
+
+
+def _default_contains(mirror: Path, sha: str) -> bool:
+    return (
+        bool(STAGE_SHA_RE.fullmatch(sha))
+        and _git(
+            mirror, "--no-replace-objects", "merge-base", "--is-ancestor", sha, "HEAD", env=_go_git_env()
+        ).returncode
+        == 0
+    )
+
+
+def _scale_origin(base: Path, candidates: Sequence[str]) -> Dict[str, str]:
+    with tempfile.TemporaryDirectory(prefix="xt-approval-") as tmp:
+        mirror = _go_origin_mirror(base, Path(tmp))
+        for sha in set(candidates):
+            if not _default_contains(mirror, sha):
+                raise ValueError(f"ứng viên {sha[:12]} chưa nằm trên nhánh chính của remote")
+        return _go_mirror_keys(base, mirror)
+
+
+def _scale_rows(rc: Dict[str, Any], required: Sequence[str]) -> Dict[str, str]:
+    rows = rc["rows"]
+    missing = [key for key in required if not any(row["id"] == key and row["result"] == "PASS" for row in rows)]
+    failed = [row["id"] for row in rows if row["result"] == "FAIL"]
+    if missing or failed:
+        raise ValueError(f"tiêu chí chưa đạt: {', '.join(dict.fromkeys([*missing, *failed]))}")
+    return {row["id"]: row["evidence"] for row in rows if row["id"] in required}
 
 
 def _stage_new_cycle(led: Optional[Dict[str, Any]], reason: str) -> Dict[str, Any]:
@@ -13179,6 +13364,15 @@ def _stage_print(led: Optional[Dict[str, Any]], as_json: bool) -> None:
         print(f"  giai đoạn {locked} khoá; PLAN đợt này khai `Giai đoạn sản phẩm: {led['stage']} ({led['cycle']})`")
 
 
+def _agent_approve_stage(base: Path, led: Optional[Dict[str, Any]], args: argparse.Namespace) -> Dict[str, Any]:
+    # Quyền trước mọi kiểm khác, ở MỌI giai đoạn (S-507): khoá chưa hiệu lực → chỉ người, không xét cây/trần/cổng.
+    if not stage_agent_approval(base):
+        raise StageError(
+            f"`stage approve` {STAGE_HUMAN_ONLY}; agent tự duyệt cần `{STAGE_APPROVAL_KEY}: agent` (ADR-0069)"
+        )
+    return _stage_approve(led, args.sha, STAGE_AGENT_BY, args.note, base)
+
+
 def _stage_dispatch(
     args: argparse.Namespace, base: Path
 ) -> Optional[Callable[[Optional[Dict[str, Any]]], Dict[str, Any]]]:
@@ -13191,21 +13385,18 @@ def _stage_dispatch(
         return lambda led: _stage_init(led, args.adopt, by, args.evidence or "")
     if cmd == "submit":
         sha = _stage_clean_head(base)
-        _stage_submit(
-            read_stage(base), sha, args.evidence, {}
-        )  # trạng thái sai → từ chối trước khi chạy smoke (≤ 30 phút)
+        pending = _stage_submit(read_stage(base), sha, args.evidence, {})
         extra = {**_stage_submit_proof(base), "smoke": _stage_smoke(base, sha)}
+        if pending["stage"] > 1 and _xt_keys(base).get("stage_approval_max") in {"2", "3"}:
+            _, arts = _release_artifacts(base)
+            extra["artifact_digest"] = _release_subject(base, arts, sha, tree_readable=False)[0]["digest"]
         return lambda led: _stage_submit(led, sha, args.evidence, extra)
     if cmd == "reopen":
         return lambda led: _stage_reopen(led, args.reason)
     if cmd == "approve":
-        lock = stage_agent_approval(base)  # ADR-0069: xt.yaml (cây + nhánh chính) khai `stage_approval: agent`
         if agent_session():
-            if not lock:
-                raise StageError(
-                    f"`stage approve` {STAGE_HUMAN_ONLY}; agent tự duyệt cần `{STAGE_APPROVAL_KEY}: agent` (ADR-0069)"
-                )
-            return lambda led: _stage_approve(led, args.sha, STAGE_AGENT_BY, args.note, base)
+            return lambda led: _agent_approve_stage(base, led, args)
+        lock = stage_agent_approval(base)
         by = _stage_by(base)
         return lambda led: _stage_approve(led, args.sha, by, args.note, base if lock else None)
     if cmd == "new-cycle":
@@ -13344,18 +13535,39 @@ def _verified_blueprint_run(base: Path, bp: Path) -> Optional[Dict[str, Any]]:
     }
 
 
+def human_must_ids() -> Set[str]:
+    """Các ID lớp B ở bảng chính thức (D-529) của khung đã cài."""
+    path = DEFAULT_FRAMEWORK / "11-autonomous-loop/stop-points-and-escalation.md"
+    text = path.read_text(encoding="utf-8")
+    section = re.search(r"^## Phân lớp các mục MUST có công việc của người$([\s\S]*?)(?=^## |\Z)", text, re.M)
+    if not section:
+        raise ValueError(f"{path.name}: thiếu bảng lớp A/B/C")
+    items = re.findall(r"^\| `([A-Z][A-Z0-9-]+-\d{3,})` \| ([ABC]) \|", section[1], re.M)
+    lines = [line for line in section[1].splitlines() if line.startswith("| `")]
+    if (
+        len(items) != 16  # D-529: số mục đã đối chiếu của bảng phiên bản 1
+        or len(items) != len(lines)
+        or len({key for key, _ in items}) != len(items)
+        or {kind for _, kind in items} != set("ABC")
+    ):
+        raise ValueError(f"{path.name}: ID/lớp thiếu, trùng hoặc không hợp lệ")
+    return {key for key, kind in items if kind == "B"}
+
+
 def _release_blueprint(base: Path, blueprint: str) -> Dict[str, str]:
     bp = base / blueprint
     if not bp.is_file():
         return _release_row("blueprint", "FAIL", f"không thấy {blueprint} — `xt.py compose` rồi tick theo bằng chứng")
     try:
         s = blueprint_status(bp)
+        waiting = set(s["open_must"]) & human_must_ids() if s["open_must"] else set()
         run = _verified_blueprint_run(base, bp) or _blueprint_run(bp)
     except (OSError, ValueError) as exc:  # ValueError: không phải UTF-8 — FAIL có JSON, không traceback (AUD-CODE-017)
         return _release_row("blueprint", "FAIL", f"không đọc được {blueprint} (hoặc backlog nó khai): {exc}")
     if run is None:
         return _release_row("blueprint", "FAIL", "không chạy được lệnh kiểm (XT_RECORD_TIMEOUT sai)")
-    bad = [f"MUST mở {len(s['open_must'])}"] if s["open_must"] else []
+    autonomous = set(s["open_must"]) - waiting
+    bad = [f"MUST mở {len(autonomous)}"] if autonomous else []
     bad += [f"miễn trừ không hợp lệ {len(s['bad_waivers'])}"] if s["bad_waivers"] else []
     bad += [f"dòng sai {len(s['bad_lines'])}"] if s["bad_lines"] else []
     bad += (
@@ -13368,6 +13580,10 @@ def _release_blueprint(base: Path, blueprint: str) -> Dict[str, str]:
     )
     if bad:
         return _release_row("blueprint", "FAIL", "`blueprint-status --strict --run`: " + " · ".join(bad) + note)
+    if waiting:
+        return _release_row(
+            "blueprint", "N/A", "Chờ người xử lý hoặc ghi Miễn: trong BLUEPRINT: " + ", ".join(sorted(waiting))
+        )
     src = (
         "dùng lại `loop verify --all` trên cây này" if run.get("reused") else "`blueprint-status --strict --run` exit 0"
     )
@@ -14558,15 +14774,70 @@ def _release_promotion(base: Path, fails: List[str], human: List[str], subject: 
                 " cây làm việc lẫn nhánh chính, ADR-0074) — người ký"
             ],
         }
-    return {"state": "approved", "reasons": [rel for rel, _ in docs], "by": by}
+    result: Dict[str, Any] = {"state": "approved", "reasons": [rel for rel, _ in docs], "by": by}
+    if RELEASE_AGENT_NAME in (name.casefold() for name in by):
+        scale = (_blueprint_front(base, RELEASE_SIGN_BLUEPRINT) or ("S", "", ""))[0] or "L"
+        if scale != "S":
+            problem = _simulated_sign_problem(base, docs, scale)
+            if problem:
+                return {"state": "pending_human", "reasons": [problem]}
+            result["simulated"] = True
+    return result
+
+
+def _go_sign_cells(text: str) -> Iterator[List[str]]:
+    part = re.split(r"^## 5\b.*$", _markdown_shown(text), maxsplit=1, flags=re.M)
+    section = re.split(r"^## ", part[1], maxsplit=1, flags=re.M)[0] if len(part) == 2 else ""
+    return (_go_cells(m[0]) for m in GO_SIGN_ROW_RE.finditer(section))
+
+
+def _simulated_sign_problem(base: Path, docs: List[Tuple[str, str]], scale: str) -> str:
+    _sibling_imports()
+    import xt_scale
+
+    key = "release_signoff_scale"
+    try:
+        remote = _scale_origin(base, ())
+        if remote.get(RELEASE_SIGNOFF_KEY) != RELEASE_AGENT_NAME or scale not in APPROVAL_CEILINGS[key]:
+            return "chưa xác nhận quyền ký ở nhánh chính của remote"
+        if min(_ceiling(key, _xt_keys(base)), _ceiling(key, remote)) < APPROVAL_CEILINGS[key].index(scale):
+            return f"quy mô {scale} vượt `{key}`"
+    except (OSError, ValueError):
+        return "không đọc được trần ký ở nhánh chính của remote"
+    for rel, text in docs:
+        for role, name, _, _ in _go_sign_cells(text):
+            if name.casefold() == RELEASE_AGENT_NAME and not xt_scale.verify_simulation(
+                text, _markdown_shown(text), role, scale
+            ):
+                return f"{rel}: chữ ký mô phỏng không khớp bằng chứng dòng 20"
+    return ""
+
+
+def _human_na_waivers(base: Path, rows: List[Dict[str, str]], subject: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+    """Only an explicit, subject-bound human GO in a guard-protected §5 row can waive an inapplicable run."""
+    operational = {k for k, _ in RELEASE_RUN_KEYS}
+    missing = {r["id"] for r in rows if r["id"] in operational and r["result"] == "N/A" and r["level"] == "BLOCKER"}
+    waivers: Dict[str, Dict[str, str]] = {}
+    if missing:
+        for rel, text in _signed_go_no_go(base):
+            if _approval_problem(base, rel, text, subject):
+                continue
+            for role, name, decision, date in _go_sign_cells(text):
+                match = re.fullmatch(r"Miễn ([a-z_]+): (.+)", role)
+                if (
+                    match
+                    and match[1] in missing
+                    and _go_human_name(match[2])
+                    and _go_human_name(name)
+                    and _decision(decision) == "go"
+                ):
+                    waivers[match[1]] = {"by": name, "reason": match[2], "date": date, "file": rel}
+    return waivers
 
 
 def _go_signers(text: str) -> List[str]:
     """Ô tên (cột 2) nhìn thấy (`_go_visible_name`) của các dòng ký §5 hiển thị — cùng phạm vi `_go_sign_rows`."""
-    part = re.split(r"^## 5\b.*$", _markdown_shown(text), maxsplit=1, flags=re.M)
-    section = re.split(r"^## ", part[-1], maxsplit=1, flags=re.M)[0] if len(part) == 2 else ""
-    names = (m[0].strip().strip("|").split("|")[1].strip() for m in GO_SIGN_ROW_RE.finditer(section))
-    return [name for name in names if _go_visible_name(name)]
+    return [cells[1] for cells in _go_sign_cells(text) if _go_visible_name(cells[1])]
 
 
 def _release_deploy(base: Path, subject: dict[str, Any]) -> list[dict[str, str]]:
@@ -14623,7 +14894,8 @@ def release_check(base: Path, blueprint: str, status: str, unchecked_must: str =
         _release_go_no_go(base),
     ]
     fails = [r["id"] for r in rows if r["result"] == "FAIL" and r["level"] == "BLOCKER"]
-    human = [r["id"] for r in rows if r["result"] == "N/A" and r["level"] == "BLOCKER"]
+    waived = _human_na_waivers(base, rows, subject)
+    human = [r["id"] for r in rows if r["result"] == "N/A" and r["level"] == "BLOCKER" and r["id"] not in waived]
     return {
         "schema": RELEASE_SCHEMA,
         "head": head,
@@ -14631,6 +14903,7 @@ def release_check(base: Path, blueprint: str, status: str, unchecked_must: str =
         "rows": rows,
         "fails": fails,
         "human": human,
+        **({"waived": waived} if waived else {}),
         "go": not fails,
         "verdict": "NO-GO" if fails else "GO (chờ người)" if human else "GO",
         "subject": subject,
@@ -14929,21 +15202,32 @@ class DevGuardDenied(DeployError):
     """Một bước bị guard chặn trước khi đụng môi trường."""
 
 
-def _dev_preflight(base: Path, env: str) -> int:
-    """Lát dev dùng adapter của pack, argv cố định. Không chạy lệnh triển khai tuỳ ý hoặc production."""
-    if env != "dev" or "dev" not in _deploy_envs(base):
-        raise DeployError("chỉ hỗ trợ môi trường dev đã khai")
-    config = _xt_keys(base)
-    commands = [config.get(action + "_dev", "") for action in DEV_ACTIONS]
-    blocked = next((reason for reason in guard_blocks([*commands, f"{DEV_DRIVER} candidate"], base) if reason), "")
+def _deploy_commands(config: dict[str, str], env: str) -> dict[str, str]:
+    return {key: config.get(f"{key}_{env}", "") for key in DEV_ACTIONS}
+
+
+def _packed_preview(env: str, commands: dict[str, str]) -> bool:
+    return env == "dev" and any(cmd.startswith(DEV_DRIVER) for cmd in commands.values())
+
+
+def _dev_preflight(base: Path, env: str, config: dict[str, str]) -> int:
+    if env not in _deploy_envs(base):
+        raise DeployError(f"môi trường {env} chưa khai trong deploy_envs")
+    commands = _deploy_commands(config, env)
+    packed = _packed_preview(env, commands)
+    gates = list(commands.values()) + ([f"{DEV_DRIVER} candidate"] if packed else [])
+    blocked = next((reason for reason in guard_blocks(gates, base) if reason), "")
     if blocked:
         raise DevGuardDenied(blocked)
-    if commands != [f"{DEV_DRIVER} {action}" for action in DEV_ACTIONS]:
-        raise DeployError("dev cần đủ bốn lệnh của adapter web-api-ts trong xt.yaml")
-    if config.get("url_dev") != "http://127.0.0.1:4317":
-        raise DeployError("url_dev phải là địa chỉ loopback của adapter web-api-ts")
-    if not (base / "scripts/dev-preview.mjs").is_file():
-        raise DeployError("thiếu scripts/dev-preview.mjs của gói")
+    if packed:
+        if commands != {key: f"{DEV_DRIVER} {key}" for key in DEV_ACTIONS}:
+            raise DeployError("dev cần đủ bốn lệnh của adapter web-api-ts trong xt.yaml")
+        if config.get("url_dev") != "http://127.0.0.1:4317":
+            raise DeployError("url_dev phải là địa chỉ loopback của adapter web-api-ts")
+        if not (base / "scripts/dev-preview.mjs").is_file():
+            raise DeployError("thiếu scripts/dev-preview.mjs của gói")
+    elif any(gate_noop(cmd) for cmd in commands.values()):
+        raise DeployError(f"adapter {env} có cổng rỗng. Khai đủ deploy, smoke, digest, rollback trong xt.yaml")
     timeout = os.environ.get("XT_DEPLOY_TIMEOUT", "1200")
     if not re.fullmatch(r"[1-9][0-9]{0,4}", timeout):
         raise DeployError("XT_DEPLOY_TIMEOUT cần số giây dương, tối đa 99999")
@@ -14951,19 +15235,24 @@ def _dev_preflight(base: Path, env: str) -> int:
 
 
 @contextlib.contextmanager
-def _dev_lock(base: Path) -> Iterator[Path]:
+def _dev_lock(base: Path, env: str = "dev") -> Iterator[Path]:
     """Một bản dev trên checkout chính của gói. Giữ khoá riêng xuyên suốt cả deploy và rollback."""
     tree = _git_tree(base)
     if tree != (base, base / ".git") or not (base / ".git").is_dir():
         raise DeployError("cần checkout chính ở gốc repository (không chạy trong linked worktree)")
-    state = base / ".git/xt-preview/dev"
+    state = base / ".git/xt-preview" / env
     if state.resolve() != state:
         raise DeployError("thư mục trạng thái dev không được qua symlink")
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
     fc = _fcntl()
     if fc is None:
         raise DeployError("triển khai dev cần flock trên Linux")
-    fd = os.open(state / "coordinator.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    # Cùng một sổ cho mọi môi trường. Khoá dev cũ cũng loại trừ CLI của bản khung trước.
+    lock_dir = state.parent / "dev"
+    if lock_dir.resolve() != lock_dir:
+        raise DeployError("thư mục khoá không được qua symlink")
+    lock_dir.mkdir(mode=0o700, exist_ok=True)
+    fd = os.open(lock_dir / "coordinator.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         fc.flock(fd, fc.LOCK_EX | fc.LOCK_NB)
         yield state
@@ -14971,10 +15260,10 @@ def _dev_lock(base: Path) -> Iterator[Path]:
         os.close(fd)
 
 
-def _dev_candidate(base: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _dev_candidate(base: Path, *, packed: bool = True) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     row, arts = _release_artifacts(base)
-    if row is None or row["result"] != "PASS" or [a["path"] for a in arts] != ["dist/app.tgz"]:
-        raise DeployError("cần dist/app.tgz đã build, khớp release_artifacts và sidecar (nếu có)")
+    if row is None or row["result"] != "PASS" or (packed and [a["path"] for a in arts] != ["dist/app.tgz"]):
+        raise DeployError("cần artifact đã build (gói web: dist/app.tgz), khớp release_artifacts và sidecar (nếu có)")
     head = _release_git_stdout(base, "rev-parse", "--verify", "HEAD").strip()
     subject, why = _release_subject(base, arts, head, tree_readable=True)
     identity = {key: subject[key] for key in ("head", "content", "digest")}
@@ -14990,16 +15279,62 @@ class DevPreview:
     timeout: int
     subject: dict[str, Any]
     previous: str
+    environment: str = "dev"
+    commands: Optional[dict[str, str]] = None
+    artifacts: tuple[str, ...] = ("dist/app.tgz",)
+    manifest: Optional[list[dict[str, Any]]] = None
+    fallback: Optional[dict[str, Any]] = None
+    checkout: Optional[Path] = None
+    approved_head: str = ""
+    before_effect: Optional[Callable[[str], None]] = None
+    touched: bool = False
+
+    @contextlib.contextmanager
+    def workspace(self) -> Iterator[None]:
+        if not self.approved_head:
+            yield
+            return
+        _sibling_imports()
+        import xt_deploy
+
+        with tempfile.TemporaryDirectory(prefix="xt-deploy-") as directory:
+            self.checkout = xt_deploy.clean_adapter_checkout(
+                sys.modules[__name__], self.base, Path(directory), self.approved_head
+            )
+            yield
 
     def invoke(self, action: str) -> tuple[dict[str, Any], Optional[str]]:
         """digest đọc giá trị quan sát ở đích; không truyền sẵn đáp án. Sổ không giữ stdout/stderr."""
-        cmd = f"{DEV_DRIVER} {action}"
+        cmd = self.commands[action] if self.commands is not None else f"{DEV_DRIVER} {action}"
         env = {k: v for k, v in os.environ.items() if not k.startswith("XT_DEPLOY_")}
-        env.update(XT_DEPLOY_ENV="dev", XT_DEPLOY_STATE=str(self.state), XT_DEPLOY_ARTIFACTS="dist/app.tgz")
+        paths = self.artifacts
+        if self.commands is not None and action in ("deploy", "rollback"):
+            _sibling_imports()
+            import xt_deploy
+
+            backup = self.fallback if action == "rollback" else None
+            version = self.previous if backup else self.subject["digest"]
+            manifest = backup["artifacts"] if backup else self.manifest or []
+            paths = tuple(item["path"] for item in manifest)
+            try:
+                saved = xt_deploy.artifact_root(self.state, version)
+                xt_deploy.verify_artifacts(saved, version, manifest)
+                if self.checkout is not None:
+                    xt_deploy.materialize_artifacts(saved, self.checkout, paths)
+                env["XT_DEPLOY_ARTIFACT_ROOT"] = str(saved)
+                if self.before_effect is not None:
+                    self.before_effect(action)
+                    self.touched = True
+            except (OSError, ValueError, DeployError) as exc:
+                if self.before_effect is not None and not self.touched:
+                    raise DeployError(str(exc)) from exc
+                return {"cmd_sha256": hashlib.sha256(cmd.encode()).hexdigest(), "exit_code": 1}, None
+        env.update(XT_DEPLOY_ENV=self.environment, XT_DEPLOY_STATE=str(self.state), XT_DEPLOY_ARTIFACTS=" ".join(paths))
         if action != "digest":
             env.update(XT_DEPLOY_DIGEST=self.subject["digest"], XT_DEPLOY_PREVIOUS=self.previous)
         with tempfile.TemporaryFile() as sink:
-            rc = self.run(cmd.split(), env, sink)
+            argv = ["bash", "-o", "pipefail", "-c", cmd] if self.commands is not None else cmd.split()
+            rc = self.run(argv, env, sink)
             sink.seek(0)
             raw = sink.read(67)
         digest = raw[:64].decode("ascii") if re.fullmatch(rb"[0-9a-f]{64}(?:\r?\n)?", raw) else None
@@ -15009,7 +15344,7 @@ class DevPreview:
         try:
             proc = subprocess.Popen(
                 argv,
-                cwd=self.base,
+                cwd=self.checkout or self.base,
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=sink,
@@ -15099,53 +15434,163 @@ def _dev_write(base: Path, ledger: dict[str, Any]) -> None:
     write_atomic(path, json.dumps(_validate_deploy_ledger(ledger), ensure_ascii=False, indent=2) + "\n", keep_mode=True)
 
 
-def _dev_execute(base: Path, state: Path, timeout: int, explicit: bool) -> tuple[dict[str, Any], bool]:
+def _deploy_authorized_head(base: Path, env: str, commands: dict[str, str], ledger: dict[str, Any]) -> str:
+    if env == "dev":
+        return ""
+    _sibling_imports()
+    import xt_deploy
+
+    head = _release_git_stdout(base, "rev-parse", "--verify", "HEAD").strip()
+    origin = xt_deploy.production_authority(sys.modules[__name__], base, env, head, ledger)
+    if _deploy_commands(origin.cfg or {}, env) != commands:
+        raise DeployError("cấu hình triển khai đổi trong lúc kiểm")
+    return head
+
+
+def _prepare_configured(
+    driver: DevPreview,
+    ledger: dict[str, Any],
+    target: Optional[dict[str, Any]],
+    artifacts: list[dict[str, Any]],
+    env: str,
+    commands: dict[str, str],
+    explicit: bool,
+    url: str,
+) -> Optional[str]:
+    _sibling_imports()
+    import xt_deploy
+
+    receipt_url = xt_deploy.receipt_url(url)
+    if driver.approved_head and not explicit:
+        if driver.approved_head != driver.subject["head"]:
+            raise DeployError("HEAD đổi trong lúc kiểm ứng viên")
+        xt_deploy.approve_candidate(sys.modules[__name__], driver.base, env, driver.subject, ledger)
+    if target is not None:
+        previous_digest = target["subject"]["digest"]
+        xt_deploy.verify_artifacts(
+            xt_deploy.artifact_root(driver.state, previous_digest), previous_digest, target["artifacts"]
+        )
+    if not explicit:
+        xt_deploy.retain_artifacts(driver.base, driver.state, driver.subject["digest"], artifacts)
+    driver.manifest = artifacts
+    driver.commands = commands
+    driver.environment = env
+    driver.artifacts = tuple(a["path"] for a in artifacts)
+    driver.fallback = target
+    return receipt_url
+
+
+def _deploy_mutation_gate(
+    driver: DevPreview, ledger: dict[str, Any], mark_unknown: Callable[[], None]
+) -> Callable[[str], None]:
+    _sibling_imports()
+    import xt_deploy
+    import xt_release_ops
+
+    core = sys.modules[__name__]
+    before = copy.deepcopy(ledger["envs"])
+    config = _go_git(driver.base, "không đọc được cấu hình ứng viên", "show", f"{driver.approved_head}:xt.yaml")
+
+    def verify(action: str) -> None:
+        origin = xt_deploy.remote_authority(core, driver.base, driver.environment, driver.approved_head, before, config)
+        if action == "deploy" and not xt_release_ops.protected_signoff(core, driver.base, origin, driver.subject):
+            raise DeployError("chữ ký GO đã đổi trước khi triển khai")
+        if not driver.touched:
+            mark_unknown()
+
+    return verify
+
+
+def _apply_deployment(
+    driver: DevPreview,
+    ledger: dict[str, Any],
+    slot: dict[str, Any],
+    target: Optional[dict[str, Any]],
+    receipt: dict[str, Any],
+    explicit: bool,
+) -> bool:
+    def mark_unknown() -> None:
+        ledger["envs"][driver.environment] = slot
+        slot.update(current=None, previous=target, unknown=True)
+        _dev_write(driver.base, ledger)
+
+    with driver.workspace():
+        if driver.approved_head:
+            driver.before_effect = _deploy_mutation_gate(driver, ledger, mark_unknown)
+        else:
+            mark_unknown()
+        if explicit:
+            return _dev_restore(driver, receipt, True)
+        return _dev_install(driver, receipt)
+
+
+def _dev_execute(
+    base: Path, state: Path, timeout: int, explicit: bool, env: str = "dev", config: Optional[dict[str, str]] = None
+) -> tuple[dict[str, Any], bool]:
+    config = _xt_keys(base) if config is None else config
+    commands = _deploy_commands(config, env)
+    packed = _packed_preview(env, commands)
     ledger = read_deploy_ledger(base)
-    slot = ledger["envs"].setdefault("dev", {"current": None, "previous": None, "unknown": False})
+    approved = _deploy_authorized_head(base, env, commands, ledger)
+    slot = ledger["envs"].get(env, {"current": None, "previous": None, "unknown": False})
     current, previous = slot["current"], slot["previous"]
     if explicit:
         if previous is None:
-            raise DeployError("chưa có bản dev trước để quay lui")
+            raise DeployError(f"chưa có bản {env} trước để quay lui")
         source = current or previous
         subject, artifacts, target = source["subject"], source["artifacts"], previous
     else:
-        subject, artifacts = _dev_candidate(base)
+        subject, artifacts = _dev_candidate(base, packed=packed)
         target = current or previous
     prior_digest = target["subject"]["digest"] if target else ""
     receipt = _dev_receipt(subject, artifacts, prior_digest)
-    driver = DevPreview(base, state, timeout, subject, prior_digest)
-    if not explicit:
+    driver = DevPreview(base, state, timeout, subject, prior_digest, approved_head=approved)
+    if not packed:
+        url = _prepare_configured(
+            driver, ledger, target, artifacts, env, commands, explicit, config.get(f"url_{env}", "")
+        )
+        receipt.update(env=env, url=url)
+    elif not explicit:
         check, _ = driver.invoke("candidate")
         if check["exit_code"]:
             raise DeployError("không xác nhận được dist/app.tgz từ mã hiện tại; chạy pnpm build rồi thử lại")
-    # Nếu tiến trình bị ngắt sau khi chạm đích, lần sau chỉ có thể tin bản đã xác nhận sau khi smoke lại.
-    slot.update(current=None, previous=target, unknown=True)
-    _dev_write(base, ledger)
-    if explicit:
-        ok = _dev_restore(driver, receipt, True)
-    else:
-        ok = _dev_install(driver, receipt)
+
+    ok = _apply_deployment(driver, ledger, slot, target, receipt, explicit)
     receipt["finished"] = now_iso()
     if receipt["result"] == "deployed":
         fallback = previous if prior_digest == subject["digest"] else target
         slot.update(current=receipt, previous=fallback, unknown=False)
     elif receipt["result"] == "rolled_back":
         slot.update(current=target, previous=current if explicit else previous, unknown=False)
-    ledger["events"].append(receipt)
+    ledger["events"] = [*ledger["events"][-49:], receipt]
     _dev_write(base, ledger)
+    if env != "dev" and receipt["result"] == "rollback_failed":
+        reason = f"Triển khai {env}: quay lui hỏng; chưa xác nhận được bản đang phục vụ."
+        update_state(
+            base,
+            lambda cur: {
+                **(cur or {"active": True}),
+                "blocked": True,
+                "blocked_reason": reason,
+                "blocked_at": now_iso(),
+            },
+        )
     return receipt, ok
 
 
 def cmd_deploy_dev(args: argparse.Namespace) -> int:
+    if str(SCRIPT_DIR) not in sys.path:
+        sys.path.insert(0, str(SCRIPT_DIR))
     base = loop_root(project_dir())
     try:
-        timeout = _dev_preflight(base, args.env)
-        with _dev_lock(base) as state:
-            receipt, ok = _dev_execute(base, state, timeout, args.deploy_cmd == "rollback")
+        config = _xt_keys(base)
+        timeout = _dev_preflight(base, args.env, config)
+        with _dev_lock(base, args.env) as state:
+            receipt, ok = _dev_execute(base, state, timeout, args.deploy_cmd == "rollback", args.env, config)
     except (DeployError, OSError, ValueError, _ReleaseTreeError) as exc:
-        print(f"✗ deploy dev: {exc}", file=sys.stderr)
+        print(f"✗ deploy {args.env}: {exc}", file=sys.stderr)
         return 126 if isinstance(exc, DevGuardDenied) else 2
-    print(json.dumps(receipt) if args.json else f"dev: {receipt['result']} — {receipt['url']} ({DEPLOY_LEDGER})")
+    print(json.dumps(receipt) if args.json else f"{args.env}: {receipt['result']} — {receipt['url']} ({DEPLOY_LEDGER})")
     return 0 if ok else 1
 
 
@@ -15487,17 +15932,20 @@ class GoRemote(NamedTuple):
 
     refusals: List[str]
     signoff: str  # giá trị ở xt.yaml của dự án tại HEAD (nhánh mặc định) của mirror; "" = vắng/không đọc được
+    scale: str = "S"
+    merged: bool = False
+    document_matches: bool = True
 
 
-def _go_mirror_key(base: Path, mirror: Path) -> str:
+def _go_mirror_keys(base: Path, mirror: Path) -> Dict[str, str]:
     """`release_signoff` ở xt.yaml của dự án tại HEAD của `mirror` (AUD-SEC-552): dự án ở thư mục con đọc theo đường
     tương đối gốc repo (`rev-parse --show-prefix`, như `_committed_xt_text` đọc `./xt.yaml`); không có → ""."""
     prefix = _go_git(base, "git rev-parse --show-prefix", "rev-parse", "--show-prefix").strip()
-    r = _git(mirror, "show", f"HEAD:{prefix}xt.yaml", env=_go_git_env())
-    return _yaml_keys(r.stdout).get(RELEASE_SIGNOFF_KEY, "") if r.returncode == 0 else ""
+    r = _git(mirror, "--no-replace-objects", "show", f"HEAD:{prefix}xt.yaml", env=_go_git_env())
+    return _yaml_keys(r.stdout) if r.returncode == 0 else {}
 
 
-def _go_remote_scan(base: Path) -> GoRemote:
+def _go_remote_scan(base: Path, candidate: str = "", document: Optional[Tuple[str, str]] = None) -> GoRemote:
     """Một clone mirror mới của `origin` cho cả hai việc: lời từ chối của người còn hiệu lực (`_go_live_refusals`,
     `<sha ngắn> <tệp>:<dòng> \\`<dòng>\\``, đọc từ mirror và lịch sử cục bộ — D-404, D-406) và khoá `release_signoff`
     ở nhánh mặc định của remote (`_go_mirror_key`, D-407). Repo cục bộ nông, không có `origin`, clone lỗi (mạng, xác
@@ -15508,34 +15956,48 @@ def _go_remote_scan(base: Path) -> GoRemote:
         with tempfile.TemporaryDirectory(prefix="xt-release-sign-") as tmp:
             mirror = _go_origin_mirror(base, Path(tmp))
             remote = _go_history_blobs(_go_git(mirror, "git log (mirror)", *GO_HISTORY_LOG))
-            signoff = _go_mirror_key(base, mirror)
+            keys = _go_mirror_keys(base, mirror)
+            merged = bool(candidate) and _default_contains(mirror, candidate)
+            document_matches = True
+            if document:
+                prefix = _go_git(base, "project prefix", "rev-parse", "--show-prefix").strip()
+                current = _git(mirror, "--no-replace-objects", "show", f"HEAD:{prefix}{document[0]}", env=_go_git_env())
+                document_matches = current.returncode == 0 and current.stdout == document[1]
         local = _go_history_blobs(_go_git(base, "git log", *GO_HISTORY_LOG))
     except (ValueError, IndexError) as exc:
         raise ReleaseSignError(
             f"không đọc được lịch sử git để kiểm lời từ chối NO-GO ({exc}) — agent không ký"
         ) from exc
-    return GoRemote(_go_live_refusals(remote, local), signoff)
+    return GoRemote(
+        _go_live_refusals(remote, local),
+        keys.get(RELEASE_SIGNOFF_KEY, ""),
+        keys.get("release_signoff_scale", "S"),
+        merged,
+        document_matches,
+    )
 
 
-def _sign_scope_check(base: Path) -> None:
-    """Phạm vi agent được ký (phản biện ADR-0074): blueprint khai `scale: S` — M/L có GO-NO-GO dòng 20 BLOCKER (người
-    dùng thử thật, ADR-0048) mà máy không điền; không còn việc `loop defer` chờ người và không vòng nào đang bị chặn
+def _sign_scope_check(base: Path) -> str:
+    """Phạm vi agent được ký (ADR-0074/D-526): quy mô blueprint không vượt trần ở cây; không còn việc `loop defer` chờ người và không vòng nào đang bị chặn
     (cờ, lỗi lặp, task đỏ quá trần, kết thúc `blocked` — AUD-HAR-377) trong vòng của dự án."""
     try:
         meta = parse_frontmatter((base / RELEASE_SIGN_BLUEPRINT).read_text(encoding="utf-8"))[0]
     except (OSError, ValueError) as exc:
         raise ReleaseSignError(f"không đọc được {RELEASE_SIGN_BLUEPRINT}: {exc}") from exc
-    if str(meta.get("scale", "")).strip() != "S":
-        raise ReleaseSignError(
-            f"{RELEASE_SIGN_BLUEPRINT} khai `scale: {meta.get('scale', '')}` — agent chỉ ký quy mô S (M/L: GO-NO-GO dòng 20"
-            " là BLOCKER người dùng thử, người ký)"
-        )
+    scale = str(meta.get("scale") or "L").strip()
+    levels = APPROVAL_CEILINGS["release_signoff_scale"]
+    if scale not in levels:
+        raise ReleaseSignError(f"quy mô blueprint không hợp lệ: {scale}")
+    if levels.index(scale) > _ceiling("release_signoff_scale", _xt_keys(base)):
+        raise ReleaseSignError(f"quy mô {scale} vượt `release_signoff_scale` (mặc định agent chỉ ký quy mô S)")
     waiting = _sign_deferred(base)
     if waiting:  # AUD-HAR-373: nêu sổ của worktree nào để người gỡ đúng chỗ
         raise ReleaseSignError(
             f"còn việc chờ người (`loop defer`): {', '.join(waiting)} — agent không ký; người xử lý xong thì"
             " `loop resolve --task <ID>` tại worktree chứa sổ đó"
         )
+
+    return scale
 
 
 def _worktree_entries(base: Path, env: Dict[str, str]) -> Optional[List[tuple[Path, bool]]]:
@@ -15663,16 +16125,25 @@ def _sign_deferred(base: Path) -> List[str]:
     return sorted(waiting)
 
 
-def _sign_remote_check(base: Path) -> None:
+def _sign_remote_check(
+    base: Path, scale: str = "S", candidate: str = "", document: Optional[Tuple[str, str]] = None
+) -> None:
     """Một lần clone mirror `origin` (`_go_remote_scan`): khoá `release_signoff: agent` phải có ở nhánh mặc định của
     remote (AUD-SEC-552 — `origin/main` cục bộ chưa fetch có thể cũ) và không còn lời từ chối của người (D-404…D-406)."""
-    remote = _go_remote_scan(base)
+    remote = _go_remote_scan(base, candidate, document)
     if remote.signoff != RELEASE_AGENT_NAME:
         raise ReleaseSignError(
             f"chỉ người ký: `{RELEASE_SIGNOFF_KEY}: agent` chưa bật trên remote — xt.yaml của dự án ở nhánh mặc định của"
             f" bản mirror `origin` vừa clone khai `{remote.signoff or '(vắng/không đọc được)'}` (`origin/main` cục bộ"
             " có thể cũ — AUD-SEC-552, ADR-0074)"
         )
+    key = "release_signoff_scale"
+    if scale != "S" and _ceiling(key, {key: remote.scale}) < APPROVAL_CEILINGS[key].index(scale):
+        raise ReleaseSignError(f"quy mô {scale} vượt `{key}` ở nhánh chính của remote")
+    if scale != "S" and not remote.merged:
+        raise ReleaseSignError(f"ứng viên {candidate[:12]} chưa nằm trên nhánh chính của remote")
+    if not remote.document_matches:
+        raise ReleaseSignError("GO-NO-GO đã đổi trên nhánh chính của remote — đọc lại ý kiến người trước khi ký")
     if remote.refusals:
         raise ReleaseSignError(
             f"người đã từ chối (lịch sử git): {'; '.join(remote.refusals)} — agent không ký đè (xoá/đổi tên/đổi VERSION"
@@ -15680,6 +16151,76 @@ def _sign_remote_check(base: Path) -> None:
             " hoặc cao hơn phiên bản bị từ chối — tệp không có phiên bản thì chính tệp đó — commit SAU lời từ chối và"
             " ĐẨY lên `origin`: chỉ dòng GO trên remote gỡ được, AUD-HAR-346)"
         )
+
+
+def _sign_escaped(
+    base: Path, days: int = 14, expected_repo: str = "", listed: Optional[List[Dict[str, Any]]] = None
+) -> Optional[List[int]]:
+    """Fixed fourteen-day observation of reversions on GitHub and audit findings added on the remote default branch."""
+    _sibling_imports()
+    import xt_scale
+
+    now = _dt.datetime.now(_dt.timezone.utc)
+    since = now - _dt.timedelta(days=days)
+    try:
+        url = _go_git(base, "origin", "config", "--local", "--no-includes", "--get", "remote.origin.url")
+        repo = github_origin_slug(url.strip())
+        if not repo or (expected_repo and expected_repo.casefold() != repo.casefold()):
+            return None
+        prefix = _go_git(base, "project prefix", "rev-parse", "--show-prefix").strip()
+        with tempfile.TemporaryDirectory(prefix="xt-escaped-") as tmp:
+            mirror = _go_origin_mirror(base, Path(tmp))
+            patch = _go_git(
+                mirror,
+                "audit history",
+                "log",
+                "--first-parent",
+                "--diff-merges=first-parent",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-renames",
+                "--format=%x1e",
+                "-p",
+                "-U0",
+                f"--since-as-filter={since.isoformat()}",
+                f"--until={now.isoformat()}",
+                "HEAD",
+                "--",
+                f":(literal){prefix}{RELEASE_SIGN_STATUS}",
+            )
+
+        def get(path: str) -> Any:
+            if listed is not None and "&per_page=100&page=" in path:
+                page = int(path.rsplit("=", 1)[1])
+                return listed[(page - 1) * 100 : page * 100]
+            pages = _gh_api_once(path, host="github.com")
+            return pages[0] if len(pages) == 1 else None
+
+        return xt_scale.escaped_window(repo, get, PR_REVERT_RE, patch, since, now)
+    except (OSError, ValueError, KeyError, TypeError, PrInputError):
+        return None
+
+
+def _scale_signature(base: Path, rc: Dict[str, Any], scale: str, text: str) -> Tuple[str, str]:
+    _sibling_imports()
+    import xt_scale
+
+    try:
+        head = _stage_clean_head(base)
+        if head != rc.get("head") or rc["subject"].get("head") != head:
+            raise ValueError("release-check chưa kiểm đúng HEAD")
+        if scale == "L":
+            escaped = _sign_escaped(base)
+            if escaped is None:
+                raise ValueError("chưa đo được escaped trong 14 ngày — cần số đo GitHub và lịch sử audit")
+            if escaped:
+                raise ValueError("lỗi lọt trong 14 ngày: " + ", ".join(f"#{n}" for n in escaped))
+        evidence = _scale_rows(rc, ("acceptance_lock", "deploy", *(k for k, _ in RELEASE_RUN_KEYS)))
+        return xt_scale.simulate(
+            text, _markdown_shown(text), scale, rc["subject"].get("digest"), evidence, RELEASE_AGENT_ROLE
+        )
+    except (OSError, ValueError, StageError) as exc:
+        raise ReleaseSignError(str(exc)) from exc
 
 
 def _sign_insert(text: str, row: str, note: str) -> str:
@@ -15733,16 +16274,20 @@ def release_sign(base: Path, file: str, note: str, rc: Dict[str, Any]) -> str:
     clean = " ".join(note.replace("|", " ").split())
     if not clean:
         raise ReleaseSignError("`--note` rỗng — ghi vì sao GO (bằng chứng máy đã xét)")
-    _sign_scope_check(base)
+    scale = _sign_scope_check(base)
     rel, text = _sign_doc(base, file)
     if _go_sign_rows(text) or _go_no_go_refusals(text):  # kể cả ô tên vô hình (AUD-SEC-629): không ký cạnh
         raise ReleaseSignError(f"{rel}: §5 đã có dòng ký hoặc lời từ chối — không ký thêm")
-    _sign_remote_check(base)
     problem = _subject_problem(rel, text, rc["subject"])
     if problem:
         raise ReleaseSignError(problem)
     today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
-    row = f"| {RELEASE_AGENT_ROLE} | {RELEASE_AGENT_NAME} | GO | {today} |"
+    role = RELEASE_AGENT_ROLE
+    original = (rel, text) if scale != "S" else None
+    if scale != "S":
+        text, role = _scale_signature(base, rc, scale, text)
+    _sign_remote_check(base, scale, rc["head"] if original else "", original)
+    row = f"| {role} | {RELEASE_AGENT_NAME} | GO | {today} |"
     why = (
         f"> Agent ký {today} (`release-sign`, ADR-0074): `release-check` @ `{(rc['head'] or '')[:12]}` không FAIL,"
         f" việc người còn lại chỉ là chữ ký. {clean}"
@@ -15766,9 +16311,12 @@ RELEASE_SIGN_STATUS = "docs/ops/AUDIT-STATUS.md"  # làm giả được `release
 def cmd_release_sign(args: argparse.Namespace) -> int:
     base = project_dir()
     try:
+        scale = (_blueprint_front(base, RELEASE_SIGN_BLUEPRINT) or ("", "", ""))[0]
+        if scale in ("M", "L"):
+            _scale_permission(base, "release_signoff_scale", scale, (_stage_clean_head(base),))
         rc = release_check(base, RELEASE_SIGN_BLUEPRINT, RELEASE_SIGN_STATUS, unchecked_must="fail")
         rel = release_sign(base, args.file, args.note, rc)
-    except ReleaseSignError as exc:
+    except (ReleaseSignError, StageError, ValueError, OSError) as exc:
         print(f"✗ {exc}", file=sys.stderr)
         return 2
     print(f"✓ agent ký §5 {rel} — GO (ADR-0074); commit + PR: chữ ký có hiệu lực khi lên nhánh chính")
@@ -17544,14 +18092,25 @@ def cmd_pr_stats(args: argparse.Namespace) -> int:
         print("✗ --days phải ≥ 1 và --repo dạng owner/repo", file=sys.stderr)
         return 2
     now = _dt.datetime.now(_dt.timezone.utc)
+    source = args.repo
+    if getattr(args, "escaped", False) and not source:
+        raw = _git(project_dir(), "config", "--local", "--no-includes", "--get", "remote.origin.url", env=_go_git_env())
+        source = github_origin_slug(raw.stdout.strip())
     try:
         prs, runs, cut = _pr_stats_fetch(
-            f"repos/{args.repo}" if args.repo else "repos/{owner}/{repo}", now - _dt.timedelta(days=args.days)
+            f"repos/{source}" if source else "repos/{owner}/{repo}", now - _dt.timedelta(days=args.days)
         )
     except PrInputError as exc:
         print(f"✗ {exc}", file=sys.stderr)
         return 2
     s = pr_stats(prs, runs, now, args.days, cut)
+    if getattr(args, "escaped", False):
+        escapes = _sign_escaped(project_dir(), args.days, source or "", prs)
+        s.update(escaped=None if escapes is None else len(escapes), escaped_prs=escapes)
+        if not args.json:
+            print(
+                f"Lỗi lọt sau merge ({args.days} ngày): " + ("chưa đo được" if escapes is None else str(len(escapes)))
+            )
     print(json.dumps(s, ensure_ascii=False) if args.json else pr_stats_table(s), end="\n" if args.json else "")
     return 0
 
@@ -21201,6 +21760,18 @@ def _perf_trial_cmd(args: argparse.Namespace) -> int:
         return exc.code if isinstance(exc, TrialRefused) else 2
 
 
+def cmd_field_ops(args: argparse.Namespace) -> int:
+    _sibling_imports()
+    import xt_field
+
+    handler = (
+        xt_field.incident
+        if args.cmd == "incident"
+        else {"field-check": xt_field.field_check, "field-export": xt_field.export}[args.perf_cmd]
+    )
+    return handler(sys.modules[__name__], args)
+
+
 def cmd_perf(args: argparse.Namespace) -> int:
     handlers = {
         "compare": _perf_compare_cmd,
@@ -21430,10 +22001,22 @@ def _add_perf_trial(ppsub: "argparse._SubParsersAction[argparse.ArgumentParser]"
     plg.add_argument("--check", action="store_true", help="chỉ so file với bản dựng từ sổ")
 
 
+def _sibling_imports() -> None:
+    """Cho phép CLI chạy với python -I nạp các helper ở chính thư mục bộ cài."""
+    if str(SCRIPT_DIR) not in sys.path:
+        sys.path.insert(0, str(SCRIPT_DIR))
+
+
+def cmd_distribution(args: argparse.Namespace) -> int:
+    _sibling_imports()
+    import xt_distribution
+
+    return xt_distribution.run(sys.modules[__name__], args)
+
+
 def cmd_release_ops(args: argparse.Namespace) -> int:
     """Nạp module của lệnh khi chạy; help, doctor và những lệnh khác chỉ cần schema argparse."""
-    if str(SCRIPT_DIR) not in sys.path:  # `python -I xt.py …`: các module của bản cài nằm cạnh xt.py
-        sys.path.insert(0, str(SCRIPT_DIR))
+    _sibling_imports()
     core = sys.modules[__name__]
     if args.cmd == "admin-plan":
         import xt_ops_setup
@@ -21509,6 +22092,16 @@ def build_parser() -> argparse.ArgumentParser:
         acceptance.set_defaults(
             fn=lambda args: _acceptance_source(SCRIPT_DIR / "xt_acceptance.py").command(sys.modules[__name__], args)
         )
+    if (SCRIPT_DIR / "xt_distribution.py").is_file():
+        verify = sub.add_parser(
+            "release-verify", help="kiểm archive, lịch sử tag và attestation của workflow phát hành"
+        )
+        verify.add_argument("--tag", required=True)
+        verify.add_argument("--repo", default=FRAMEWORK_REPO)
+        verify.set_defaults(fn=cmd_distribution)
+        upgrade = sub.add_parser("upgrade", help="kéo bản khung đã ký vào PR của chính dự án")
+        upgrade.add_argument("upgrade_action", choices=("check", "open-pr"))
+        upgrade.set_defaults(fn=cmd_distribution)
     pv = sub.add_parser("validate")
     pv.add_argument(
         "--stale", type=int, metavar="N", help="cảnh báo mọi 'xác minh YYYY-MM-DD' cũ hơn N ngày (AUD-DOC-177)"
@@ -21661,6 +22254,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pss.add_argument("--days", type=int, default=PR_STATS_DAYS, help=f"số ngày nhìn lại (mặc định {PR_STATS_DAYS})")
     pss.add_argument("--repo", help="owner/repo (mặc định repo hiện tại của gh)")
+    pss.add_argument(
+        "--escaped",
+        action="store_true",
+        help="đối chiếu revert GitHub và sổ audit của origin trong cửa sổ; chưa đo được: null",
+    )
     pss.add_argument("--json", action="store_true", help="in JSON (merged, lead_time_hours, runs_per_pr, prs…)")
     ppr.set_defaults(fn=cmd_pr)
     prc = sub.add_parser(
@@ -21694,8 +22292,10 @@ def build_parser() -> argparse.ArgumentParser:
     ds.add_argument("--json", action="store_true", help="in sổ schema 1 và số liệu theo môi trường dưới dạng JSON")
     ds.set_defaults(fn=cmd_deploy_status)
     for op in ("run", "rollback"):
-        action = dsub.add_parser(op, allow_abbrev=False, help="áp dụng hoặc quay lui bản dev của gói web-api-ts")
-        action.add_argument("--env", required=True, help="dev")
+        action = dsub.add_parser(
+            op, allow_abbrev=False, help="áp dụng hoặc quay lui bằng adapter đã khai trong xt.yaml"
+        )
+        action.add_argument("--env", required=True, help="môi trường trong deploy_envs")
         action.add_argument("--json", action="store_true", help="in receipt schema 1")
         action.set_defaults(fn=cmd_deploy_dev)
     prg = sub.add_parser(
@@ -22025,6 +22625,19 @@ def build_parser() -> argparse.ArgumentParser:
     pdr.set_defaults(fn=cmd_doctor)
     pp = sub.add_parser("perf", help="đo và so hiệu năng có thống kê, chặn gian lận số đo (LOOP-OPT-*)")
     ppsub = pp.add_subparsers(dest="perf_cmd", required=True)
+    if (SCRIPT_DIR / "xt_field.py").is_file():
+        fc = ppsub.add_parser("field-check", help="kiểm số field và ngân sách")
+        fc.add_argument("--file", default="-", help="file FIELD hoặc - để đọc stdin")
+        fc.add_argument("--json", action="store_true")
+        fc.add_argument("--normalize", action="store_true", help="in dữ liệu đã kiểm để lưu")
+        fc.set_defaults(fn=cmd_field_ops)
+        fx = ppsub.add_parser("field-export", help="chạy nguồn field_export đã khai và in FIELD hợp lệ")
+        fx.set_defaults(fn=cmd_field_ops)
+        inc = sub.add_parser("incident", help="kiểm bằng chứng hành động sau sự cố")
+        ic = inc.add_subparsers(dest="incident_cmd", required=True).add_parser("check")
+        ic.add_argument("file")
+        ic.add_argument("--json", action="store_true")
+        ic.set_defaults(fn=cmd_field_ops)
     pc = ppsub.add_parser("compare", help="so hai bộ mẫu: improved/regressed/neutral/insufficient (exit 0 = improved)")
     pc.add_argument("before")
     pc.add_argument("after")
@@ -22099,4 +22712,5 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    sys.dont_write_bytecode = True
     sys.exit(main())

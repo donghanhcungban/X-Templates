@@ -270,6 +270,15 @@ class FactoryMetricsTest(unittest.TestCase):
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
         self.assertEqual(json.loads(p.stdout)["stage"]["stage"], 1)
+        # -I omits the script directory from sys.path; the tool must still import its sibling xt.py.
+        isolated = subprocess.run(
+            [sys.executable, "-I", str(ROOT / "scripts/xt_flow.py"), "--project", str(self.root), "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(isolated.returncode, 0, isolated.stderr)
+        self.assertEqual(json.loads(isolated.stdout)["stage"]["stage"], 1)
 
     def test_release_snapshot_binds_tree_head_artifact_and_current_local_verify(self):
         self.git("init", "-q")
@@ -303,9 +312,18 @@ class FactoryMetricsTest(unittest.TestCase):
             {**snapshot, "head": "0" * 40},
             {**snapshot, "subject": {**snapshot["subject"], "digest": "e" * 64}},
             {**snapshot, "artifacts": []},
+            {**snapshot, "waived": []},
+            {**snapshot, "waived": {"audit": {"by": "Người thử"}}},
         ):
             with self.subTest(fields=changed.keys()), self.assertRaises(ValueError):
                 bind(changed)
+        # A required run reported N/A may be waived only by a human GO in the GO-NO-GO for this subject; none is signed.
+        required = [{**r, "level": "BLOCKER"} if r["id"] == "perf" else r for r in snapshot["rows"]]
+        self.assertEqual(next(r for r in required if r["id"] == "perf")["result"], "N/A")
+        unsigned = {**snapshot, "rows": required, "waived": {"perf": {"by": "Người thử", "reason": "ngoại tuyến"}}}
+        self.assertIn("perf", xt_flow.release_rows(unsigned))
+        with self.assertRaisesRegex(ValueError, "Miễn N/A"):
+            bind(unsigned)
         for verdict, human in (("GO", []), ("GO (chờ người)", ["verify"])):
             original = [dict(row, result="PASS") for row in snapshot["rows"]]
             if human:

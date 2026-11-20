@@ -39,7 +39,16 @@ class InstallTest(unittest.TestCase):
         root = self.target / ".xtemplates"
         root.mkdir()
         install.install_framework(root, "with-factory")
-        helpers = ("xt_acceptance.py", "xt_flow.py", "xt_ops_setup.py", "xt_release_ops.py")
+        helpers = (
+            "xt_acceptance.py",
+            "xt_flow.py",
+            "xt_ops_setup.py",
+            "xt_release_ops.py",
+            "xt_deploy.py",
+            "xt_distribution.py",
+            "xt_scale.py",
+            "xt_field.py",
+        )
         self.assertTrue(all((root / "scripts" / name).is_file() for name in helpers))
         project_file = self.target / "product.py"
         project_file.write_text("product = True\n")
@@ -54,6 +63,60 @@ class InstallTest(unittest.TestCase):
                 install.install_framework(root, "minimal")
         self.assertFalse(any((root / "scripts" / name).exists() for name in helpers))
         self.assertEqual(project_file.read_text(), "product = True\n")
+
+    def test_isolated_install_and_installed_cli_resolve_only_local_helpers(self):
+        with tempfile.TemporaryDirectory() as target:
+            base = Path(target)
+
+            def isolated(script, *args):
+                return subprocess.run(
+                    [sys.executable, "-I", str(script), *args],
+                    cwd=base,
+                    env={**os.environ, "CLAUDE_PROJECT_DIR": str(base)},
+                    capture_output=True,
+                    text=True,
+                )
+
+            setup = isolated(ROOT / "scripts/install.py", target, "--no-harness", "--with-github")
+            self.assertEqual(setup.returncode, 0, setup.stderr)
+            self.assertTrue((base / ".github/workflows/xt-field.yml").is_file())
+            self.assertTrue((base / ".github/workflows/xt-upgrade.yml").is_file())
+            scripts = base / ".xtemplates/scripts"
+            flow = isolated(scripts / "xt_flow.py", "--json")
+            self.assertEqual(flow.returncode, 0, flow.stderr)
+            self.assertIn("next", json.loads(flow.stdout))
+            (base / "xt.yaml").write_text(
+                "deploy_envs: staging\n"
+                + "".join(f"{k}_staging: ./fixture.sh {k}\n" for k in ("deploy", "rollback", "digest", "smoke"))
+            )
+            subprocess.run(["git", "init", "-q"], cwd=base, check=True)
+            deploy = isolated(scripts / "xt.py", "deploy", "run", "--env", "staging")
+            self.assertEqual(deploy.returncode, 2, deploy.stderr)
+            self.assertNotIn("Traceback", deploy.stderr)
+            self.assertFalse(list(scripts.rglob("__pycache__")))
+
+    def test_interrupted_install_from_other_source_never_keeps_verified_receipt(self):
+        import xt_distribution
+
+        manifest = self.target / ".xtemplates" / "manifest.json"
+        manifest.parent.mkdir()
+        verified = {"repo": "o/framework", "tag": "v1.0.0", "commit": "a" * 40, "verified": True}
+        source = lambda: json.loads(manifest.read_text(encoding="utf-8"))["source"]
+        for new, kept in (({"untagged": "unknown"}, {"verified": False}), (verified, verified)):
+            manifest.write_text(json.dumps({"source": verified, "packs": {}}), encoding="utf-8")
+            with (
+                self.subTest(new=new),
+                mock.patch.object(xt_distribution, "install_source", return_value=new),
+                mock.patch.object(install, "install_framework", side_effect=OSError("interrupted")),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(OSError),
+            ):
+                self.run_install()
+            self.assertEqual(source(), kept)
+        with mock.patch.object(xt_distribution, "install_source", return_value={"untagged": "unknown"}):
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(self.run_install(), 0)
+        self.assertEqual(source(), {"untagged": "unknown"})
 
     def test_install_requires_cpython_315_minor_before_writing(self):
         for implementation, version in (("cpython", (3, 14, 10)), ("cpython", (3, 16, 0)), ("pypy", (3, 15, 2))):
@@ -800,13 +863,21 @@ def make_fake_src(base: Path, ruleset: str | None = None) -> Path:
     for d in install.HARNESS_DIRS:
         (src / ".claude" / d).mkdir()
     if ruleset is not None:
+        for path in (
+            ".github/rulesets/tags.json",
+            ".github/workflows/release-tag.yml",
+            "framework/templates/xt-upgrade.yml",
+            "framework/templates/xt-field.yml",
+        ):
+            (src / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / path, src / path)
         (src / "framework" / "templates").mkdir(parents=True, exist_ok=True)
         (src / "framework" / "templates" / "ruleset-main.json").write_text(ruleset, encoding="utf-8")
         (src / "framework" / "templates" / "PULL-REQUEST.md").write_text("pr\n", encoding="utf-8")
         (src / "framework" / "templates" / "dependabot.yml").write_text("version: 2\n", encoding="utf-8")
         for wf in ("ci.yml", "secret-scan.yml", "pr-title.yml"):
             (src / "framework" / "templates" / wf).write_text("name: x\n", encoding="utf-8")
-        (src / ".github" / "workflows").mkdir(parents=True)
+        (src / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
         (src / ".github" / "workflows" / "merge-gate.yml").write_text("name: merge-gate\n", encoding="utf-8")
         (src / ".github" / "workflows" / "pr-steward.yml").write_text("name: pr-steward\n", encoding="utf-8")
     return src
