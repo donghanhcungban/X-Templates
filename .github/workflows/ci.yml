@@ -174,13 +174,13 @@ jobs:
         run: scripts/dev-task.sh test-combine "$RUNNER_TEMP/cov"
 
   test-main:
-    name: test-main ${{ matrix.shard }}/4
+    name: test-main ${{ matrix.shard }}/8
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -203,7 +203,7 @@ jobs:
           set -euo pipefail
           git checkout -q -B main
           test "$(git symbolic-ref --short HEAD)" = main
-          scripts/dev-task.sh test-shard "$SHARD" 4
+          scripts/dev-task.sh test-shard "$SHARD" 8
 
   checks:
     name: checks
