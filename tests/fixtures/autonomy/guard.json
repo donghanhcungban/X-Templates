@@ -23676,7 +23676,7 @@
 {"id": "adr76-ctl-git-stash-push", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git stash"}, "expect": {"allowed": true}},
 {"id": "adr76-ctl-git-restore-staged", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git restore --staged tests/test_hooks.py"}, "expect": {"allowed": true}},
 {"id": "adr76-ctl-git-tag-var", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git tag -a v1 -m \"$M\""}, "expect": {"allowed": true}},
-{"id": "adr76-ctl-git-tag-heredoc", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git tag -a v3.15.0 -F - <<'EOF'\nBản 3.15.0\nEOF"}, "expect": {"allowed": true}},
+{"id": "adr76-ctl-git-tag-heredoc", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git tag -a candidate-3.15.0 -F - <<'EOF'\nBản 3.15.0\nEOF"}, "expect": {"allowed": true}},
 {"id": "adr76-ctl-git-rm-cached", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git rm --cached tmp.log"}, "expect": {"allowed": true}},
 {"id": "adr76-ctl-git-mv", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git mv docs/autopilot/PLAN-3.14-app.md docs/archive/autopilot/"}, "expect": {"allowed": true}},
 {"id": "adr76-ctl-git-worktree-add", "origin": "control", "refs": ["ADR-0076"], "input": {"command": "git worktree add ../xt-lat1 -b feat/guard-gate-slice1 origin/main"}, "expect": {"allowed": true}},
@@ -25152,6 +25152,14 @@
   {"id": "guard-sec990-heredoc-T", "origin": "adversarial-author", "refs": ["AUD-SEC-990"], "input": {"command": "tar -xf a.tar -T - <<EOF\n.claude/settings.json\nEOF"}, "expect": {"allowed": false, "code": "HOOK_BYPASS"}},
   {"id": "guard-sec990-dotdot-fence-glob", "origin": "adversarial-author", "refs": ["AUD-SEC-990"], "input": {"command": "cd src && tar -xf ../a.tar ../.claude/'*'"}, "expect": {"allowed": false, "code": "HOOK_BYPASS"}},
   {"id": "guard-sec990-allow-git-archive-manpage", "origin": "control", "refs": ["AUD-SEC-990"], "input": {"command": "git archive --format=tar --prefix=junk/ HEAD | (cd /var/tmp/ && tar xf -)", "policy": "strict"}, "expect": {"allowed": true}, "note": "ví dụ nguyên văn của git-archive(1): không pathspec, đích ngoài gốc — giữ nền"},
-  {"id": "guard-sec990-allow-whole-members", "origin": "control", "refs": ["AUD-SEC-990"], "input": {"command": "git archive HEAD~3 . | tar -x && cd src && tar -xf ../a.tar ../'*'"}, "expect": {"allowed": true}, "note": "pathspec/thành viên cả gói = như không nêu (ranh giới A)"}
+  {"id": "guard-sec990-allow-whole-members", "origin": "control", "refs": ["AUD-SEC-990"], "input": {"command": "git archive HEAD~3 . | tar -x && cd src && tar -xf ../a.tar ../'*'"}, "expect": {"allowed": true}, "note": "pathspec/thành viên cả gói = như không nêu (ranh giới A)"},
+  {"id": "guard-deploy-ledger-edit", "origin": "repro", "refs": ["S-112"], "input": {"tool": "edit", "path": "docs/ops/DEPLOYS.json", "tool_input": {"content": "{}"}}, "expect": {"allowed": false, "code": "EVIDENCE_HANDWRITE"}},
+  {"id": "guard-deploy-ledger-write-step", "origin": "repro", "refs": ["S-112"], "input": {"command": "touch docs/ops/DEPLOYS.json"}, "expect": {"allowed": false, "code": "EVIDENCE_HANDWRITE"}},
+  {"id": "guard-deploy-ledger-read", "origin": "control", "refs": ["S-112"], "input": {"command": "cat docs/ops/DEPLOYS.json"}, "expect": {"allowed": true}},
+  {"id": "guard-deploy-ledger-read-cli", "origin": "control", "refs": ["S-112"], "input": {"command": "python3 .xtemplates/scripts/xt.py deploy status --env dev"}, "expect": {"allowed": true}},
+  {"id":"promotion-tag-push","origin":"audit","refs":["F-144"],"input":{"command":"git push origin refs/tags/v4.0.0"},"expect":{"allowed":false}},
+  {"id":"promotion-tag-api","origin":"audit","refs":["F-144"],"input":{"command":"gh api -X POST repos/o/r/git/refs -f ref=refs/tags/v4.0.0"},"expect":{"allowed":false}},
+  {"id":"promotion-tag-release","origin":"audit","refs":["F-144"],"input":{"command":"gh release create v4.0.0"},"expect":{"allowed":false}},
+  {"id":"promotion-tag-read","origin":"control","refs":["F-144"],"input":{"command":"git tag --list v4.0.0"},"expect":{"allowed":true}}
  ]
 }

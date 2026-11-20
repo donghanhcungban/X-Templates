@@ -12,7 +12,7 @@
 
 Lát dev hiện tại của `web-api-ts` chạy từ gốc repo sản phẩm. Sau `pnpm build`, dùng
 `python3 .xtemplates/scripts/xt.py deploy run --env dev` để đưa `dist/app.tgz` lên Docker Compose.
-CLI yêu cầu đúng bốn lệnh `node scripts/dev-preview.mjs` và URL loopback do gói khai. Khi có bản trước,
+Adapter này dùng đúng bốn lệnh `node scripts/dev-preview.mjs` và URL loopback do gói khai. Khi có bản trước,
 CLI có thể tự quay lui khi smoke hoặc digest sai. Để chủ động quay lui, dùng `deploy rollback --env dev`.
 `deploy status --env dev --json` đọc và kiểm sổ schema 1 theo §5.
 
@@ -20,8 +20,7 @@ CLI có thể tự quay lui khi smoke hoặc digest sai. Để chủ động qua
 `registry pull --from DIR` đọc các sổ trong clone sản phẩm. `admin-plan` tổng hợp việc thiết lập,
 `rollout-drill` diễn tập điều kiện phát hành và `ops-check` đối chiếu số liệu field với môi trường đã ghi nhận.
 
-Chạy lệnh triển khai tuỳ biến, guard chống ghi tay `DEPLOYS.json` (S-112) và lệnh triển khai/quay lui production
-của T-3860 còn mở. Việc đưa ứng viên lên đích production cần quyền và runbook thật của sản phẩm.
+Dự án có thể khai bốn lệnh riêng ở §2.1. `deploy run --env prod` và `deploy rollback --env prod` kiểm quyền trên nhánh mặc định GitHub.com. Pipeline cần quyền đọc repo qua `gh`, quyền truy cập đích của sản phẩm và thư mục trạng thái bền qua các lần chạy. Bài nghiệm thu trong `tests/test_deploy_prod.py` dùng đích cục bộ cùng GitHub fixture. Guard bảo vệ `docs/ops/DEPLOYS.json` như sổ giai đoạn. Pilot triển khai thật lên VPS thuộc T-3863.
 [Kế hoạch triển khai](../autopilot/PLAN-factory-e2e.md)
 
 ## 1. User story
@@ -46,6 +45,8 @@ Khung không biết container hay máy chủ nào: mọi thứ nằm trong lện
 `XT_DEPLOY_ENV`, `XT_DEPLOY_DIGEST` (= `subject.digest`), `XT_DEPLOY_ARTIFACTS` (đường artifact, cách nhau khoảng trắng),
 `XT_DEPLOY_PREVIOUS` (digest bản đang phục vụ trước đó, rỗng nếu chưa có), `XT_DEPLOY_STATE` (thư mục cục bộ của môi
 trường để lệnh giữ thứ cần cho quay lui).
+
+Adapter tuỳ biến nhận thêm `XT_DEPLOY_ARTIFACT_ROOT` khi triển khai hoặc quay lui. Ghép thư mục đó với các tên trong `XT_DEPLOY_ARTIFACTS` để lấy đúng byte đã kiểm của lần thao tác. `digest_<env>` đọc từ dịch vụ đang chạy. Bản được thăng cấp chạy lệnh từ một checkout tạm của commit đã merge, với artifact đã kiểm tại các đường khai trong cấu hình. Trạng thái và bản sao giữ để quay lui nằm ở `.git/xt-preview/<env>/` trong checkout điều phối. Commit và đồng bộ receipt lên nhánh mặc định trước thao tác production kế tiếp. Nếu bản lưu cũ mất hoặc sai hash, lệnh dừng trước khi chạm đích.
 
 ### 2.2 Lệnh
 | Lệnh | Việc | Exit |

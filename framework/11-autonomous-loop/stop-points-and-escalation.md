@@ -27,6 +27,29 @@ updated: 2026-11-20
    hoạch → phiên chính tự duyệt theo tiêu chí chất lượng cuối và ghi lại; **hành động** không đảo ngược bị máy chặn,
    việc chạm tiền/dữ liệu người dùng thật vẫn chờ người (`loop defer`). Chờ người cho một câu hỏi phiên chính tự trả lời được bằng dữ kiện là lãng phí, không phải an toàn.
 
+## Phân lớp các mục MUST có công việc của người
+
+Bảng phiên bản 1 (D-529) có 16 ID. Áp dụng cho những mục đã xuất hiện ở đúng quy mô của BLUEPRINT. Lớp A cần quyền ở nhánh mặc định và bằng chứng của hành động. Lớp B cần người chịu trách nhiệm làm xong hoặc ghi miễn trừ có lý do trong blueprint. Lớp C dùng lệnh để xác minh bằng chứng. Chữ ký người ở ruleset, môi trường và nghĩa vụ dữ liệu thực tiếp tục theo quyền của nhà cung cấp.
+
+| ID | Lớp | Quyền hoặc bằng chứng |
+|---|---|---|
+| `WF-REVIEW-004` | C | `xt.py merge-check --pr <N> --json`, review độc lập sạch trên đúng HEAD. |
+| `WF-REVIEW-007` | A | `merge_autonomy`, `merge_review` và `merge_hard_exceptions` trên nhánh đích, cùng review đúng SHA. |
+| `WF-ENV-008` | A | `grant: deploy` theo đích, môi trường cho phép, digest của bản đã ký và receipt rollout. |
+| `PM-HANDOVER-006` | A | `release_signoff`, `release_signoff_scale`, chữ ký và subject của G7. |
+| `PM-PLAN-005` | A | `grant: deploy` cho production. Publish cần grant đúng kênh. Hành động lên dữ liệu thật, secret hoặc tiền vẫn cần người. |
+| `WF-SDD-010` | B | Người duyệt SPEC độc lập và review threat model cho phạm vi nhạy cảm. |
+| `SEC-SUPPLY-011` | B | Code owner duyệt riêng thay đổi cổng và migration đã áp. |
+| `SEC-SECRET-010` | B | Người được giao quyền duyệt môi trường chứa secret production. |
+| `OPS-IR-006` | B | Hai người xác nhận thao tác không thể hoàn tác khi xử lý sự cố. |
+| `OPS-IAC-006` | B | Người có quyền duyệt huỷ tài nguyên dữ liệu. |
+| `SEC-TM-007` | B | Chủ rủi ro ký chấp nhận và đặt ngày xem lại. |
+| `SEC-LOG-013` | B | Người phụ trách ký chuỗi lưu giữ chứng cứ. |
+| `CMP-AUDIT-004` | B | Người chịu trách nhiệm ký rà soát quyền. |
+| `CMP-AI-001` | B | Người có thẩm quyền ký phân loại rủi ro của hệ thống. |
+| `UX-A11Y-017` | B | Người kiểm luồng với trình đọc màn hình và ghi kết quả. |
+| `WF-TEAM-006` | B | Gán người chịu trách nhiệm và leo thang các cổng quá hạn. |
+
 ## Quyết định
 
 ### Điểm quyết định — phiên chính tự duyệt theo tiêu chí chất lượng cuối (ADR-0008)

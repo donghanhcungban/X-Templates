@@ -267,20 +267,23 @@ def _match_any(rel: str, patterns: Tuple[str, ...]) -> bool:
     return False
 
 
+STAGE_LEDGER = "docs/autopilot/STAGE.json"
+DEPLOY_LEDGER = "docs/ops/DEPLOYS.json"
+EVIDENCE_LEDGERS = (STAGE_LEDGER, "docs/autopilot/ACCEPTANCE.json", DEPLOY_LEDGER)
+LEDGER_COMPONENTS = tuple(path.split("/") for path in EVIDENCE_LEDGERS)
+
+
 def _glob_is_ledger(rel: str) -> bool:
     """Đích ghi là glob mà shell bung ra được sổ giai đoạn (`docs/autopilot/*`, `STAGE.jso?` — AUD-SEC-248): khớp từng cấp."""
     if not any(c in rel for c in "*?["):
         return False
     parts = rel.split("/")
-    return any(
-        len(parts) == len(want) and all(map(fnmatch.fnmatchcase, want, parts))
-        for want in (p.split("/") for p in PRODUCT_LEDGERS)
-    )
+    return any(len(parts) == len(want) and all(map(fnmatch.fnmatchcase, want, parts)) for want in LEDGER_COMPONENTS)
 
 
 def classify_path(rel: str) -> str:
     """'secret' | 'gate' | 'evidence' | 'capability' | 'migration' | ''."""
-    if rel == ".autopilot" or rel.startswith(".autopilot/") or rel in PRODUCT_LEDGERS or _glob_is_ledger(rel):
+    if rel == ".autopilot" or rel.startswith(".autopilot/") or rel in EVIDENCE_LEDGERS or _glob_is_ledger(rel):
         return (
             "evidence"  # bằng chứng + trạng thái vòng/giai đoạn: chỉ `xt.py loop|stage …` ghi (AUD-HAR-024, ADR-0058)
         )
@@ -1224,7 +1227,7 @@ def edit_decision(path: str, root: str, tool_input: Optional[Dict[str, object]] 
     if kind == "evidence":
         return "ask", (
             f"Ghi tay bằng chứng/trạng thái autopilot ({rel}) = bằng chứng giả (P1, ADR-0026). Dùng `xt.py loop …`/"
-            "`xt.py stage …`/`xt.py pr reviewed`; cần sửa tay thì người làm."
+            "`xt.py stage …`/`xt.py deploy …`/`xt.py pr reviewed`; cần sửa tay thì người làm."
         )
     if kind == "migration" and os.path.exists(os.path.join(root, rel)):
         return "ask", (
@@ -4555,8 +4558,7 @@ XARGS_FENCE_FILES = (
     ".codex/hooks.json",
     ".autopilot/state.json",
     ".autopilot/evidence/T-001.json",
-    "docs/autopilot/STAGE.json",
-    "docs/autopilot/ACCEPTANCE.json",
+    *EVIDENCE_LEDGERS,
     ".git/config",
     ".git/config.worktree",
     ".git/packed-refs",
@@ -9029,9 +9031,19 @@ def _git_remote(args: List[str]) -> Tuple[str, str]:
     return "", ""
 
 
+RELEASE_VERSION_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+\Z")
+RELEASE_TAG_WHY = "tag phiên bản chỉ do workflow phát hành tạo sau khi duyệt promotion"
+
+
 def _push_ref_rule(ref: str, deleting: bool, cwd: Optional[str] = None) -> Tuple[str, str]:
     """Một refspec của push: đích là nhánh chính → deny nếu xoá, ask nếu đẩy thẳng. Đích `HEAD`/`@` = nhánh hiện tại."""
     dst = ref.split(":", 1)[1] if ":" in ref else ref
+    if (
+        not deleting
+        and not ref.startswith(":")
+        and RELEASE_VERSION_TAG.fullmatch(dst.removeprefix("refs/tags/").removeprefix("tags/"))
+    ):
+        return "deny", RELEASE_TAG_WHY
     dst = dst.removeprefix("refs/").removeprefix("heads/")  # git phân giải `heads/main` thành refs/heads/main
     if dst in ("HEAD", "@"):
         dst = _current_branch(cwd)
@@ -9810,6 +9822,10 @@ def _remote_ref_rule(sub: str, args: List[str], cwd: Optional[str]) -> Tuple[str
         return "ask", UNRESOLVED_ARGS_WHY.format(sub, "--stdin")
     if any(FIND_FOUND in x for x in names):
         return "ask", UNRESOLVED_ARGS_WHY.format(sub, "đối số `{}` của find -exec")
+    if sub in ("tag", "update-ref", "symbolic-ref") and any(
+        RELEASE_VERSION_TAG.fullmatch(name if sub == "tag" else name.removeprefix("refs/tags/")) for name in names
+    ):
+        return "deny", RELEASE_TAG_WHY
     hit = _remote_ref_hit(names, cwd)
     return ("deny", REMOTE_REF_WHY.format(hit) + _fetch_hint(sub, hit)) if hit else ("", "")
 
@@ -11305,8 +11321,6 @@ REVIEW_FORGE_WHY = (
     "ghi tay bằng chứng review (dấu `xt-review v1` trên PR) — chỉ `xt.py pr reviewed` đăng (ADR-0026/0027)"
 )
 # Sổ giai đoạn sản phẩm (ADR-0058) — chỉ `xt.py stage …` ghi; duyệt/công nhận giai đoạn là việc của người.
-STAGE_LEDGER = "docs/autopilot/STAGE.json"
-PRODUCT_LEDGERS = (STAGE_LEDGER, "docs/autopilot/ACCEPTANCE.json")
 STAGE_APPROVE_WHY = (
     # vế lệnh-con-từ-biến đứng đầu: lý do bị cắt ở trần độ dài khi có lý do chặn khác (AUD-HAR-313)
     "duyệt giai đoạn sản phẩm (`xt.py stage approve`/`init --adopt`; lệnh con lấy từ biến `xt.py $c` cũng tính — viết"
@@ -12833,6 +12847,8 @@ def _gh_own_rule(args: List[str], root: str, cwd: str) -> Tuple[str, str]:
         return "deny", branch
     if merged is not None:
         return merged
+    if args[:2] == ["release", "create"] and any(RELEASE_VERSION_TAG.fullmatch(word) for word in args[2:]):
+        return "deny", RELEASE_TAG_WHY
     if args[:2] == ["alias", "import"]:  # `alias set`: ADR-0063 lát C chặn trước
         return "ask", "gh alias đặt lệnh tắt — guard không thấy lệnh thật khi alias chạy"
     if args[:2] == ["repo", "sync"] and _gh_sync_force(args[2:]):
@@ -12869,6 +12885,8 @@ def _gh_api_write_rule(args: List[str], root: str) -> Tuple[str, str]:
     còn lại luật merge REST."""
     if _gh_api_ref_force(args):
         return "deny", GH_API_FORCE_WHY
+    if _gh_release_tag_write(args):
+        return "deny", RELEASE_TAG_WHY
     if _gh_api_destroy(args):  # xoá ref `heads/main` giữ mã DESTROY (huỷ không đảo ngược)
         return "ask", DESTROY_ASK
     return ("deny", GH_API_MAIN_WHY) if _gh_api_main_write(args) else _gh_api_merge_rule(args, root)
@@ -12882,6 +12900,19 @@ GH_REPO_PATH = r"(?:repos/[^/\s]+/[^/\s]+|repositories/[^/\s]+)"
 # ref `heads/main` (PATCH …/git/refs/heads/main, POST …/git/refs `ref=refs/heads/main`) — như tool MCP ghi commit.
 GH_API_CONTENTS_RE = re.compile(rf"/?{GH_REPO_PATH}/contents(?:/.*)?")
 GH_API_MAIN_WHY = "push thẳng nhánh chính qua `gh api` REST — khung yêu cầu đi qua PR (AUD-SEC-544)"
+
+
+def _gh_release_tag_write(args: List[str]) -> bool:
+    pos = _positionals(args, GH_API_VALUE_FLAGS)
+    path = _api_path(pos[0]) if len(pos) == 1 else ""
+    fields = dict(f.partition("=")[::2] for f in _gh_api_field_values(args))
+    if re.fullmatch(rf"/?{GH_REPO_PATH}/releases/?", path):
+        return bool(RELEASE_VERSION_TAG.fullmatch(fields.get("tag_name", ""))) or any(
+            a.startswith("--input") for a in args
+        )
+    ref = GH_API_REF_RE.fullmatch(path)
+    target = ref[1] if ref else fields.get("ref", "") if GH_API_REF_WRITE_RE.fullmatch(path) else ""
+    return target.startswith(("tags/", "refs/tags/")) and bool(RELEASE_VERSION_TAG.fullmatch(target.split("/")[-1]))
 
 
 def _gh_api_main_write(args: List[str]) -> bool:
@@ -15193,7 +15224,9 @@ def _at(target: str, cwd: Optional[str]) -> str:
     return posixpath.normpath(posixpath.join(cwd, target))
 
 
-EVIDENCE_WHY = "ghi/xoá tay bằng chứng autopilot qua Bash ({}) — chỉ `xt.py loop …` được ghi (P1)"
+EVIDENCE_WHY = (
+    "ghi/xoá tay bằng chứng autopilot qua Bash ({}) — dùng lệnh `xt.py loop`, `stage` hoặc `deploy` tương ứng (P1)"
+)
 
 
 # `~+` là `$PWD` với bash (tilde expansion — AUD-SEC-097); `~-` là `$OLDPWD`: thư mục trước đó, guard không biết (D-106)
@@ -15228,8 +15261,8 @@ UNKNOWN_CWD_DIRS: Tuple[Tuple[str, FrozenSet[str]], ...] = (
     (".autopilot", frozenset(EVIDENCE_NAMES)),
     (".git", frozenset({"config", "hooks"})),
     (".git/hooks", GIT_HOOK_NAMES),
-    ("docs", frozenset({"autopilot"})),  # sổ giai đoạn `STAGE_LEDGER` (AUD-SEC-512)
-    ("docs/autopilot", frozenset(map(posixpath.basename, PRODUCT_LEDGERS))),
+    ("docs", frozenset(parts[1] for parts in LEDGER_COMPONENTS)),
+    *((posixpath.dirname(path), frozenset({posixpath.basename(path)})) for path in EVIDENCE_LEDGERS),
 )
 UP_LEAD_RE = re.compile(r"^(?:\.\.(?:/|$))+")  # `..` đầu đường đã chuẩn hoá
 
@@ -16144,7 +16177,9 @@ def _go_diff_state(src: str, here: Optional[str], am: bool, match: Callable[[str
 
 
 # sổ giai đoạn và thư mục tổ tiên của nó (`docs/autopilot`, `docs`)
-LEDGER_PATHS = tuple(dict.fromkeys(p.rsplit("/", i)[0] for p in PRODUCT_LEDGERS for i in range(p.count("/") + 1)))
+LEDGER_PATHS = tuple(
+    dict.fromkeys("/".join(parts[:end]) for parts in LEDGER_COMPONENTS for end in range(1, len(parts) + 1))
+)
 
 
 def _ledger_hit(rel: str) -> bool:
@@ -16199,7 +16234,8 @@ def _ledger_asks(n: List[str], argv: List[str], root: str, cwd: Optional[str]) -
     hits = [x for x in found if _ledger_hit(_rel_dir(x, root))]
     hits += [j for j in _copied_into(n, root, cwd) if _ledger_hit(_rel_dir(j, root))]
     hits += [x for t in _merge_roots(n) for x in _where(t, root, cwd) if _ledger_hit(_rel_dir(x, root))]
-    hits += [posixpath.join(root, STAGE_LEDGER)] if _merge_renamed(n) else []
+    if _merge_renamed(n):
+        hits.extend(posixpath.join(root, ledger) for ledger in EVIDENCE_LEDGERS)
     return [EVIDENCE_WHY.format(h) for h in dict.fromkeys(hits)]
 
 
@@ -19180,7 +19216,10 @@ XARGS_WRITERS = {
 
 
 LEDGER_DIR_PARTS = STAGE_LEDGER.split("/")[:-1]
-LEDGER_NAMES = tuple(map(posixpath.basename, PRODUCT_LEDGERS))
+# Tính các đoạn thư mục một lần. Bộ quét xargs xét từng đối số của lệnh.
+LEDGER_DIR_SLICES = {
+    path[-1]: [path[a:b] for a in range(len(path) - 1) for b in range(a + 1, len(path))] for path in LEDGER_COMPONENTS
+}
 
 
 def _names_evidence(t: str) -> bool:
@@ -19196,22 +19235,22 @@ def _names_ledger(t: str) -> bool:
     parts = [p for p in t.split("/") if p not in ("", ".")]
     if not parts:
         return False
-    if any(fnmatch.fnmatchcase(name, parts[-1]) for name in LEDGER_NAMES):
-        dirs, k = parts[:-1], min(len(parts) - 1, len(LEDGER_DIR_PARTS))
-        tail = all(map(fnmatch.fnmatchcase, LEDGER_DIR_PARTS[len(LEDGER_DIR_PARTS) - k :], dirs[len(dirs) - k :]))
+    return any(_names_one_ledger(t, parts, ledger) for ledger in LEDGER_COMPONENTS)
+
+
+def _names_one_ledger(t: str, parts: list[str], ledger: list[str]) -> bool:
+    folders = ledger[:-1]
+    if fnmatch.fnmatchcase(ledger[-1], parts[-1]):
+        dirs, k = parts[:-1], min(len(parts) - 1, len(folders))
+        tail = all(map(fnmatch.fnmatchcase, folders[len(folders) - k :], dirs[len(dirs) - k :]))
         if tail if dirs else _has_alnum(parts[-1]):
             return True
     if t.startswith("/"):  # tuyệt đối: đuôi là `docs`, `docs/autopilot` của một gốc nào đó
-        pairs = [(LEDGER_DIR_PARTS[:b], parts[-b:]) for b in range(1, len(LEDGER_DIR_PARTS) + 1)]
+        pairs = [(folders[:b], parts[-b:]) for b in range(1, len(folders) + 1)]
     else:  # tương đối: cả từ (bỏ `..` đầu) là một đoạn liền của thư mục sổ — thư mục đang đứng không biết
         rel = list(itertools.dropwhile(lambda p: p == "..", parts))
-        pairs = [(x, rel) for x in LEDGER_DIR_SLICES]
+        pairs = [(x, rel) for x in LEDGER_DIR_SLICES[ledger[-1]]]
     return any(len(x) == len(w) and _has_alnum(w[0]) and all(map(fnmatch.fnmatchcase, x, w)) for x, w in pairs)
-
-
-LEDGER_DIR_SLICES = [
-    LEDGER_DIR_PARTS[a:b] for a in range(len(LEDGER_DIR_PARTS)) for b in range(a + 1, len(LEDGER_DIR_PARTS) + 1)
-]
 
 
 def _has_alnum(s: str) -> bool:
@@ -19354,15 +19393,15 @@ def _find_pat_may_match(test: str, pat: str) -> bool:
     """Mẫu `-name`/`-path` có thể khớp sổ: `-name` so tên sổ; `-path` (`*` khớp cả `/`) so phần chữ sau `*` cuối với đuôi
     đường dẫn sổ. `[`/`?`/`\\` (fnmatch của find khác Python: `[^…]`, `\\.`) → coi như khớp; mẫu không nguyên văn (`$(…)`,
     `$VAR` chưa giải, backtick — review blk-guard) → coi như khớp."""
-    names = LEDGER_NAMES
+    names = [parts[-1] for parts in LEDGER_COMPONENTS]
     if test.startswith("-i"):
-        names, pat = tuple(n.lower() for n in names), pat.lower()
+        names, pat = [name.lower() for name in names], pat.lower()
     if re.search(r"[$`]", pat):
         return True
     if test in LEDGER_FIND_NAME:
-        return bool(re.search(r"[\[\\]", pat)) or any(fnmatch.fnmatchcase(n, pat) for n in names)
+        return bool(re.search(r"[\[\\]", pat)) or any(fnmatch.fnmatchcase(name, pat) for name in names)
     tail = pat.rsplit("*", 1)[-1]
-    return bool(re.search(r"[?\[\\]", tail)) or any(n.endswith(tail) or tail.endswith(n) for n in names)
+    return bool(re.search(r"[?\[\\]", tail)) or any(name.endswith(tail) or tail.endswith(name) for name in names)
 
 
 # `git push` mà guard không biết đích (T-1523): push là hành động không đảo ngược ở nhánh chính, nên đích không giải được
@@ -20713,8 +20752,8 @@ def _ledger_dest_hits(script: str, root: str, here: Optional[str]) -> List[str]:
     ]
     for src, lit in _into_write_dests(script):
         rels = [_rel_dir(x, root) for x in _where(lit, root, here)]
-        top = src is None or posixpath.basename(src.rstrip("/")) == LEDGER_DIR_PARTS[-1]
-        if any(_ledger_hit(r) and (r != LEDGER_PATHS[-1] or top) for r in rels):
+        top = src is None or any(posixpath.basename(src.rstrip("/")) == p[-2] for p in LEDGER_COMPONENTS)
+        if any(_ledger_hit(r) and (r != "docs" or top) for r in rels):
             out.append(lit)
     return out
 
@@ -21244,10 +21283,11 @@ def _ledger_tail(lit: str, script: str) -> bool:
     (`docs`, `autopilot` — trong một chuỗi hay nhiều): `Path("docs", "autopilot", "STAGE.json")`, `Path("docs") /
     "autopilot" / "STAGE.json"` (AUD-SEC-340). Tên sổ trong thư mục tạm hay chỉ là chữ ghi ra file khác thì không
     (review lượt 2)."""
-    if not any(("/" + p).endswith("/" + lit) for p in PRODUCT_LEDGERS):
+    candidates = [parts for path, parts in zip(EVIDENCE_LEDGERS, LEDGER_COMPONENTS) if ("/" + path).endswith("/" + lit)]
+    if not candidates:
         return False
     named = {p for x in LITERAL_RE.finditer(script) for p in _literal(x).split("/")}
-    return set(LEDGER_DIR_PARTS) <= named
+    return any(set(parts[:-1]) <= named for parts in candidates)
 
 
 class _WriteProbe:

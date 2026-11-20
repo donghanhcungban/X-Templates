@@ -55,7 +55,7 @@ subject: digest <64 hex — chỉ khi khai `release_artifacts`>
 | 17 | SHOULD | Tài liệu khớp code (README, PROJECT, ADR không lỗi thời) | | | review <ngày> | |
 | 18 | BLOCKER | Mọi đề xuất "Khi chạy thật" (dịch vụ thay phần tự host) đã được chủ dự án quyết: chuyển (khoá/tài khoản đã cấu hình qua secret store) hoặc giữ tự host (có người vận hành, backup) | | | `python3 .xtemplates/scripts/xt.py release-check --json` hàng `prod_switch` PASS (N/A liệt kê D-NNN chờ và file); quyết ghi bằng `loop decide-prod --ref D-NNN` (luật: `LOOP-STOP-020`) | |
 | 19 | NICE | Tối ưu mã nguồn: dead code/dependency thừa đã rà | | | knip/depcheck output | |
-| 20 | BLOCKER (M/L) · SHOULD (S) | **Người** đã dùng thử luồng chính trên bản ứng viên và đọc SPEC (ca biên) + `THREAT-MODEL.md` — xác nhận spec, UX, bảo mật một lần tại đây, không ở giữa `/complete` (ADR-0048); máy không điền được | — | real-path | <bản/URL đã thử, ngày> | <tên · ngày — bắt buộc> |
+| 20 | BLOCKER (M/L) · SHOULD (S) | Người dùng thử luồng chính trên ứng viên, đọc SPEC (ca biên) và `THREAT-MODEL.md` (ADR-0048). Khi người chưa ghi kết quả, `release-sign` ở M/L có thể ghi kết quả mô phỏng theo D-526. | — | real-path | <bản/URL đã thử, ngày> | <tên · ngày — bắt buộc> |
 | 21 | <mức> | <mục đặc thù hồ sơ/ngành> | | | | |
 
 ## 2b. Bằng chứng chưa chứng minh (bắt buộc ghi, kể cả khi GO)
@@ -77,6 +77,8 @@ Rủi ro còn lại được chấp nhận: <mục — người chấp nhận �
 Quyết định có hiệu lực chỉ là **dòng bảng mục 5** (tên + quyết định + ngày): NO-GO viết văn xuôi ở mục này không chặn phát hành — người từ chối điền dòng NO-GO ở mục 5 (AUD-HAR-348).
 
 ## 5. Ký (con người; agent chỉ khi xt.yaml khai `release_signoff: agent` và ký bằng `xt.py release-sign` — ADR-0074)
+Khi một cổng `attack`, `perf`, `migration_check`, `acceptance` hoặc `rollback` thực sự không áp dụng, người ký thêm một hàng vào bảng bên dưới, ghi ở ô vai trò `Miễn perf: <lý do cụ thể>` (thay `perf` bằng tên cổng), rồi ghi tên, GO và ngày. Chữ ký gắn với `subject` của ứng viên. Mỗi hàng chỉ miễn một cổng N/A. Kết quả FAIL vẫn chặn phát hành. Agent ký ở M/L phải có PASS ở cả năm cổng.
+
 | Vai trò | Tên | Quyết định | Ngày |
 |---|---|---|---|
 | Chủ sản phẩm | | GO / NO-GO | |

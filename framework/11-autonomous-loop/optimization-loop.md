@@ -99,6 +99,15 @@ Một file mỗi lần xuất, commit như bằng chứng; agent không sửa. T
 `metrics[]{name, percentile, value_*, budget_*}` (`segment` tuỳ chọn), vd `{"name":"LCP","percentile":75,"value_ms":3100,"budget_ms":2500}`.
 Chỉ số vượt `budget_*` thành task; không có `budget_*` → không phải ngân sách (`LOOP-OPT-001`).
 
+`xt.py perf field-check --file F` trả 0 khi đạt, 1 khi vượt (in chỉ số và ngưỡng), 2 khi bằng chứng sai.
+Dự án khai `field_export` trong `xt.yaml` cho lệnh đọc dashboard và in JSON tổng hợp. Job tuần
+`xt-field.yml` chỉ chạy trên nhánh mặc định. Cất token đọc trong GitHub Environment `xt-field-read`,
+giới hạn environment ở nhánh mặc định. Cho phép GitHub Actions mở PR ở repo đích. Bỏ trống lệnh thì bỏ lượt xuất.
+Lệnh có thể in schema của `ops-check` khi dự án có receipt và khai `field_env`, `field_max_p95_ms`,
+`field_max_error_pct`. Khi đó bản ghi lưu cả digest phục vụ, số request/lỗi và thời gian quan sát.
+Workflow mở PR cho report đã lọc; sau merge, `loop next-step --prs FILE --json` đọc bản mới nhất trong
+ref nhánh mặc định đã fetch, đề xuất `optimize` khi có ngân sách đỏ chưa vào PLAN và giai đoạn cho phép.
+
 ## Nguồn
 
 Đọc 2026-10-18 (qua công cụ tóm tắt — đối chiếu trang gốc khi dẫn nguyên văn):

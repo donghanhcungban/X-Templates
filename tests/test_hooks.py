@@ -8388,7 +8388,7 @@ class GuardRemoteRefTest(unittest.TestCase):
             "git branch --points-at HEAD origin/x",
             "git branch -m origin/x fixed",
             "git branch",
-            "git tag v1.2.3",
+            "git tag candidate-1.2.3",
             "git tag -a v1 -m origin/main",
             "git tag v2 origin/main",
             "git tag -l 'origin/*'",

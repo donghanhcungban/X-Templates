@@ -288,7 +288,7 @@ class DoctorFixTest(DoctorCase):
         self.assertNotIn("sửa được", out)
         self.assertIn("🔧 đã sửa: tạo CLAUDE.md từ mẫu khung", out)
         self.assertIn("🔧 đã sửa: thêm `.autopilot/` vào .gitignore", out)
-        self.assertIn("✗ Chưa sẵn sàng cho autopilot: 2 lỗi · 2 cảnh báo · 3 đã sửa", out)
+        self.assertIn("✗ Chưa sẵn sàng cho autopilot: 2 lỗi · 3 cảnh báo · 3 đã sửa", out)
         self.assertIn("_lib.sh nhưng file không có", out)
         self.assertIn("guard.py lỗi cú pháp", out)
         self.assertIn(".autopilot/\n", (self.base / ".gitignore").read_text(encoding="utf-8"))

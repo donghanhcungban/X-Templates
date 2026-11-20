@@ -1,0 +1,1 @@
+# Mỗi dòng: X.Y.Z — lý do thu hồi. Các dự án bỏ qua bản bị thu hồi ở mọi đợt nâng.

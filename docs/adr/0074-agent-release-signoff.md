@@ -2,7 +2,7 @@
 
 - **Trạng thái:** Đã chấp nhận 2026-11-08 — chủ repo quyết trong phiên nghiên cứu tự động hoá: "cho agent ký GO-NO-GO";
   phiên chính chốt cách làm theo tiêu chí chất lượng cuối (ADR-0008) — **D-401**. [ADR-0075](0075-end-to-end-factory.md) (2026-11-11, D-419)
-  thay điều kiện `scale: S` khi lát "mọi quy mô" của nó có mã; tới lúc đó điều kiện dưới đây còn nguyên.
+  được triển khai theo D-526. Mặc định vẫn là S. Trần M/L yêu cầu nghiệm thu khoá, receipt dev, bằng chứng vận hành và chữ ký mô phỏng gắn đúng ứng viên; L cần thêm 14 ngày số đo lỗi lọt.
 - **Trạng thái triển khai:** đã làm cùng PR: `scripts/xt.py` (`release_agent_signoff`, `release_sign`, lệnh
   `release-sign`, `promotion.by`, `release_signoff` vào `HARD_GATED_KEYS`), `.claude/hooks/guard.py`
   (`agent_release_signoff`, `_release_sign_form`, `_release_sign_denied` → `GO_SIGN`; sau phản biện: chặn gọi

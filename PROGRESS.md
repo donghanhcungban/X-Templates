@@ -8,7 +8,7 @@
 - ADR-0081 (D-511, #673): `compose` giữ quy mô cũ (lỗi đọc → dừng, AUD-HAR-437), mặc định mới S; `doctor` ở build không cảnh báo chậm MINOR/PATCH ([đo dự án đích](research/2026-11-19-target-project-speed.md)). Nâng khung kèm `actions/setup-python` 3.15.2 ở CI dự án gọi `xt.py` (ADR-0078).
 - D-524 (#694): [`plan waves --handoff`](docs/adr/0086-plan-wave-handoff.md) gộp ngữ cảnh đợt đầu và giảm tổng số đợt từ 463 xuống 444 khi phát lại 42 PLAN.
 - D-522/523: trình MVP sau smoke. [Vòng sửa–thử nhanh](docs/adr/0085-fast-development-feedback.md) cho gói web, PLAN và CI.
-- **Factory**: MVP sổ ghi chú chạy trên CI, qua bốn ca nghiệm thu và bàn giao bằng git bundle. [Báo cáo](docs/ops/FACTORY-PILOT-1.md) · [PLAN](docs/autopilot/PLAN-factory-e2e.md).
+- **Factory**: [MVP ghi chú](docs/ops/FACTORY-PILOT-1.md) có bốn ca xanh. Đã nối quyền triển khai, trần duyệt và G7. Điều kiện vận hành và số đo còn thiếu ở [PLAN](docs/autopilot/PLAN-factory-e2e.md).
 - Dự án đích ([registry](docs/ops/registry.json)): X-Company, xboss, dhcb, x-shop và hotel-manager ở 3.34.0. Hotel Manager đã nâng khung (#159); [pilot lọc tầng](research/2026-11-20-hotel-floor-pilot.md) từ checkout đến merge mất 18 phút 11 giây. Còn mở AUD-TEST-061 (CodeQL) và bài kiểm trên host Codex/Gemini.
 - D-457: PLAN factory-A/BE đã lưu kho. `LOOP-ORCH-020`: chỉ tăng agent khi có số. 10 nhóm `cong-cu` chờ phân loại ([TARGETS](docs/ops/TARGETS.md)). Hoãn: T-1690/T-1691 (quét lại SEC-091…099); rà `seeker19110/stored` chờ chủ repo (hạn xét 2026-12-31).
 

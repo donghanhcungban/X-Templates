@@ -152,7 +152,7 @@ class DevPreviewCommandTest(TmpRepoCase):
         self.assertEqual(recovered["served_digest"], a["subject"]["digest"])
 
     def test_preflight_refuses_invalid_env_commands_and_artifact_before_effects(self):
-        self.assertIn("dev", self.error("run", "--env", "prod"))
+        self.assertIn("adapter prod", self.error("run", "--env", "prod"))
         self.assertIn("chưa có", self.error("rollback", "--env", "dev"))
         (self.dist.parent / "app.tgz.sha256").write_text("a" * 64)
         self.assertIn("sidecar", self.error("run", "--env", "dev"))

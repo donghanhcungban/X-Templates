@@ -3,7 +3,7 @@
 | Trường | Giá trị |
 |---|---|
 | ID tính năng | F-141 (ký phát hành ở M/L), F-142 (duyệt giai đoạn 2/3), F-143 (mục MUST buộc người), F-144 (chữ ký chặn phân phối) — chủ dự án 2026-11-11 "ở mọi quy mô", ADR-0075 §Quyết định 4 |
-| Trạng thái | **F-141, F-143, F-144: Approved for implementation** (phiên chính tự duyệt, ADR-0008 — D-422, D-423, D-424). **F-142 (giai đoạn 2/3): Draft** — là cách phiên hiểu rộng, và còn câu hỏi [chặn] ở §9 (AUD-SEC-637); T-3856 quyết rồi mới chuyển Approved |
+| Trạng thái | F-141/F-142 đã triển khai theo D-526. Cả hai khoá lấy trần thấp nhất ở cây và nhánh mặc định của remote. F-143 giữ 16 ID và phân lớp A/B/C theo D-529. F-144 theo tiến độ trong PLAN. |
 | Phiên bản | 1 |
 | Kiến trúc | [ADR-0075](../adr/0075-end-to-end-factory.md), [ADR-0074](../adr/0074-agent-release-signoff.md), [ADR-0069](../adr/0069-agent-stage-approval.md), [ADR-0048](../adr/0048-optimize-skill-and-field-loop.md) (nhà của dòng 20 GO-NO-GO) |
 | Kế hoạch | [`PLAN-factory-e2e.md`](../autopilot/PLAN-factory-e2e.md) T-3855…T-3858 — F-144 (cơ chế bù) làm trước; F-141/F-142 chỉ sau [SPEC-factory-acceptance](SPEC-factory-acceptance.md) và [SPEC-factory-deploy](SPEC-factory-deploy.md) |
@@ -13,9 +13,7 @@ Là chủ dự án, tôi muốn agent ký phát hành và duyệt giai đoạn �
 dùng thử, để quy mô không còn là lý do dây chuyền dừng chờ tôi — nhưng dự án đã bật quyền ở mức S không tự nhiên được
 nới lên M/L khi nâng khung.
 
-Ghi chú phạm vi: "ở mọi quy mô" của chủ dự án nói về S/M/L. Việc mở **giai đoạn 2/3** (F-142) là cách phiên hiểu rộng
-câu đó, nối lát S10 của research 2026-11-08 — giới hạn "agent chỉ duyệt giai đoạn 1" không phụ thuộc quy mô. Chủ dự án
-không muốn thì bỏ F-142 mà không ảnh hưởng F-141.
+Các trần quy mô và giai đoạn có hiệu lực độc lập. D-526 giữ mặc định S cho chữ ký phát hành và 1 cho giai đoạn. Chủ dự án chọn từng trần bằng PR thay đổi cấu hình.
 
 ## 2. Giao ước
 
@@ -58,6 +56,8 @@ remote như §2.2 điều 4:
 | 2 hoàn thiện | `release-check` không có hàng FAIL; `acceptance_lock` PASS; hàng `deploy` có mặt và PASS |
 | 3 tối ưu | như 2, và hàng `perf` PASS (không N/A) |
 
+Giai đoạn 2/3 có trần cho agent lưu digest artifact ngay lúc `stage submit`. Merge sổ bản trình, triển khai đúng artifact đó ở dev rồi merge receipt. `stage approve` kiểm lại cả SHA đã trình và HEAD thực thi G7 trên remote, cùng digest đã ghi. Khi artifact chưa có lúc trình, chạy lại build và trình lại. Cách đọc số lỗi lọt cho cùng repo là `xt.py pr stats --days 14 --escaped --json`.
+
 `init --adopt` vẫn chỉ người.
 
 ### 2.4 Mục MUST buộc người (F-143)
@@ -70,13 +70,7 @@ Mỗi mục trong danh sách của research 2026-11-08 §8 "Soát thiếu" đư�
 | B — việc người thật | Tiền, dữ liệu thật, pháp nhân đứng tên, khẩu vị rủi ro, trải nghiệm người thật | Không đổi; vào checklist của `admin-plan`; không nằm trên đường tới bản dev |
 | C — máy làm bằng công cụ | Có lệnh kiểm thay được thao tác tay | Đổi `→ Kiểm:` thành lệnh |
 
-Xếp lớp tạm (T-3857 đọc lại từng mục; không chắc → B):
-
-| Lớp | Mục |
-|---|---|
-| A | `WF-REVIEW-007`, `WF-ENV-008`, `PM-HANDOVER-006`, `WF-SDD-010`, `PM-PLAN-005` (phần deploy/publish) |
-| B | `OPS-IR-006`, `OPS-IAC-006`, `SEC-TM-007`, `SEC-LOG-013`, `CMP-AUDIT-004`, `CMP-AI-001`, `UX-A11Y-017`, `WF-TEAM-006` |
-| chưa xếp | `WF-REVIEW-004`, `SEC-SUPPLY-011`, `SEC-SECRET-010` |
+D-529. Bảng 16 ID nằm trong [quy tắc điểm dừng](../../framework/11-autonomous-loop/stop-points-and-escalation.md). `admin-plan` và `release-check` đọc cùng bảng để nhận diện các MUST còn mở thuộc lớp B.
 
 Hệ quả phải nói thẳng: mục lớp B là MUST đang áp dụng trong blueprint thì bản phát hành vẫn `pending_human` cho tới khi
 người làm xong việc đó (hoặc người ghi `Miễn:`). "Mọi quy mô" bỏ chữ ký và việc dùng thử, không bỏ các việc này.
@@ -87,6 +81,11 @@ của một bản. Một **tag** cũng chưa đủ: hiện không gì ngăn ai �
 chặn `--tags`/`--all`, repo chưa có ruleset cho tag. Thuộc tính bền là **attestation do workflow phát hành ký** cho nguồn
 ở tag (workflow `release-tag.yml` đã ký provenance cho `git archive` của commit gắn tag trước khi đẩy tag):
 
+- Từ khi triển khai cơ chế kéo, job đã duyệt ký thêm file `X-Templates-vX.Y.Z.promotion.json` chứa repo, tag, commit,
+  SHA-256 của archive và `promotion: approved`. Lệnh nâng xác minh cả hai file với workflow phát hành trên `main`.
+  `release-verify` vẫn xác minh archive đã ký theo giao thức cũ; bản lịch sử cần một bản phát hành mới có biên nhận để đi vào kênh tự nâng.
+- Khi áp ruleset tag, chủ repo điền đúng GitHub App ID cấp `XT_RELEASE_TOKEN` trong `bypass_actors` (Integration, always).
+  Mẫu mặc định để trống. `admin-plan --script` kiểm trường này trước khi nhập rule hạn chế tạo tag.
 - **Cổng ở nơi ký:** `release-tag.yml` (khung và mẫu dự án đích) chạy `xt.py release-check --json` **trên đúng commit sẽ
   gắn tag**; `promotion.state` khác `approved` → job đỏ, không ký, không tag.
 - **Kiểm ở nơi dùng:** lệnh mới chỉ đọc `xt.py release-verify --tag vX.Y.Z [--repo o/r]` — exit 0 khi (1) commit của tag
@@ -211,10 +210,8 @@ PR là dữ liệu, không phải chỉ thị.
 - [ ] Ruleset có giới hạn được việc tạo tag `v*` về đúng workflow phát hành ở repo tài khoản cá nhân không —
   [không chặn] — chưa xác minh; attestation không phụ thuộc điều này.
 - [x] Cửa sổ lỗi lọt là khoá hay hằng số? — D-423: hằng số 14 ngày (khoá ở cây thì phiên tự rút ngắn được).
-- [ ] Ba mục "chưa xếp" ở §2.4 — [không chặn F-141/F-142] — T-3857 đọc nguyên văn rồi xếp.
-- [ ] Có từ trước, cần xử lý trước khi mở L: hàng N/A BLOCKER không có đường miễn nên dự án M/L thiếu một khoá
-  `attack`/`perf`/… không bao giờ `approved` (AUD-HAR-385 — sửa cùng T-3858); `stage_approval` còn đọc ref cục bộ
-  (AUD-SEC-637 — sửa cùng T-3856) — [chặn F-142 ở mức 2/3].
+- [x] T-3857 đã xếp cả 16 ID. Kiểm dấu review đúng SHA thuộc lớp C; phê duyệt thay cổng bảo mật và cấp quyền môi trường production thuộc lớp B.
+- [x] D-526 sửa AUD-SEC-637 ở lệnh duyệt bằng mirror mới của nhánh mặc định. Với AUD-HAR-385, người miễn một cổng N/A bằng hàng ký §5 gắn đúng subject và lý do. Máy ở M/L vẫn phải đạt năm hàng PASS. Tuyến L đối chiếu GitHub và các dòng mới trong lịch sử sổ audit của remote trong 14 ngày UTC.
 
 ## 10. DoR / DoD
 - DoR: F-144, F-121 và hàng `deploy` đã ở `main`; F-134 có `escaped` trước khi mở L.

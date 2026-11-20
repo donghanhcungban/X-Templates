@@ -94,6 +94,10 @@ LEGACY_RE = re.compile(r"\.xstored\b|\bxs\.(?:py|yaml)\b|\bXS_[A-Z]")
 # context (T-1834). Mẫu PR, ruleset, Dependabot, CI, quét bí mật lấy từ framework/templates: bản ở `.github/` của khung là
 # của riêng repo khung.
 GITHUB_FILES = {
+    ".github/rulesets/tags.json": ".github/rulesets/tags.json",
+    ".github/workflows/release-tag.yml": ".github/workflows/release-tag.yml",
+    ".github/workflows/xt-field.yml": "framework/templates/xt-field.yml",
+    ".github/workflows/xt-upgrade.yml": "framework/templates/xt-upgrade.yml",
     ".github/rulesets/main.json": "framework/templates/ruleset-main.json",
     ".github/pull_request_template.md": "framework/templates/PULL-REQUEST.md",
     ".github/dependabot.yml": "framework/templates/dependabot.yml",
@@ -838,7 +842,17 @@ def install_framework(xt_dir: Path, label: str | None) -> str:
         copy_files_replace(SRC / "research", linked_research(SRC), xt_dir / "research")
     drop_symlink(xt_dir / "scripts")
     (xt_dir / "scripts").mkdir(exist_ok=True)
-    optional_scripts = ("xt_adapter.py", "xt_flow.py", "xt_acceptance.py", "xt_ops_setup.py", "xt_release_ops.py")
+    optional_scripts = (
+        "xt_adapter.py",
+        "xt_flow.py",
+        "xt_acceptance.py",
+        "xt_ops_setup.py",
+        "xt_release_ops.py",
+        "xt_deploy.py",
+        "xt_distribution.py",
+        "xt_scale.py",
+        "xt_field.py",
+    )
     for f in ("xt.py", "dev-task.sh", "check-links.py", *optional_scripts):
         drop_symlink(xt_dir / "scripts" / f)
         if f in optional_scripts and not (SRC / "scripts" / f).is_file():  # khung tối giản/bản cũ
@@ -989,6 +1003,7 @@ MANIFEST_PATH_LISTS = (
     "git_hooks",
     "adapters",
     "packs",
+    "source",
     "codex_files",
 )  # file khung ghi ngoài `files` (AUD-HAR-204) + gói đã cài (`packs`, object) + hash tệp Codex sinh (`codex_files`,
 # object, ADR-0082) — giữ qua `write_manifests`
@@ -1003,7 +1018,7 @@ def load_manifest_doc(target: Path) -> dict[str, Any]:
     return doc if isinstance(doc, dict) else {}
 
 
-def record_manifest_paths(target: Path, key: str, paths: list[str] | dict[str, str]) -> None:
+def record_manifest_paths(target: Path, key: str, paths: list[str] | dict[str, Any]) -> None:
     """Ghi danh sách đường dẫn khung đã ghi (`git_hooks`/`adapters`) — hoặc map đường → hash (`codex_files`) — vào
     manifest.json, giữ mọi khoá khác."""
     doc = load_manifest_doc(target)
@@ -2680,6 +2695,15 @@ def install(
     migrate_legacy(target)
     inferred = infer_root_hashes(target)  # mẫu cũ trong .xtemplates/framework/ — trước khi install_framework thay
     mirrors = codex_baseline(target) if "codex" in (adapters or []) else {}  # gương Codex có sẵn — trước bước harness
+    scripts = str(Path(__file__).resolve().parent)
+    if scripts not in sys.path:  # python -I nạp từ bộ cài đang chạy
+        sys.path.insert(0, scripts)
+    import xt_distribution
+
+    source = xt_distribution.install_source(SRC)
+    previous_source = load_manifest_doc(target).get("source")
+    if isinstance(previous_source, dict) and previous_source.get("verified") is True and previous_source != source:
+        record_manifest_paths(target, "source", {"verified": False})
     version = install_framework(xt_dir, label)
     if not no_harness:
         install_harness(target, force_harness)
@@ -2692,6 +2716,7 @@ def install(
         install_github(target)
     if pack is not None:
         install_pack(target, pack, version)
+    record_manifest_paths(target, "source", source)
     ensure_gitignore(target)
     warn_ignored_framework(target)
     stale = legacy_refs(target)
@@ -3116,4 +3141,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    sys.dont_write_bytecode = True
     sys.exit(main())
