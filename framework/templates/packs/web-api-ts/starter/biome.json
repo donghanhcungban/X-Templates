@@ -20,5 +20,13 @@
     "rules": {
       "preset": "recommended"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["docs/autopilot/ACCEPTANCE.json", "docs/autopilot/STAGE.json", "docs/ops/DEPLOYS.json"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ]
 }

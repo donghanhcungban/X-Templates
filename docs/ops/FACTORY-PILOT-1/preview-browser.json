@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "result": "passed",
+  "subject": {
+    "head": "e8cf3ffb1c2155a472fe2361e062ae1936aa86e6",
+    "content": "cf2455062508216b08c2e6cda817a0d1ff81d7ec0d27e23c62869ac35b785e02",
+    "digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a"
+  },
+  "served_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+  "artifact_sha256": "999b371a942171b1831b5e4b48b8bbe52d63a9fd7132d6a8944d09b75f485ea4",
+  "checks": [
+    "login",
+    "create-note",
+    "reload-note"
+  ],
+  "elapsed_seconds": 1.716,
+  "run_url": "https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716857760"
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "task": "T-001",
+    "exit_code": 0,
+    "started": "2026-11-20T10:12:16+00:00",
+    "finished": "2026-11-20T10:12:19+00:00",
+    "head": "f98344ebc16a1e79aef6ff8831ab7450081f57db",
+    "signature": null,
+    "loop": "2026-11-20T10:11:15+00:00",
+    "executor": null
+  }
+]

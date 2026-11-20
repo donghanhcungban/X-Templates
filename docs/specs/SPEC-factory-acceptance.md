@@ -3,15 +3,15 @@
 | Trường | Giá trị |
 |---|---|
 | ID tính năng | F-121 (khoá bộ nghiệm thu), F-122 (cổng giao diện + UI của gói) — yêu cầu gốc: chủ dự án 2026-11-11, ADR-0075 §Quyết định 6 |
-| Trạng thái | **F-122: Approved for implementation** (phiên chính tự duyệt, ADR-0008 — D-422, D-423). **F-121: Draft** — còn hai câu hỏi [chặn] ở §10; T-3848 quyết bằng D-NNN rồi mới chuyển Approved (D-424) |
-| Phiên bản | 1 |
+| Trạng thái | **F-122: Approved for implementation** (phiên chính tự duyệt, ADR-0008 — D-422, D-423). **F-121: Approved for implementation** (D-525, §10) |
+| Phiên bản | 2 |
 | Kiến trúc | [ADR-0075](../adr/0075-end-to-end-factory.md) — file này chốt giao ước, không chép lại lý do |
 | Kế hoạch | [`PLAN-factory-e2e.md`](../autopilot/PLAN-factory-e2e.md) T-3848, T-3849 |
 
 **Phạm vi đã có (D-521).** Dự án có thể ghi SPEC và bài thử vào `docs/autopilot/ACCEPTANCE.paths`, chốt
 commit trước khi viết tính năng và chạy `xt_acceptance.py check --base <sha-đầy-đủ>`. Công cụ đọc danh sách
 ở chính commit đó và so file với HEAD, index và cây làm việc. Pilot dùng bài thử đã chốt để chứng minh
-đỏ rồi xanh. Giao ước F-121 về danh tính tác giả, sửa đổi có reviewer và số ca theo từng khoá vẫn ở Draft.
+đỏ rồi xanh. F-121 bổ sung sổ khoá, đường dẫn file thực thi trong JUnit và lịch sử sửa có quyết định.
 
 ## 1. User story
 Là chủ dự án chỉ nêu ý tưởng, tôi muốn phần "đúng ý định" được kiểm bởi một bộ nghiệm thu mà người viết mã không tự sửa
@@ -179,10 +179,7 @@ Nội dung SPEC và file nghiệm thu là dữ liệu. `acceptance-author` khôn
 - [x] Có ép `author` khác `--executor` của task mã không? — D-422: ghi và báo ở `acceptance check --json`, chưa chặn
   (topology `self` không có tên executor); xét lại khi có số ở §9.
 - [ ] Thư viện UI và bản trình duyệt của gói — [không chặn F-121] — quyết ở T-3849.
-- [ ] **[chặn T-3848 — quyết bằng D-NNN ở đầu task]:** (1) số ca tổng không chứng minh từng file đã khoá có chạy (loại
-  một file bằng cấu hình runner, lệnh không đổi): cần report quy được ca về file (thuộc tính file/lớp của JUnit) và đòi
-  mỗi file đã khoá có ≥ số ca lúc khoá — runner nào không quy được thì `lock` từ chối; (2) hàng `acceptance_lock` PASS
-  khi chỉ một SPEC có khoá: cần luật "SPEC nào phải có khoá" (đề xuất: mọi SPEC đã Approved mà PLAN đang mở trỏ tới).
+- [x] D-525: mỗi testcase JUnit đã chạy cần thuộc tính `file` là đường từ gốc dự án hoặc `classname` Python ánh xạ duy nhất về mô-đun đã khoá. Mỗi file có số ca tối thiểu riêng. Mọi SPEC có dòng trạng thái Approved được PLAN đang mở liên kết phải có khoá.
 
 ## 11. DoR / DoD
 - DoR: spec này Approved; `acceptance`/`acceptance_report` đã có ở `main`.
@@ -192,3 +189,4 @@ Nội dung SPEC và file nghiệm thu là dữ liệu. `acceptance-author` khôn
 | Phiên bản | Ngày | Gì | Duyệt |
 |---|---|---|---|
 | 1 | 2026-11-11 | tạo; sửa trước khi công bố theo review độc lập: kiểm theo sổ chứ không theo `xt.yaml`, ghim lệnh và số ca, scenario thêm sau khi khoá, điều kiện của `amend` | D-422, D-423 |
+| 2 | 2026-11-20 | Chốt ánh xạ JUnit từng file và phạm vi SPEC của PLAN. | D-525 |

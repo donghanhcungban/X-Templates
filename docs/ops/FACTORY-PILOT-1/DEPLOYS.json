@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "envs": {
+    "dev": {
+      "current": {
+        "env": "dev",
+        "subject": {
+          "head": "e8cf3ffb1c2155a472fe2361e062ae1936aa86e6",
+          "content": "cf2455062508216b08c2e6cda817a0d1ff81d7ec0d27e23c62869ac35b785e02",
+          "digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a"
+        },
+        "artifacts": [
+          {
+            "path": "dist/app.tgz",
+            "sha256": "999b371a942171b1831b5e4b48b8bbe52d63a9fd7132d6a8944d09b75f485ea4"
+          }
+        ],
+        "started": "2026-11-20T10:12:31+00:00",
+        "previous_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+        "url": "http://127.0.0.1:4317",
+        "deploy": {
+          "cmd_sha256": "2b1daef8fbfbf59d12b8fc8a62202ac0bab9844b87a60e912f6f5aed3d7f3b2d",
+          "exit_code": 0
+        },
+        "rollback": null,
+        "smoke": {
+          "cmd_sha256": "1309826d4af661c864ce48049a00c5c7739123832d74644e8ce35195a760bec7",
+          "exit_code": 0
+        },
+        "served_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+        "runner": {
+          "kind": "ci",
+          "run_id": "44716857760",
+          "run_url": "https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716857760"
+        },
+        "session": null,
+        "result": "deployed",
+        "finished": "2026-11-20T10:12:41+00:00"
+      },
+      "previous": {
+        "env": "dev",
+        "subject": {
+          "head": "6d130c6a35d6abd0520687f76b22446ffaa1f652",
+          "content": "807b764db3ecfc6feefa94b1f31eac6a673632f4e87673100dd3e74e527bc9da",
+          "digest": "6f9647f20f2951e0983d16f972cfd882daf0c6e5facb15e1457e79ac732fbacf"
+        },
+        "artifacts": [
+          {
+            "path": "dist/app.tgz",
+            "sha256": "57457824aca3bf31cf4ccaa3fc1404a700328b34d6b74fb4879ea830999f5a5c"
+          }
+        ],
+        "started": "2026-11-20T10:10:40+00:00",
+        "previous_digest": null,
+        "url": "http://127.0.0.1:4317",
+        "deploy": {
+          "cmd_sha256": "2b1daef8fbfbf59d12b8fc8a62202ac0bab9844b87a60e912f6f5aed3d7f3b2d",
+          "exit_code": 0
+        },
+        "rollback": null,
+        "smoke": {
+          "cmd_sha256": "1309826d4af661c864ce48049a00c5c7739123832d74644e8ce35195a760bec7",
+          "exit_code": 0
+        },
+        "served_digest": "6f9647f20f2951e0983d16f972cfd882daf0c6e5facb15e1457e79ac732fbacf",
+        "runner": {
+          "kind": "ci",
+          "run_id": "44716857760",
+          "run_url": "https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716857760"
+        },
+        "session": null,
+        "result": "deployed",
+        "finished": "2026-11-20T10:10:59+00:00"
+      },
+      "unknown": false
+    }
+  },
+  "events": [
+    {
+      "env": "dev",
+      "subject": {
+        "head": "6d130c6a35d6abd0520687f76b22446ffaa1f652",
+        "content": "807b764db3ecfc6feefa94b1f31eac6a673632f4e87673100dd3e74e527bc9da",
+        "digest": "6f9647f20f2951e0983d16f972cfd882daf0c6e5facb15e1457e79ac732fbacf"
+      },
+      "artifacts": [
+        {
+          "path": "dist/app.tgz",
+          "sha256": "57457824aca3bf31cf4ccaa3fc1404a700328b34d6b74fb4879ea830999f5a5c"
+        }
+      ],
+      "started": "2026-11-20T10:10:40+00:00",
+      "previous_digest": null,
+      "url": "http://127.0.0.1:4317",
+      "deploy": {
+        "cmd_sha256": "2b1daef8fbfbf59d12b8fc8a62202ac0bab9844b87a60e912f6f5aed3d7f3b2d",
+        "exit_code": 0
+      },
+      "rollback": null,
+      "smoke": {
+        "cmd_sha256": "1309826d4af661c864ce48049a00c5c7739123832d74644e8ce35195a760bec7",
+        "exit_code": 0
+      },
+      "served_digest": "6f9647f20f2951e0983d16f972cfd882daf0c6e5facb15e1457e79ac732fbacf",
+      "runner": {
+        "kind": "ci",
+        "run_id": "44716857760",
+        "run_url": "https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716857760"
+      },
+      "session": null,
+      "result": "deployed",
+      "finished": "2026-11-20T10:10:59+00:00"
+    },
+    {
+      "env": "dev",
+      "subject": {
+        "head": "f98344ebc16a1e79aef6ff8831ab7450081f57db",
+        "content": "e109bf7351bf1f4ae82f782210083cc688d233fd3817a01e956839ca1c54a00c",
+        "digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a"
+      },
+      "artifacts": [
+        {
+          "path": "dist/app.tgz",
+          "sha256": "999b371a942171b1831b5e4b48b8bbe52d63a9fd7132d6a8944d09b75f485ea4"
+        }
+      ],
+      "started": "2026-11-20T10:11:32+00:00",
+      "previous_digest": "6f9647f20f2951e0983d16f972cfd882daf0c6e5facb15e1457e79ac732fbacf",
+      "url": "http://127.0.0.1:4317",
+      "deploy": {
+        "cmd_sha256": "2b1daef8fbfbf59d12b8fc8a62202ac0bab9844b87a60e912f6f5aed3d7f3b2d",
+        "exit_code": 0
+      },
+      "rollback": null,
+      "smoke": {
+        "cmd_sha256": "1309826d4af661c864ce48049a00c5c7739123832d74644e8ce35195a760bec7",
+        "exit_code": 0
+      },
+      "served_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+      "runner": {
+        "kind": "ci",
+        "run_id": "44716857760",
+        "run_url": "https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716857760"
+      },
+      "session": null,
+      "result": "deployed",
+      "finished": "2026-11-20T10:11:42+00:00"
+    },
+    {
+      "env": "dev",
+      "subject": {
+        "head": "f98344ebc16a1e79aef6ff8831ab7450081f57db",
+        "content": "b074e9f2185eaf281e3b96b7a78feb2979c663cd79f366bee7ebfc15127ea35c",
+        "digest": "acd467102b1c9540d47896d8c1a573778d10d581da079ac288713e850d4c191b"
+      },
+      "artifacts": [
+        {
+          "path": "dist/app.tgz",
+          "sha256": "a72701960e0340d95f6083c57d67fbaefbd75671767a0d9002a0d99eddfc8e60"
+        }
+      ],
+      "started": "2026-11-20T10:11:52+00:00",
+      "previous_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+      "url": "http://127.0.0.1:4317",
+      "deploy": {
+        "cmd_sha256": "2b1daef8fbfbf59d12b8fc8a62202ac0bab9844b87a60e912f6f5aed3d7f3b2d",
+        "exit_code": 0
+      },
+      "rollback": {
+        "cmd_sha256": "547ef7c2c6caa37eec233bc40e8f14722d313a471787de53c800794d28847400",
+        "exit_code": 0
+      },
+      "smoke": {
+        "cmd_sha256": "1309826d4af661c864ce48049a00c5c7739123832d74644e8ce35195a760bec7",
+        "exit_code": 1
+      },
+      "served_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+      "runner": {
+        "kind": "ci",
+        "run_id": "44716857760",
+        "run_url": "https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716857760"
+      },
+      "session": null,
+      "result": "rolled_back",
+      "finished": "2026-11-20T10:12:09+00:00"
+    },
+    {
+      "env": "dev",
+      "subject": {
+        "head": "e8cf3ffb1c2155a472fe2361e062ae1936aa86e6",
+        "content": "cf2455062508216b08c2e6cda817a0d1ff81d7ec0d27e23c62869ac35b785e02",
+        "digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a"
+      },
+      "artifacts": [
+        {
+          "path": "dist/app.tgz",
+          "sha256": "999b371a942171b1831b5e4b48b8bbe52d63a9fd7132d6a8944d09b75f485ea4"
+        }
+      ],
+      "started": "2026-11-20T10:12:31+00:00",
+      "previous_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+      "url": "http://127.0.0.1:4317",
+      "deploy": {
+        "cmd_sha256": "2b1daef8fbfbf59d12b8fc8a62202ac0bab9844b87a60e912f6f5aed3d7f3b2d",
+        "exit_code": 0
+      },
+      "rollback": null,
+      "smoke": {
+        "cmd_sha256": "1309826d4af661c864ce48049a00c5c7739123832d74644e8ce35195a760bec7",
+        "exit_code": 0
+      },
+      "served_digest": "fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+      "runner": {
+        "kind": "ci",
+        "run_id": "44716857760",
+        "run_url": "https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44716857760"
+      },
+      "session": null,
+      "result": "deployed",
+      "finished": "2026-11-20T10:12:41+00:00"
+    }
+  ]
+}

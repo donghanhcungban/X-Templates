@@ -41,8 +41,7 @@
 ## Bằng chứng ngày 2026-11-20
 
 [D-521 / ADR-0083](../adr/0083-factory-lifecycle-flow.md) nối ba giai đoạn. CI `pack-web-api` thử rollback và
-[pilot sửa chữa](../../research/2026-11-20-factory-repair-pilot.md). Artifact `pack-preview-evidence` chứa báo cáo
-và dữ liệu gốc cho cổng T-3847. `xt_flow.py` ghi rõ phần số liệu T-3854 còn thiếu.
+[pilot sửa chữa](../../research/2026-11-20-factory-repair-pilot.md). [Pilot sổ ghi chú](../ops/FACTORY-PILOT-1.md) ghi bốn ca nghiệm thu, receipt và bundle bàn giao cho T-3847. `xt_flow.py` ghi rõ phần số liệu T-3854 còn thiếu.
 
 ## Ngân sách (4 con số)
 - Số vòng tối đa: bỏ trống · Chi phí: 0 đồng ngoài phiên tới hết Lát 5 · Timeout Gate: 1200 giây · Hạn: xét lại 2027-01-21
@@ -66,11 +65,11 @@ và dữ liệu gốc cho cổng T-3847. `xt_flow.py` ghi rõ phần số liệu
 
 ### Lát 2 — Ý tưởng tới repo đang chạy
 - [x] `T-3845` `install.py`: một lệnh từ thư mục trống ra dự án mới (git, khung + gói, `PROJECT.md` giữ ý tưởng và bốn dòng Khung để skill điền, blueprint, `doctor` sạch) (topo: review) — Gate: `python3 -m unittest tests.test_install_new`
-- [ ] `T-3846` Skill một bước ý tưởng → bản dev (T-3845 → `/autopilot` ở giai đoạn 1 → deploy và thử luồng nghiệp vụ → trình MVP để duyệt → báo cáo và giao repo riêng hoặc bundle) (sau: T-3844, T-3845, T-3848, T-3849) — Gate: `python3 -m unittest tests.test_skill_factory`
-- [ ] `T-3847` Pilot 1 từ ý tưởng sổ ghi chú đến bản dev trên repo mới. Đối chiếu báo cáo với receipt và lượt đăng nhập, tạo và đọc lại ghi chú trên cùng bản (sau: T-3846) — Gate: `python3 tests_e2e/verify_factory_pilot.py docs/ops/FACTORY-PILOT-1.md`
+- [x] `T-3846` Skill một bước ý tưởng → bản dev (T-3845 → `/autopilot` ở giai đoạn 1 → deploy và thử luồng nghiệp vụ → trình MVP để duyệt → báo cáo và giao repo riêng hoặc bundle) (sau: T-3844, T-3845, T-3848, T-3849) — Gate: `python3 -m unittest tests.test_skill_factory`
+- [x] `T-3847` Pilot 1 từ ý tưởng sổ ghi chú đến bản dev trên repo mới. Đối chiếu báo cáo với receipt và lượt đăng nhập, tạo và đọc lại ghi chú trên cùng bản (sau: T-3846) — Gate: `python3 tests_e2e/verify_factory_pilot.py docs/ops/FACTORY-PILOT-1.md`
 
 ### Lát 3 — Chất lượng bù: nghiệm thu độc lập, UI
-- [ ] `T-3848` Bộ nghiệm thu do agent khác người viết sinh từ SPEC trước khi viết mã, khoá bằng digest; việc đổi file đã khoá làm Gate đỏ trừ khi có D-NNN và reviewer độc lập; dựng trên `QA-STRAT-023` và khoá `acceptance`/`acceptance_report` sẵn có (topo: review) — Gate: `python3 -m unittest tests.test_acceptance_lock`
+- [x] `T-3848` Bộ nghiệm thu do agent khác người viết sinh từ SPEC trước khi viết mã, khoá bằng digest; việc đổi file đã khoá làm Gate đỏ trừ khi có D-NNN và reviewer độc lập; dựng trên `QA-STRAT-023` và khoá `acceptance`/`acceptance_report` sẵn có (topo: review) — Gate: `python3 -m unittest tests.test_acceptance_lock`
 - [x] `T-3849` Gói thêm UI tối thiểu và E2E trình duyệt. Repo sản phẩm chạy `bash tests_e2e/preview.sh` để dựng bản dev và kiểm đăng nhập, tạo, đọc lại ghi chú trong phiên mới. Workflow `dev-preview` chạy cùng lệnh trên PR hoặc khi gọi thủ công (sau: T-3844) — Gate: `python3 -m unittest tests.test_pack_ui`
 
 ### Lát 4 — Song song theo file

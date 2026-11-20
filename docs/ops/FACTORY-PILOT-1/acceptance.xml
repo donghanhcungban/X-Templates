@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuite name="SPEC-notes" tests="4" failures="0" errors="0"><testcase name="S-101" file="acceptance/notes-journey.py" /><testcase name="S-102" file="acceptance/notes-journey.py" /><testcase name="S-103" file="acceptance/notes-journey.py" /><testcase name="S-104" file="acceptance/notes-journey.py" /></testsuite>

@@ -271,13 +271,16 @@ def _glob_is_ledger(rel: str) -> bool:
     """Đích ghi là glob mà shell bung ra được sổ giai đoạn (`docs/autopilot/*`, `STAGE.jso?` — AUD-SEC-248): khớp từng cấp."""
     if not any(c in rel for c in "*?["):
         return False
-    parts, want = rel.split("/"), STAGE_LEDGER.split("/")
-    return len(parts) == len(want) and all(map(fnmatch.fnmatchcase, want, parts))
+    parts = rel.split("/")
+    return any(
+        len(parts) == len(want) and all(map(fnmatch.fnmatchcase, want, parts))
+        for want in (p.split("/") for p in PRODUCT_LEDGERS)
+    )
 
 
 def classify_path(rel: str) -> str:
     """'secret' | 'gate' | 'evidence' | 'capability' | 'migration' | ''."""
-    if rel == ".autopilot" or rel.startswith(".autopilot/") or rel == STAGE_LEDGER or _glob_is_ledger(rel):
+    if rel == ".autopilot" or rel.startswith(".autopilot/") or rel in PRODUCT_LEDGERS or _glob_is_ledger(rel):
         return (
             "evidence"  # bằng chứng + trạng thái vòng/giai đoạn: chỉ `xt.py loop|stage …` ghi (AUD-HAR-024, ADR-0058)
         )
@@ -4553,6 +4556,7 @@ XARGS_FENCE_FILES = (
     ".autopilot/state.json",
     ".autopilot/evidence/T-001.json",
     "docs/autopilot/STAGE.json",
+    "docs/autopilot/ACCEPTANCE.json",
     ".git/config",
     ".git/config.worktree",
     ".git/packed-refs",
@@ -11302,6 +11306,7 @@ REVIEW_FORGE_WHY = (
 )
 # Sổ giai đoạn sản phẩm (ADR-0058) — chỉ `xt.py stage …` ghi; duyệt/công nhận giai đoạn là việc của người.
 STAGE_LEDGER = "docs/autopilot/STAGE.json"
+PRODUCT_LEDGERS = (STAGE_LEDGER, "docs/autopilot/ACCEPTANCE.json")
 STAGE_APPROVE_WHY = (
     # vế lệnh-con-từ-biến đứng đầu: lý do bị cắt ở trần độ dài khi có lý do chặn khác (AUD-HAR-313)
     "duyệt giai đoạn sản phẩm (`xt.py stage approve`/`init --adopt`; lệnh con lấy từ biến `xt.py $c` cũng tính — viết"
@@ -15224,7 +15229,7 @@ UNKNOWN_CWD_DIRS: Tuple[Tuple[str, FrozenSet[str]], ...] = (
     (".git", frozenset({"config", "hooks"})),
     (".git/hooks", GIT_HOOK_NAMES),
     ("docs", frozenset({"autopilot"})),  # sổ giai đoạn `STAGE_LEDGER` (AUD-SEC-512)
-    ("docs/autopilot", frozenset({posixpath.basename(STAGE_LEDGER)})),
+    ("docs/autopilot", frozenset(map(posixpath.basename, PRODUCT_LEDGERS))),
 )
 UP_LEAD_RE = re.compile(r"^(?:\.\.(?:/|$))+")  # `..` đầu đường đã chuẩn hoá
 
@@ -16139,7 +16144,7 @@ def _go_diff_state(src: str, here: Optional[str], am: bool, match: Callable[[str
 
 
 # sổ giai đoạn và thư mục tổ tiên của nó (`docs/autopilot`, `docs`)
-LEDGER_PATHS = tuple(STAGE_LEDGER.rsplit("/", i)[0] for i in range(STAGE_LEDGER.count("/") + 1))
+LEDGER_PATHS = tuple(dict.fromkeys(p.rsplit("/", i)[0] for p in PRODUCT_LEDGERS for i in range(p.count("/") + 1)))
 
 
 def _ledger_hit(rel: str) -> bool:
@@ -19175,7 +19180,7 @@ XARGS_WRITERS = {
 
 
 LEDGER_DIR_PARTS = STAGE_LEDGER.split("/")[:-1]
-LEDGER_NAME = posixpath.basename(STAGE_LEDGER)
+LEDGER_NAMES = tuple(map(posixpath.basename, PRODUCT_LEDGERS))
 
 
 def _names_evidence(t: str) -> bool:
@@ -19191,7 +19196,7 @@ def _names_ledger(t: str) -> bool:
     parts = [p for p in t.split("/") if p not in ("", ".")]
     if not parts:
         return False
-    if fnmatch.fnmatchcase(LEDGER_NAME, parts[-1]):
+    if any(fnmatch.fnmatchcase(name, parts[-1]) for name in LEDGER_NAMES):
         dirs, k = parts[:-1], min(len(parts) - 1, len(LEDGER_DIR_PARTS))
         tail = all(map(fnmatch.fnmatchcase, LEDGER_DIR_PARTS[len(LEDGER_DIR_PARTS) - k :], dirs[len(dirs) - k :]))
         if tail if dirs else _has_alnum(parts[-1]):
@@ -19349,13 +19354,15 @@ def _find_pat_may_match(test: str, pat: str) -> bool:
     """Mẫu `-name`/`-path` có thể khớp sổ: `-name` so tên sổ; `-path` (`*` khớp cả `/`) so phần chữ sau `*` cuối với đuôi
     đường dẫn sổ. `[`/`?`/`\\` (fnmatch của find khác Python: `[^…]`, `\\.`) → coi như khớp; mẫu không nguyên văn (`$(…)`,
     `$VAR` chưa giải, backtick — review blk-guard) → coi như khớp."""
-    name, pat = (LEDGER_NAME.lower(), pat.lower()) if test.startswith("-i") else (LEDGER_NAME, pat)
+    names = LEDGER_NAMES
+    if test.startswith("-i"):
+        names, pat = tuple(n.lower() for n in names), pat.lower()
     if re.search(r"[$`]", pat):
         return True
     if test in LEDGER_FIND_NAME:
-        return bool(re.search(r"[\[\\]", pat)) or fnmatch.fnmatchcase(name, pat)
+        return bool(re.search(r"[\[\\]", pat)) or any(fnmatch.fnmatchcase(n, pat) for n in names)
     tail = pat.rsplit("*", 1)[-1]
-    return bool(re.search(r"[?\[\\]", tail)) or name.endswith(tail) or tail.endswith(name)
+    return bool(re.search(r"[?\[\\]", tail)) or any(n.endswith(tail) or tail.endswith(n) for n in names)
 
 
 # `git push` mà guard không biết đích (T-1523): push là hành động không đảo ngược ở nhánh chính, nên đích không giải được
@@ -21237,7 +21244,7 @@ def _ledger_tail(lit: str, script: str) -> bool:
     (`docs`, `autopilot` — trong một chuỗi hay nhiều): `Path("docs", "autopilot", "STAGE.json")`, `Path("docs") /
     "autopilot" / "STAGE.json"` (AUD-SEC-340). Tên sổ trong thư mục tạm hay chỉ là chữ ghi ra file khác thì không
     (review lượt 2)."""
-    if not ("/" + STAGE_LEDGER).endswith("/" + lit):
+    if not any(("/" + p).endswith("/" + lit) for p in PRODUCT_LEDGERS):
         return False
     named = {p for x in LITERAL_RE.finditer(script) for p in _literal(x).split("/")}
     return set(LEDGER_DIR_PARTS) <= named

@@ -5,6 +5,19 @@
  },
  "cases": [
   {
+   "id": "guard-acceptance-ledger-requires-cli",
+   "origin": "control",
+   "refs": [],
+   "input": {
+    "tool": "edit",
+    "path": "docs/autopilot/ACCEPTANCE.json"
+   },
+   "expect": {
+    "allowed": false,
+    "code": "EVIDENCE_HANDWRITE"
+   }
+  },
+  {
    "id": "guard-control-status",
    "origin": "control",
    "refs": [],
