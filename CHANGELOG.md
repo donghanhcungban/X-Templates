@@ -64,6 +64,20 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Guard chặn khôi phục tệp hàng rào từ commit cũ (AUD-SEC-988, T-3968): lệnh git đưa nội dung từ nguồn khác chỉ
+  mục/HEAD vào cây làm việc hoặc chỉ mục ở đường phủ hàng rào (tệp, thư mục cha, `.`, glob, magic pathspec) — `git
+  checkout <rev> -- f` (cả `-p`, `--end-of-options`), `git restore -s <rev>`, `git reset <rev> -- f`, `read-tree`,
+  `--icase-pathspecs`, `--work-tree` — nay bị chặn (`HOOK_BYPASS`; pathspec không đọc chắc → `BUDGET`). Khôi phục từ chỉ
+  mục/HEAD (`git restore f`, `git checkout -- f`) và lệnh dời HEAD cả cây (`checkout <nhánh>`, `switch`, `pull`, `merge`)
+  giữ nguyên; giới hạn còn lại ghi ở `harness-files.md`. Trước đây `git checkout HEAD~3 -- .claude/hooks/guard.py` hạ
+  cấp được guard ở cả chính sách strict.
+- Guard rào tệp nối guard của host khác (AUD-SEC-989, T-3969): `.cursor/hooks.json`, `.github/hooks/xt.json`,
+  `.grok/hooks/xt.json`, `.opencode/plugins/xt.ts`, `.gemini/settings.json` — Bash ghi/xoá bị chặn như
+  `.codex/hooks.json` **khi tệp nối có thật** (dự án đã cài adapter đó); `.github` chỉ rào `.github/hooks`.
+  `merge-check` xếp bốn tệp vào đường dẫn cổng. Lớp test `FenceBaselineMonotoneTest` ghim 1 116 quyết định nền để bản
+  sửa guard không lỏng hơn nền. **Dự án đích:** chạy lại `install.py` để nhận guard; script có
+  `git checkout <rev> -- <glob rộng>` trùng tệp hàng rào phải liệt kê đường cụ thể.
+
 - Guard bảo vệ harness Codex (AUD-SEC-987, T-3967, ADR-0082): ở dự án đích `.agents/skills/*` và `.codex/agents/*` nay là
   "năng lực" cần duyệt như `.claude/skills/*`, `.claude/agents/*` (`LOOP-STOP-023`, câu của mục có thêm ba đường; ID và
   mức giữ nguyên); `.codex/hooks.json` (tệp nối guard cho Codex) được rào như `.claude/settings.json` ở cả repo khung lẫn

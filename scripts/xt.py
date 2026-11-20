@@ -5983,6 +5983,7 @@ AGENT_RULE_GLOBS += (".github/copilot-instructions.md", ".github/instructions/*"
 MERGE_GATE_GLOBS = (
     *(".github/workflows/*", ".github/rulesets/*", ".github/dependabot.yml", ".gitlab-ci.yml"),
     *(".claude/settings.json", ".claude/settings.local.json", ".claude/hooks/*", ".xtemplates/*", ".codex/hooks.json"),
+    *(".cursor/hooks.json", ".github/hooks/xt.json", ".grok/hooks/xt.json", ".opencode/plugins/xt.ts"),  # AUD-SEC-989
     *("eslint.config.*", ".eslintrc*", "biome.json*", ".oxlintrc*", "tsconfig*.json", "jsconfig*.json"),
     *("vitest.config.*", "jest.config.*", "playwright.config.*", "lighthouserc*", ".lighthouserc*"),
     *("pyproject.toml", "setup.cfg", "mypy.ini", "pyrightconfig.json", "ruff.toml", ".coveragerc"),
