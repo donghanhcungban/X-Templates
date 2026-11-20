@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "status": "unchanged",
+  "baseline": "6d130c6a35d6abd0520687f76b22446ffaa1f652",
+  "scope": [
+    "docs/autopilot/ACCEPTANCE.paths",
+    "docs/specs/SPEC-notes.md",
+    "acceptance/notes-journey.py",
+    "xt.yaml"
+  ],
+  "scope_source": "docs/autopilot/ACCEPTANCE.paths",
+  "reviewed_files": 4,
+  "changed": [],
+  "bundle_sha256": "bdf7dc73370bc97d3ae39419f9327a543573cc471e3c1b2350e65b25144c6473",
+  "implementation_head": "e8cf3ffb1c2155a472fe2361e062ae1936aa86e6",
+  "submitted_head": "41a65281f94fd6563d9601bbc14fffe6e5d78d56",
+  "started": "2026-11-20T10:10:09Z"
+}

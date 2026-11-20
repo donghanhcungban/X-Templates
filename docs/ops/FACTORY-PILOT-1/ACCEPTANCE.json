@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "locks": [
+    {
+      "id": "A-001",
+      "spec": "docs/specs/SPEC-notes.md",
+      "scenarios": [
+        "S-101",
+        "S-102",
+        "S-103",
+        "S-104"
+      ],
+      "paths": [
+        "acceptance/notes-journey.py"
+      ],
+      "files": {
+        "acceptance/notes-journey.py": "ab03e554e5e1c4feabd3aeddceb2d1a71abdba0d39f7a2db1cfc1f0a889622bb"
+      },
+      "cmd_sha256": "963b7ec4ff80bab08a36f181b32c9628d618c6caf55937c2f58ce0211a89f981",
+      "cases": 4,
+      "counts": {
+        "acceptance/notes-journey.py": 4
+      },
+      "author": "acceptance-author",
+      "session": "",
+      "locked_at": "2026-11-20T10:11:03+00:00",
+      "head": "6d130c6a35d6abd0520687f76b22446ffaa1f652",
+      "existing": "D-006",
+      "decisions_at_lock": [
+        "D-001",
+        "D-002",
+        "D-003",
+        "D-004",
+        "D-005",
+        "D-006"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "event": "lock",
+      "lock": "A-001",
+      "at": "2026-11-20T10:11:03+00:00",
+      "by": "acceptance-author",
+      "decision": "D-006",
+      "reviewer": null,
+      "why": null,
+      "previous": null
+    }
+  ]
+}

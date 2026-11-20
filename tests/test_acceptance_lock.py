@@ -14,7 +14,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import xt
-import xt_acceptance as lock
+
+lock = xt.acceptance_module()
 
 
 class AcceptanceLockTest(unittest.TestCase):
@@ -114,6 +115,10 @@ class AcceptanceLockTest(unittest.TestCase):
         self.assertIn("A-001", ev)
         self.assertTrue(json.loads((self.base / ".autopilot/evidence/T-010.json").read_text())["acceptance_lock_red"])
         self.assertEqual(xt.loop_stats(self.base)["acceptance_red_tasks"], 1)
+        with patch.object(xt, "read_runs", return_value=[{"executor": "acceptance-author"}]):
+            out = json.loads(self.cli("check", "--json", code=1))
+            self.assertEqual(out["author_executor_overlap"], ["A-001"])
+            self.assertTrue(out["authors"]["A-001"]["session"])
         self.assertIn("amend", self.create(code=1))
         self.write(self.spec, "### S-101\n### S-102\n### S-103\n")
         self.write("acceptance/new.py", "# S-201\n")
@@ -140,7 +145,7 @@ class AcceptanceLockTest(unittest.TestCase):
         self.assertIn("sau", self.amend("D-001", code=1))
         self.write(log, "### D-002 · 2099-01-01T00:00:00+00:00\nkhông nhắc khoá\n")
         self.assertIn("sau", self.amend("D-002", code=1))
-        self.write(log, "### D-003 · 2099-01-01T00:00:00+00:00\nSửa A-001\n")
+        self.write(log, f"### D-003 · {xt.now_iso()}\nSửa A-001\n")
         self.assertIn("reviewer", self.amend("D-003", reviewer="acceptance-author", code=1))
         self.amend("D-003")
         self.assertEqual(self.ledger()["events"][-1]["previous"], first)

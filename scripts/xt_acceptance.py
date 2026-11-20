@@ -10,6 +10,7 @@ import re
 import stat
 import subprocess
 import sys
+import uuid
 from types import ModuleType
 from typing import Any
 import xml.etree.ElementTree as ET
@@ -297,6 +298,7 @@ def _verify_row(
     problems = out["problems"]
     rid = row["id"]
     out["locks"].append(rid)
+    out["authors"][rid] = {"author": row["author"], "session": row["session"]}
     out["expected_cases"].update(row["counts"])
     if core.cmd_sha256(cmd) != row["cmd_sha256"]:
         problems.append(f"{rid}: lệnh acceptance khác lúc khoá")
@@ -315,6 +317,7 @@ def verify(core: ModuleType, base: Path) -> dict[str, Any]:
         "ok": False,
         "problems": problems,
         "locks": [],
+        "authors": {},
         "expected_cases": {},
         "amendments": 0,
     }
@@ -480,7 +483,7 @@ def _actor(
         stamp = core._parse_iso(when)
         if (
             not stamp
-            or stamp < core._parse_iso(previous["locked_at"])
+            or not core._parse_iso(previous["locked_at"]) <= stamp <= core._parse_iso(core.now_iso())
             or decision in previous["decisions_at_lock"]
             or not re.search(rf"\b{re.escape(args.lock)}\b", body)
         ):
@@ -548,7 +551,7 @@ def update(core: ModuleType, base: Path, args: argparse.Namespace) -> str:
         "cases": sum(counts.values()),
         "counts": counts,
         "author": previous["author"] if previous else actor,
-        "session": core.session_id(),
+        "session": core.session_id() or os.environ.get("CODEX_THREAD_ID") or f"cli-{uuid.uuid4()}",
         "locked_at": now,
         "head": head,
         "existing": previous["existing"] if previous else decision,
@@ -583,6 +586,12 @@ def command(core: ModuleType, args: argparse.Namespace) -> int:
     base = core.project_dir().resolve()
     if args.action == "check":
         out = verify(core, base)
+        if args.json:
+            executors = sorted({r["executor"] for r in core.read_runs(base) if isinstance(r.get("executor"), str)})
+            out["declared_executors"] = executors
+            out["author_executor_overlap"] = [
+                rid for rid, info in out["authors"].items() if info["author"] in executors
+            ]
         print(json.dumps(out, ensure_ascii=False) if args.json else ("\n".join(out["problems"]) or "Nghiệm thu khớp"))
         return int(not out["ok"])
     try:

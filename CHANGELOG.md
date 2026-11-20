@@ -8,7 +8,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
-- Dự án có thể khóa SPEC và bộ nghiệm thu trước khi lập trình, rồi đối chiếu từng tệp với kết quả JUnit. CI gói thử bàn giao một MVP ghi chú qua git bundle.
+- Dự án có thể khóa SPEC và bộ nghiệm thu trước khi lập trình, rồi đối chiếu từng tệp với kết quả JUnit. CI gói đã bàn giao [MVP sổ ghi chú](docs/ops/FACTORY-PILOT-1.md) bằng git bundle. Bốn ca nghiệm thu chạy trên bản dev với PostgreSQL và Chromium.
 
 - `plan waves --handoff` xuất spec, Gate và phạm vi file của đợt đầu trong một lệnh. Lịch ưu tiên chuỗi phụ thuộc dài khi giảm được số đợt. [ADR-0086](docs/adr/0086-plan-wave-handoff.md).
 

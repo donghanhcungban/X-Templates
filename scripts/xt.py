@@ -3148,15 +3148,17 @@ def tick_plan_task(base: Path, st: Dict[str, Any], task: str, cmd_str: str) -> b
     return bool(n)
 
 
-def acceptance_module() -> Any:
-    """Bản cài có module nghiệm thu cạnh xt.py; giữ CLI một file của các bản cài cũ."""
-    if not (SCRIPT_DIR / "xt_acceptance.py").is_file():
-        return None
-    if str(SCRIPT_DIR) not in sys.path:
-        sys.path.insert(0, str(SCRIPT_DIR))
-    import xt_acceptance
+@functools.lru_cache(maxsize=1)
+def _acceptance_source(path: Path) -> Any:
+    """Nạp bản cùng bộ cài một lần, không đọc/ghi cache bytecode trong cây sản phẩm."""
+    module = types.ModuleType("xt_product_acceptance")
+    _exec_source(path, module)
+    return module
 
-    return xt_acceptance
+
+def acceptance_module() -> Any:
+    path = SCRIPT_DIR / "xt_acceptance.py"
+    return _acceptance_source(path) if path.is_file() else None
 
 
 def loop_record(
@@ -4726,7 +4728,7 @@ DOCTOR_SKILLS = (
     "adr",
     "handover",
 )
-DOCTOR_AGENTS = ("executor", "executor-deep", "researcher", "reviewer", "reviewer-alt")
+DOCTOR_AGENTS = ("acceptance-author", "executor", "executor-deep", "researcher", "reviewer", "reviewer-alt")
 DOCTOR_YAML_KEYS = ("lint", "typecheck", "test", "build")  # LOOP-HARNESS-008
 HOOK_REF_RE = re.compile(r"\.claude/hooks/([\w.-]+(?:/[\w.-]+)*)")
 # File hook nạp/gọi cạnh nó (_lib.sh, guard.py, nested/x.py, ../x.py): cả đường dẫn literal, giữ `/` lặp — đường dẫn chỉ
@@ -21268,7 +21270,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
     if all((SCRIPT_DIR / f).is_file() for f in ("xt_ops_setup.py", "xt_release_ops.py", "xt_flow.py")):
         _add_release_ops(sub)
-    if module := acceptance_module():
+    if (SCRIPT_DIR / "xt_acceptance.py").is_file():
         acceptance = sub.add_parser("acceptance", help="khoá, kiểm và sửa bộ nghiệm thu độc lập")
         actions = acceptance.add_subparsers(dest="action", required=True)
         check = actions.add_parser("check")
@@ -21280,7 +21282,9 @@ def build_parser() -> argparse.ArgumentParser:
         amend = actions.add_parser("amend")
         for flag in ("--lock", "--decision", "--why", "--reviewer"):
             amend.add_argument(flag, required=True)
-        acceptance.set_defaults(fn=lambda args: module.command(sys.modules[__name__], args))
+        acceptance.set_defaults(
+            fn=lambda args: _acceptance_source(SCRIPT_DIR / "xt_acceptance.py").command(sys.modules[__name__], args)
+        )
     pv = sub.add_parser("validate")
     pv.add_argument(
         "--stale", type=int, metavar="N", help="cảnh báo mọi 'xác minh YYYY-MM-DD' cũ hơn N ngày (AUD-DOC-177)"

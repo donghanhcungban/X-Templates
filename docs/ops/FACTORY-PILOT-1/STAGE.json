@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "cycle": "C-001",
+  "stage": 1,
+  "status": "awaiting_approval",
+  "submitted": {
+    "sha": "41a65281f94fd6563d9601bbc14fffe6e5d78d56",
+    "at": "2026-11-20T10:12:59+00:00",
+    "evidence": "Bốn ca nghiệm thu độc lập xanh trên Chromium/PostgreSQL; dev fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a",
+    "session": "",
+    "verified": "loop verify --all xanh trên cây này",
+    "preview": "http://127.0.0.1:4317",
+    "tree": "0c54985088dc45a00c83d8ab8b2f32d992d034340738f0bd0896a1d533e0712e",
+    "smoke": "`node scripts/dev-preview.mjs verify` exit 0"
+  },
+  "history": [
+    {
+      "event": "init",
+      "cycle": "C-001",
+      "stage": 1,
+      "at": "2026-11-20T10:10:12+00:00",
+      "session": ""
+    },
+    {
+      "event": "submit",
+      "cycle": "C-001",
+      "stage": 1,
+      "at": "2026-11-20T10:12:59+00:00",
+      "sha": "41a65281f94fd6563d9601bbc14fffe6e5d78d56",
+      "evidence": "Bốn ca nghiệm thu độc lập xanh trên Chromium/PostgreSQL; dev fa5ec8031e4711a26d4fdd9deae7332e9024246b31b6837766fbe37fc7a0113a"
+    }
+  ]
+}
