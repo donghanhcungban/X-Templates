@@ -1711,6 +1711,48 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class PerfGuardExtractMembersTest(unittest.TestCase):
+    """AUD-SEC-990 (review 🟠): luật thành viên giải nén với nhiều `-C` xen thành viên — bản đầu tích chéo mọi thư mục ×
+    mọi thành viên (−C tuyệt đối: bậc hai; −C tương đối cộng dồn: bậc ba, K=160 mất 35 s). Thư mục của thành viên lấy
+    theo vị trí (`_tar_pairs`): tuyến tính theo số token (thư mục tuyệt đối), không tệ hơn bậc hai của nền (cộng dồn)."""
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
+        import guard
+
+        self.g = guard
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(self.root, ignore_errors=True))
+        (self.root / ".claude" / "hooks").mkdir(parents=True)
+        (self.root / ".claude" / "settings.json").write_text("{}\n")
+        patcher = unittest.mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "strict"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def decide(self, cmd: str) -> object:
+        return self.g.bash_decision(cmd, str(self.root))
+
+    def test_absolute_dirs_interleaved_linear(self):
+        def work(k: int) -> object:
+            cmd = ["tar -xf a.tar", *(f"-C /tmp/xt-d{i} m{i}" for i in range(k)), *(f"n{i}" for i in range(k))]
+            return self.decide(" ".join(cmd))
+
+        # cỡ 25/100: bản tích chéo đỏ (0,5 s → 9 s); cỡ lớn hơn thì hạn quét cắt bản tích chéo thành BUDGET, che mất
+        cpu_budget.assert_not_quadratic(self, work, 25)
+
+    def test_cumulative_dirs_not_cubic(self):
+        def work(k: int) -> object:
+            return self.decide(
+                " ".join(["tar -xf a.tar", *(f"-C d{i} m{i}" for i in range(k)), *(f"n{i}" for i in range(k))])
+            )
+
+        cpu_budget.assert_not_quadratic(self, work, 20, ratio=40)  # nền đã bậc hai theo độ dài đường cộng dồn
+
+    def test_fence_member_after_many_dirs_blocked(self):
+        cmd = " ".join(["tar -xf a.tar", *(f"-C /tmp/xt-d{i} m{i}" for i in range(200)), "-C . .claude/settings.json"])
+        self.assertEqual(self.decide(cmd).get("decision"), "ask")
+
+
 class CpuBudgetTest(unittest.TestCase):
     """AUD-TEST-008: test độ phức tạp so tỉ lệ đo cùng tiến trình (`tests/cpu_budget.py`), không ngưỡng giây cứng."""
 

@@ -69,6 +69,15 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Guard xét thành viên của lệnh giải nén (AUD-SEC-990, AUD-SEC-992, T-3970): `tar`/`bsdtar`/`unzip`/`7z`/`cpio -i`/
+  `pax -r`/`ar x`/`jar x` có nêu thành viên hay mẫu (kể cả `--strip-components`, `--no-anchored`, `--include=`, glob,
+  thư mục cha, tên qua `xargs`, `-T -` với here-string/heredoc) nay ra đúng quyết định của `cp x <đích>`: tệp hàng rào
+  và hook git bị chặn (`HOOK_BYPASS`), bằng chứng autopilot (`EVIDENCE_HANDWRITE`), bí mật (`SECRET_WRITE`), tệp cổng hỏi
+  ở strict. `git archive <rev> <pathspec phủ hàng rào> | …` giải vào gốc hay thư mục không biết (cả trong `( … )`,
+  `sh -c`, `-C "$D"`) bị chặn. Trước đây `tar -xf a.tar .claude/settings.json` ghi đè được tệp hàng rào. Giữ nguyên:
+  giải nén không nêu thành viên hay "cả gói" (`tar -xf a.tar`, `.`, `'*'`) và giải nén vào thư mục khác; giới hạn còn
+  lại ghi ở `harness-files.md`. Hết hạn quét của guard luôn ra chặn (`BUDGET`). **Dự án đích:** chạy lại `install.py`.
+
 - Guard chặn khôi phục tệp hàng rào từ commit cũ (AUD-SEC-988, T-3968): lệnh git đưa nội dung từ nguồn khác chỉ
   mục/HEAD vào cây làm việc hoặc chỉ mục ở đường phủ hàng rào (tệp, thư mục cha, `.`, glob, magic pathspec) — `git
   checkout <rev> -- f` (cả `-p`, `--end-of-options`), `git restore -s <rev>`, `git reset <rev> -- f`, `read-tree`,

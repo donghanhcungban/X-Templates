@@ -200,6 +200,33 @@ CWD_RELATIVE: Dict[str, str] = {
     "guard-sec989-rm-copilot-hooks": ".github/hooks/xt.json tương đối → /tmp không có tệp nối (AUD-SEC-989)",
     "guard-sec989-rm-grok-hooks": ".grok/hooks/xt.json tương đối → /tmp không có tệp nối (AUD-SEC-989)",
     "guard-sec989-rm-opencode-plugin": ".opencode/plugins/xt.ts tương đối → /tmp không có tệp nối (AUD-SEC-989)",
+    # AUD-SEC-990: thành viên giải nén tương đối → dưới /tmp sau `cd /tmp` (thư mục `.claude`/`.codex` dưới /tmp không
+    # phải hàng rào dự án; tệp nối Cursor không có ở /tmp)
+    **{
+        f"guard-sec990-{k}": f"{v} tương đối → /tmp/{v} sau cd /tmp (AUD-SEC-990)"
+        for k, v in (
+            ("tar-cursor-hooks-live", ".cursor/hooks.json"),
+            ("tar-parent-dir", ".claude"),
+            ("unzip-glob", ".cl*"),
+            ("tar-strip-components", ".claude"),
+            ("7z-out-dot", ".codex"),
+            ("7z-include-switch", ".claude/*"),
+            ("cpio-pattern", ".claude/*"),
+            ("pax-member", ".claude"),
+            ("cd-parent-member", "src/../.claude"),
+            ("unzip-icase", ".CLAUDE/SETTINGS.JSON"),
+            ("dotdot-fence-glob", "src/../.claude/*"),
+        )
+    },
+    # AUD-SEC-992: như `cp x .autopilot/state.json` sau `cd /tmp` (bằng chứng của dự án không nằm dưới /tmp)
+    **{
+        f"guard-sec992-{k}": f"{v} tương đối → /tmp/{v} sau cd /tmp (AUD-SEC-992)"
+        for k, v in (
+            ("evidence-state", ".autopilot/state.json"),
+            ("stage-ledger", "docs/autopilot/STAGE.json"),
+            ("evidence-glob", ".autopilot/*"),
+        )
+    },
     "guard-advrev-chmod-dirglob-guard": ".claude/*/guard.py tương đối → /tmp/.claude",
     "guard-advrev-truncate-dirglob-guard": ".claude/*/guard.py tương đối → /tmp/.claude",
     "guard-rev361b-dd-ap": ".autopilot/state.json tương đối",
@@ -261,7 +288,8 @@ CWD_RELATIVE: Dict[str, str] = {
             ("468-cpio-Htar-ledger", "docs/autopilot", "AUD-SEC-468"),
             ("469-cp-ft-evidence", ".autopilot", "AUD-SEC-469"),
             ("470-cp-claude-into-root", ".", "AUD-SEC-470"),
-            ("471-tar-double-dash-O", ".claude/hooks", "AUD-SEC-471"),
+            # 471-tar-double-dash-O: gỡ — thành viên `guard.py` ghi `/tmp/.claude/hooks/guard.py`, khớp mẫu hàng rào ở mọi
+            # thư mục con (`_match_any`) nên chặn cả sau `cd /tmp` (AUD-SEC-990)
             ("471-tar-exclude-eats-O", ".claude/hooks", "AUD-SEC-471"),
             ("471-tar-ge-abbrev", ".claude/hooks", "AUD-SEC-471"),
             ("472-py-Im-tarfile", ".claude/hooks", "AUD-SEC-472"),

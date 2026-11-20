@@ -2780,6 +2780,306 @@ class FenceAdapterFilesTest(_FenceRootsMixin, unittest.TestCase):
                 self.assertIn(got.get("decision"), ("ask", "deny"))
 
 
+class FenceExtractMembersTest(_FenceRootsMixin, unittest.TestCase):
+    """AUD-SEC-990 (T-3970): lệnh giải nén có thành viên/mẫu nêu trên dòng lệnh mà đường đích (thư mục giải nén + thành
+    viên, cả `--strip-components`, `-P`, glob, thư mục cha) phủ tệp/thư mục hàng rào → chặn như ghi hàng rào qua Bash
+    (HOOK_BYPASS) ở mọi chính sách. Ranh giới: giải nén KHÔNG nêu thành viên (cả `-T`/`--files-from`, thành viên hoàn
+    toàn động `"$M"`, `git archive … | tar -x`) giữ quyết định nền như `cp -r src/. .`/`rsync -a src/ .` (nội dung guard
+    không đọc); giải nén vào thư mục khác không phủ hàng rào giữ nền."""
+
+    TOOLS = (
+        "tar -xf a.tar {}",
+        "tar -xzf a.tgz {}",
+        "tar xf a.tar {}",
+        "tar --extract --file=a.tar {}",
+        "tar --get -f a.tar {}",
+        "tar -xf a.tar -C . {}",
+        "tar -xf a.tar --wildcards {}",
+        "tar -xf a.tar --exclude=src {}",
+        "tar -xf - {}",
+        "gtar -xf a.tar {}",
+        "bsdtar -xf a.tar {}",
+        "busybox tar -xf a.tar {}",
+        "unzip -o a.zip {}",
+        "unzip a.zip {}",
+        "unzip -qo a.zip {} -d .",
+        "unzip -o a.zip {} -x src/app.py",
+        "busybox unzip -o a.zip {}",
+        "7z x a.7z {}",
+        "7za x -o. a.7z {}",
+        "7zr x a.7z -y {}",
+        "cpio -idv {} < a.cpio",
+        "cpio -i {}",
+        "pax -r -f a.tar {}",
+        "ar x a.a {}",
+        "jar xf a.jar {}",
+        "git archive HEAD~3 | tar -xf - {}",
+        "bash -c 'tar -xf a.tar {}'",
+        "env tar -xf a.tar {}",
+        "TAR_OPTIONS=-v tar -xf a.tar {}",
+        "cd src && tar -xf ../a.tar ../{}",
+        "tar -xf a.tar -C src/.. {}",
+        "tar -xf a.tar {} -C build",
+    )
+    CLAUDE = (".claude/settings.json", ".claude/hooks/guard.py", ".claude/hooks/new.sh", "./.claude/settings.json")
+    PARENTS = (".claude", ".claude/hooks", ".codex", "'.cl*'", "'.claude/*'", "'*.py'", "'.c*/*.json'")
+    ADAPTER = (".cursor/hooks.json", ".github/hooks/xt.json", ".gemini/settings.json", ".github/hooks", ".github")
+
+    def test_fence_members_blocked(self):
+        for form, member in itertools.product(self.TOOLS, (*self.CLAUDE, ".codex/hooks.json", *self.PARENTS)):
+            self.assert_blocked(form.format(member), roots=(*self.roots, self.bare))
+
+    def test_adapter_members_blocked_only_when_live(self):
+        """Tệp nối host khác: có thật (dự án đích, repo khung) → chặn; dự án chưa cài adapter đó → không phải hàng rào: mặc
+        định cho chạy, strict không HOOK_BYPASS (còn câu hỏi cổng như `cp x .github/…` — AUD-SEC-992)."""
+        for form, member in itertools.product(self.TOOLS, self.ADAPTER):
+            cmd = form.format(member)
+            self.assert_blocked(cmd)
+            with self.subTest(root="bare", cmd=cmd):
+                self.assertEqual(self.bash(self.bare, cmd, "default")[0], "")
+                self.assertNotEqual(self.bash(self.bare, cmd, "strict")[1], "HOOK_BYPASS")
+
+    def test_member_path_forms_blocked(self):
+        """Đường đích ghép: bỏ tiền tố, đường tuyệt đối, thư mục động, phần động, không phân hoa thường, `7z -i!`, thư mục
+        đang đứng là hàng rào hay cha, thành viên trước `-C`; đổi tên bằng mẫu (`pax -s`; tar/bsdtar: luật sổ nền)."""
+        for root in self.roots:
+            for cmd in (
+                "tar -xf a.tar --strip-components=1 x/.claude",
+                "tar -xf a.tar --strip-components=2 x/y/.codex/hooks.json",
+                "tar -xzf a.tgz --strip-components 1 -C . pkg/.claude/settings.json",
+                f"tar -xf a.tar -P {root}/.claude/settings.json",
+                f"tar -xf a.tar -C {os.path.dirname(root)} {os.path.basename(root)}",
+                f"unzip -o a.zip -d {root} .codex/hooks.json",
+                'tar -xf a.tar -C "$D" .claude',
+                'tar -xf a.tar ".claude/$M"',
+                "unzip -C a.zip .CLAUDE/SETTINGS.JSON",
+                "tar -xf a.tar --ignore-case .Claude",
+                "7z x a.7z '-i!.claude/*'",
+                "7z x a.7z -ir!.codex",
+                "7z e a.7z -o.claude/hooks x/guard.py",
+                "cd .claude && tar -xf ../a.tar hooks",
+                "cd .claude/hooks && unzip -o ../../a.zip guard.py",
+                "tar -xf a.tar .claude -C build",
+                "pax -r -s ',^x,.claude,' -f a.tar x",
+                "pax -r -s ',^,build/,' -f a.tar",
+                # mẫu có phần chữ không phải "cả gói": `.*` phủ `.claude`, `*settings.json` phủ tệp hàng rào
+                "tar -xf a.tar --wildcards '.*'",
+                "unzip -o a.zip '*settings.json'",
+                "7z x a.7z '*/hooks.json'",
+                # định nghĩa hàng rào hiện có khớp ở mọi thư mục con (`_match_any`, như `cp x vendor/.claude/settings.json`)
+                "unzip -o a.zip -d vendor .claude/settings.json",
+                "tar -xf a.tar -C build .claude/hooks/guard.py",
+            ):
+                self.assert_blocked(cmd, roots=(root,))
+        for cmd in ("tar -xf a.tar --transform 's,^x,.claude,' x", "bsdtar -xf a.tar -s ',x,.claude,' x"):
+            self.assert_blocked(cmd, ("HOOK_BYPASS", "EVIDENCE_HANDWRITE"), strict="ask")
+
+    def test_redirect_and_interpreter_forms_blocked(self):
+        """Dạng đã chặn ở nền giữ chặn: giải nén ra stdout chuyển hướng vào hàng rào, `python -m tarfile|zipfile -e`
+        vào thư mục hàng rào."""
+        for cmd in (
+            "gunzip -c a.gz > .claude/settings.json",
+            "zcat a.gz > .codex/hooks.json",
+            "tar -xOf a.tar x > .claude/hooks/guard.py",
+            "unzip -p a.zip x > .cursor/hooks.json",
+            "python3 -m tarfile -e a.tar .claude",
+            "python3 -m zipfile -e a.zip .codex",
+        ):
+            self.assert_blocked(cmd)
+
+    def test_member_flags_stdin_and_git_archive_blocked(self):
+        """Review 🟢-1/🟢-5: thành viên qua cờ (`--no-anchored`, `7z -r`, `--include=`, `--add-file=`), qua xargs từ nguồn
+        chữ, here-string của `-T -`; `git archive <rev> <pathspec phủ hàng rào> | giải nén vào gốc`."""
+        for cmd in (
+            "tar -xf a.tar --no-anchored settings.json",
+            "tar -xf a.tar --no-anchored guard.py",
+            "tar -xf a.tar --no-anchored --wildcards 'set*.json'",
+            "7z x a.7z -y -r settings.json",
+            "7z x -r a.7z guard.py",
+            "bsdtar -xf a.tar --include=.claude/settings.json",
+            "tar -xf a.tar --include=.claude/*",
+            "tar -xf a.tar --add-file=.claude/hooks/guard.py",
+            "echo .claude | xargs tar -xf a.tar",
+            "echo .claude/settings.json | xargs unzip -o a.zip",
+            "printf '%s\\n' .claude/settings.json | xargs -I{} tar -xf a.tar {}",
+            "tar -xf a.tar -T - <<< .claude/settings.json",
+            "tar -xf a.tar --files-from=/dev/stdin <<< .codex/hooks.json",
+            "git archive HEAD~3 .claude | tar -x",
+            "git archive HEAD .claude/hooks/guard.py | tar -xf -",
+            "git archive --format=tar HEAD~3 -- .codex | tar -x -C .",
+            "git -C . archive v1 '.cl*' | bsdtar -xf -",
+            "cd src && git archive HEAD~3 ../.claude | tar -x -C ..",
+        ):
+            self.assert_blocked(cmd)
+
+    def test_git_archive_into_groups_shells_and_unknown_dirs_blocked(self):
+        """Review lượt 2 🟠/🟢-2: vế sau ống là nhóm `( … )`/`{ …; }`, `sh -c`, `eval`, nhiều tầng ống; thư mục không biết
+        (`-C "$D"`, `cd "$PWD"`, `cd` trước ống, shell lồng hai tầng) — như luật thành viên coi thư mục động là gốc."""
+        for root in self.roots:
+            # git-archive(1), EXAMPLES: `git archive --format=tar --prefix=junk/ HEAD | (cd /var/tmp/ && tar xf -)`
+            self.assert_blocked(f"git archive --format=tar HEAD~3 .claude | (cd {root} && tar xf -)", roots=(root,))
+        for cmd in (
+            "git archive HEAD~3 .claude | (tar -x)",
+            "git archive HEAD~3 .claude | (cd . && tar -x)",
+            "git archive HEAD~3 .claude | sh -c 'tar -x'",
+            'git archive HEAD~3 .claude | bash -c "cd . && tar -x"',
+            "git archive HEAD~3 .claude | eval tar -x",
+            "git archive HEAD~3 .claude | { tar -x; }",
+            'git archive HEAD~3 .claude | (cd "$PWD" && tar xf -)',
+            'git archive HEAD~3 .claude | tar -x -C "$D"',
+            "git archive --format=tar.gz HEAD~3 .claude | gzip -dc | tar -x",
+            "git archive HEAD~3 .claude | sh -c 'sh -c \"tar -x -C /tmp/x\"'",
+            'cd "$X" && git archive HEAD~3 .claude | tar -x',
+            "cd .claude && git archive HEAD~3 . | tar -x",
+        ):
+            self.assert_blocked(cmd)
+
+    def test_heredoc_list_and_dotdot_whole_members(self):
+        """Review lượt 2 🟢-1: thân heredoc không mở rộng của `-T -` đọc như here-string. 🟢-3: thành viên "cả gói" sau
+        `..` giải đường rồi xét — vào thư mục phủ hàng rào thì chặn, `../.claude/*` có phần chữ thì chặn."""
+        for cmd in (
+            "tar -xf a.tar -T - <<EOF\n.claude/settings.json\nEOF",
+            "tar -xf a.tar -T - <<'EOF'\n.claude/settings.json\nEOF",
+            "tar -xf a.tar --files-from=- <<-E\n\t.codex/hooks.json\n\tE",
+            "cd src && tar -xf ../a.tar ../.claude/'*'",
+            "cd .claude/skills && tar -xf ../../a.tar ../'*'",
+            "cd .claude/hooks && tar -xf a.tar ../../'*'",  # nền đã chặn (thư mục đang đứng là hàng rào)
+        ):
+            self.assert_blocked(cmd)
+
+    # AUD-SEC-992: nhóm đích ghi khác hàng rào — giải nén có nêu thành viên ra đúng quyết định của `cp x <đích>`
+    GROUP_TARGETS = (
+        ".autopilot/state.json",
+        ".autopilot/evidence/T-001.json",
+        "docs/autopilot/STAGE.json",
+        ".git/hooks/pre-push",
+        ".git/config",
+        ".env",
+        "certs/server.key",
+        ".github/workflows/ci.yml",
+        "pyproject.toml",
+        "db/migrations/0001_init.sql",
+        "tests/test_a.py",
+        ".mcp.json",
+        ".claude/settings.json",
+    )
+    GROUP_TOOLS = ("tar -xf a.tar {}", "unzip -o a.zip {}", "cpio -idv {} < a.cpio", "7z x a.7z {}")
+
+    def test_member_targets_decide_like_cp(self):
+        for root in self.roots:
+            init_git_fixture(Path(root))
+            for rel in ("db/migrations/0001_init.sql", "tests/test_a.py", "pyproject.toml"):
+                os.makedirs(os.path.dirname(os.path.join(root, rel)) or root, exist_ok=True)
+                Path(root, rel).write_text("a\n", encoding="utf-8")
+        for rel, form, root, policy in itertools.product(
+            self.GROUP_TARGETS, self.GROUP_TOOLS, self.roots, self.POLICIES
+        ):
+            with self.subTest(rel=rel, form=form, root=os.path.basename(root), policy=policy):
+                want = self.bash(root, f"cp x {rel}", policy)
+                self.assertNotEqual(want[0] if policy == "strict" else want[1], "")  # nhóm có quyết định thật
+                self.assertEqual(self.bash(root, form.format(rel), policy), want)
+
+    def test_scan_deadline_ends_blocked(self):
+        """Review 🟠: dạng nhiều `-C` xen thành viên — vòng của luật mới gọi `_tick`: hết hạn quét → BUDGET (deny), không
+        chạy tới hết rồi cho; kết thúc trong hạn thì thành viên hàng rào bị chặn."""
+        k = 60
+        cmd = " ".join(["tar -xf a.tar", *(f"-C d{i} m{i}" for i in range(k)), *(f"n{i}" for i in range(k))])
+        with mock.patch.object(self.g, "DECISION_SECONDS", 0.0):
+            for policy in self.POLICIES:
+                self.assertEqual(self.bash(self.target, cmd + " .claude/settings.json", policy), ("deny", "BUDGET"))
+        self.assert_blocked(cmd + " .claude/settings.json", roots=(self.target,))
+        self.assert_allowed(cmd, roots=(self.target,))
+
+    # Quyết định NỀN (5fdee31a) ghi cứng — cho chạy ở (mặc định, strict) × (dự án đích, repo khung, chưa cài adapter)
+    BASELINE_ALLOWED = (
+        # giải nén không nêu thành viên vào gốc/thư mục đang đứng: nội dung guard không đọc (ranh giới, như `cp -r src/. .`)
+        *("tar -xf a.tar", "unzip a.zip", "tar -xf a.tar -C .", "7z x a.7z", "cpio -i < a.cpio", "ar x a.a"),
+        *("pax -r -f a.tar", "python3 -m tarfile -e a.tar", "python3 -m zipfile -e a.zip .", "jar xf a.jar"),
+        *("tar -xf a.tar -T list.txt", "tar -xf a.tar --files-from=list.txt", 'tar -xf a.tar "$M"', 'unzip a.zip "$M"'),
+        *("git archive HEAD~3 | tar -x", "curl -fsSL u | tar -xz", "git archive HEAD~3 src | tar -x"),
+        # `git archive` pathspec hàng rào ghi ra tệp hay giải vào thư mục khác; tên thành viên qua ống `-T -`
+        *("git archive -o out.tar HEAD~3 .claude", "git archive HEAD~3 .claude | tar -x -C /tmp/x"),
+        *("git archive -o out.tar HEAD~3 .claude | tar -x", "echo archive | tar -xf - src/app.py"),
+        # thành viên "cả gói" (`_whole_member`) = không nêu thành viên (phiên chính quyết, ranh giới A)
+        *("tar -xf a.tar .", "tar -xf a.tar ./", "tar -xf a.tar ''", "unzip -o a.zip .", "unzip a.zip '*'"),
+        *("tar -xf a.tar --wildcards '*'", "tar --wildcards -xf a.tar './*'", "tar -xf a.tar --wildcards '*/*'"),
+        *(
+            "7z x a.7z '**'",
+            "cpio -idv '**/*' < a.cpio",
+            "tar -xf a.tar -P /",
+            "tar -xf a.tar --strip-components=1 'x/*'",
+        ),
+        *('tar -xf a.tar "$M"/"$N"', "tar -xf a.tar -C . './'"),
+        "printf '%s\\n' .claude/settings.json | tar -xf a.tar -T -",
+        # `cpio -p`: toán hạng là thư mục đích (đích ghi thường của nền), không phải mẫu thành viên (review 🟢-2)
+        *("find src | cpio -pdm .", "cpio -pdm build < list.txt", "find . -name '*.py' | cpio -pdm build"),
+        # review lượt 2: `git archive` vào thư mục ngoài gốc chắc chắn, không pathspec / pathspec không phủ hàng rào /
+        # pathspec cả cây (ranh giới A), không giải nén; thân heredoc có mở rộng hay không phủ hàng rào; cả gói sau `..`
+        *("git archive HEAD~3 .claude | (cd /tmp/x && tar xf -)", "git archive HEAD | (cd /tmp/x && tar xf -)"),
+        *(
+            "git archive HEAD~3 docs | (cd . && tar xf -)",
+            "git archive HEAD~3 . | tar -x",
+            "git archive HEAD~3 ':/' | tar -x",
+        ),
+        *("git archive HEAD~3 .claude | sh -c 'cat > x.tar'", "git archive HEAD~3 .claude | { cd /tmp/x && tar -x; }"),
+        *("tar -xf a.tar -T - <<EOF\n$X\nEOF", "tar -xf a.tar -T - <<EOF\nsrc/app.py\nEOF"),
+        *("cd src && tar -xf ../a.tar ../'*'", "cd src && tar -xf ../a.tar ../.", 'cd src && tar -xf ../a.tar ../"$M"'),
+        *(
+            "unzip -o a.zip -x src/app.py",
+            "unzip -o a.zip -d . -x .claude/settings.json",
+            "tar -xf a.tar --exclude=.claude",
+        ),
+        # vào thư mục khác (luồng hay dùng), cả khi thành viên mang tên hàng rào
+        *("tar -xf dist.tar -C build/", "unzip pkg.zip -d vendor/", "tar -xzf node.tgz --strip-components=1 -C /tmp/x"),
+        *("tar -xf a.tar -C build .claude", "unzip -o a.zip -d vendor .codex/notes.md", "7z x a.7z -osrc .codex"),
+        *("cpio -i -D build .claude < a.cpio", "jar xf a.jar -C build .claude", "tar -xf a.tar -C /tmp/x '*'"),
+        *("cd src && tar -xf ../a.tar .claude", "unzip -o a.zip -d /tmp/x '.cl*'", "pax -rw src /tmp/x"),
+        # thành viên không phủ hàng rào; chỉ liệt kê/in ra stdout
+        *("tar -xf a.tar src/app.py", "tar -xf a.tar x/y z", "unzip a.zip 'docs/*.md'", "7z x a.7z src"),
+        *("tar -xf a.tar --strip-components=1 pkg/src", "tar -xf a.tar .claude.bak", "unzip a.zip .codex-notes.md"),
+        *(
+            "7z e a.7z .claude/settings.json",
+            "tar -xOf a.tar .claude/settings.json",
+            "unzip -p a.zip .codex/hooks.json",
+        ),
+        *(
+            "tar -tf a.tar .claude",
+            "unzip -l a.zip .claude/settings.json",
+            "7z l a.7z .claude",
+            "cpio -it .claude < a.cpio",
+        ),
+        *("ar t a.a .claude", "tar -cf out.tar .claude", "zip -r out.zip .claude .codex", "bsdtar -tf a.tar .claude"),
+        # archive đọc từ stdin (`< tệp`): đích chuyển hướng không phải thành viên
+        *("cpio -idv < .codex/hooks.json", "tar -xf - src/app.py < .claude/settings.json"),
+    )
+
+    def test_baseline_decisions_kept(self):
+        for cmd in self.BASELINE_ALLOWED:
+            self.assert_allowed(cmd, roots=(*self.roots, self.bare))
+
+    def test_strict_keeps_baseline_budget_deny(self):
+        """Câu hỏi của luật mới (dấu `FENCE_EXTRACT_TAG`) không thay lỗi tập con đọc chắc của nền (BUDGET, deny ở mọi chính
+        sách) thành ask ở strict — `"${a[@]}"` từng thành ask khi `_new_fence_ask` không nhận dấu."""
+        for cmd in ('tar -xf a.tar .claude "${a[@]}"', "tar -xf $(cat l) .claude", "tar -xf a.tar .claude `cat l`"):
+            self.assert_blocked(cmd, ("BUDGET",), strict="deny")
+        new = {"decision": "ask", "reason": self.g.FENCE_WHY.format(f"x {self.g.FENCE_EXTRACT_TAG}")}
+        self.assertTrue(self.g._new_fence_ask(new["reason"]))
+        self.assertEqual(self.g._rough_budget(new, "c")["code"], "BUDGET")
+
+    def test_concurrent_decisions_match_sequential(self):
+        jobs = [
+            (root, cmd)
+            for root in self.roots
+            for cmd in ("tar -xf a.tar .claude", "unzip -o a.zip .codex/hooks.json", "tar -xf a.tar -C build .claude")
+        ] * 6
+        with mock.patch.dict(os.environ, {"XT_GUARD_POLICY": "strict"}):
+            want = [str(self.g.bash_decision(c, r).get("decision") or "") for r, c in jobs]
+            with concurrent.futures.ThreadPoolExecutor(8) as pool:
+                got = list(pool.map(lambda j: str(self.g.bash_decision(j[1], j[0]).get("decision") or ""), jobs))
+        self.assertEqual(got, want)
+        self.assertEqual(set(want), {"ask", ""})
+
+
 class FenceBaselineMonotoneTest(unittest.TestCase):
     """Review AUD-SEC-988 🔴-2: luật hàng rào mới KHÔNG được lỏng hơn guard nền (cefba45d, trước AUD-SEC-988/989) ở bất
     kỳ (lệnh, gốc, chính sách) nào. `tests/fixtures/autonomy/guard_fence_baseline.json`: quyết định nền ghi sẵn cho lệnh
