@@ -13365,7 +13365,8 @@ def _stage_print(led: Optional[Dict[str, Any]], as_json: bool) -> None:
 
 
 def _agent_approve_stage(base: Path, led: Optional[Dict[str, Any]], args: argparse.Namespace) -> Dict[str, Any]:
-    if (not led or led["stage"] == 1) and not stage_agent_approval(base):
+    # Quyền trước mọi kiểm khác, ở MỌI giai đoạn (S-507): khoá chưa hiệu lực → chỉ người, không xét cây/trần/cổng.
+    if not stage_agent_approval(base):
         raise StageError(
             f"`stage approve` {STAGE_HUMAN_ONLY}; agent tự duyệt cần `{STAGE_APPROVAL_KEY}: agent` (ADR-0069)"
         )

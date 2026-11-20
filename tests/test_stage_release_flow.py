@@ -34,6 +34,10 @@ class StageReleaseFlowTest(RealCheckRepo):
         return out
 
     def prepare_candidate(self):
+        # `stage init --adopt` đọc người duyệt từ `git config user.email` (`_stage_by`): đặt trong repo tạm, không dựa
+        # vào cấu hình git toàn cục của máy chạy (runner CI không có).
+        self.git("config", "user.name", "Owner")
+        self.git("config", "user.email", "owner@example.invalid")
         self.enterContext(chdir(self.proj))
         self.enterContext(human_env(CLAUDE_PROJECT_DIR=str(self.proj)))
         fake = self.tmp / "node"
