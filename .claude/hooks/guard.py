@@ -15935,7 +15935,7 @@ def _archive_pipe_asks(tokens: List[str], root: str, cwd: Optional[str]) -> List
             continue
         here = None if any(CD_ONLY_RE.fullmatch(t) for t in tokens[:at]) else cwd  # `cd` trước ống: không biết (D-106)
         hits = _archive_hits(n[n.index("archive") + 1 :], root, here)
-        if hits and _pipe_unpacks_root(_pipe_rest_tokens(tokens, end + 1), root, here):
+        if hits and _pipe_unpacks_root(_pipe_rest_words(tokens, end + 1), root, here):
             out.append(FENCE_WHY.format(f"git archive … {hits[0]} | giải nén {FENCE_EXTRACT_TAG}"))
     return out
 
@@ -15956,7 +15956,7 @@ def _archive_whole(spec: str, root: str, cwd: Optional[str]) -> bool:
     return all(x.rstrip("/") == root.rstrip("/") for x in _where(".", root, root if magic[0] else cwd))
 
 
-def _pipe_rest_tokens(tokens: List[str], j: int) -> List[str]:
+def _pipe_rest_words(tokens: List[str], j: int) -> List[str]:
     """Token từ `j` tới hết ống (dừng ở `;`/`&&`/`||`/`&` ngoài ngoặc) — mọi vế sau `|` cùng chuỗi dữ liệu. Cả vế là MỘT
     nhóm `( … )`/`{ …; }` → bên trong nhóm (để `cd /tmp/x && tar xf -` đầu nhóm giữ đúng một thư mục)."""
     depth, end, closed = 0, len(tokens), -1
