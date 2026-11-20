@@ -616,9 +616,16 @@
 - Lý do (tiêu chí chất lượng cuối): G7 và admin-plan đọc cùng bảng; phần việc còn cần người hiện rõ và điều kiện sẵn có của environment, CODEOWNERS vẫn có hiệu lực.
 - Đường lùi: Đưa trần duyệt về mặc định và áp lại văn bản trước lần phân loại.
 
-### D-530 · 2026-11-20T15:07:17+00:00 · Luật F-144 có chặn tag major di động (v1, v1.2) như tag SemVer đầy đủ không?
+### D-530 · 2026-11-20T15:07:17+00:00 · F-144 có chặn tag major di động (v1, v1.2) không?
 
-- Phương án: (1) Chặn mọi v<số>(.<số>)* như ruleset refs/tags/v* · (2) Chỉ chặn vX.Y.Z và hậu tố SemVer -/+; tag major để ruleset phía server giữ
-- Chọn: Chỉ chặn vX.Y.Z và hậu tố SemVer -/+; tag major để ruleset phía server giữ
-- Lý do (tiêu chí chất lượng cuối): Dự án làm GitHub Action phải dời tag major sau mỗi bản; chặn ở guard gây chặn oan liên tục. Ruleset tags.json vẫn bảo vệ refs/tags/v* ở server nên an toàn không giảm; bản phát hành có số đầy đủ mới cần chuỗi bằng chứng.
-- Đường lùi: Mở rộng RELEASE_VERSION_TAG sang v<số>(.<số>)* và đổi các ca release create v1 trong fixture sang deny
+- Phương án: (1) Chặn cả tag major v<số>(.<số>)* · (2) Chỉ chặn vX.Y.Z kể cả hậu tố SemVer
+- Chọn: Chỉ chặn vX.Y.Z kể cả hậu tố SemVer
+- Lý do (tiêu chí chất lượng cuối): Dự án Action dời tag major mỗi bản, chặn ở guard là chặn oan; ruleset v* phía server vẫn giữ.
+- Đường lùi: Mở RELEASE_VERSION_TAG sang v<số>(.<số>)* và đổi ca fixture.
+
+### D-531 · 2026-11-20T16:16:56+00:00 · Agent duyệt giai đoạn 2/3 khi khoá chưa hiệu lực: sửa mã hay nới e2e?
+
+- Phương án: (1) Nới assert e2e · (2) Kiểm khoá ở mọi giai đoạn, trước kiểm cây và trần
+- Chọn: Kiểm khoá ở mọi giai đoạn, trước kiểm cây và trần
+- Lý do (tiêu chí chất lượng cuối): S-507 ghi exit 2, chỉ người; PR đổi thứ tự mà không có quyết định. Siết lại là cách hiểu chặt hơn.
+- Đường lùi: Chỉ kiểm ở giai đoạn 1 và nới assert e2e.
