@@ -59,7 +59,13 @@ class FactoryEntryTest(unittest.TestCase):
         steps = (
             (
                 body[:first],
-                ["--new", "--harness codex", "xt_flow.py --json", "stage status --json", "plan waves --plan"],
+                [
+                    "--new",
+                    "--harness codex",
+                    "xt_flow.py --json",
+                    "stage status --json",
+                    "plan waves --plan <PLAN> --max 4 --handoff",
+                ],
             ),
             (
                 body[first:second],
