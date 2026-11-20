@@ -174,6 +174,24 @@ class FactoryPilotEvidenceTest(unittest.TestCase):
         self.assertIn('"cost_usd": null', report.read_text())
         self.assertIn('"failed_gates": 0', report.read_text())
 
+    def test_ci_accepts_only_a_verified_starter_before_the_personalised_candidate(self):
+        self.prepare_ci()
+        starter_digest = "f" * 64
+        starter = receipt(
+            runner=self.dev["runner"],
+            subject={**self.dev["subject"], "digest": starter_digest},
+            served_digest=starter_digest,
+        )
+        self.ledger["events"].insert(0, starter)
+        self.dev["previous_digest"] = starter_digest
+        self.ci_ledger.write_text(json.dumps(self.ledger))
+        self.assertEqual(verify(self.generate_ci()), 10)
+        self.output = self.proofs.parent / "unrelated-starter"
+        self.dev["previous_digest"] = "1" * 64
+        self.ci_ledger.write_text(json.dumps(self.ledger))
+        with self.assertRaisesRegex(ValueError, "quay lại"):
+            self.generate_ci()
+
     def test_ci_rejects_masked_failure_and_skips_even_without_files(self):
         self.prepare_ci()
         self.steps["unit_gate"] = {"outcome": "failure", "conclusion": "success"}

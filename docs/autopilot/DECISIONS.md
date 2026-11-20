@@ -587,3 +587,10 @@
 - Chọn: So với lịch ưu tiên chuỗi phụ thuộc dài, chọn ít đợt hơn và lấy ngữ cảnh của đợt đầu trong một lệnh
 - Lý do (tiêu chí chất lượng cuối): Phát lại 42 PLAN ở trần 4. Giữ lịch cũ khi hoà, kiểm giai đoạn trước khi xuất gói giao việc.
 - Đường lùi: Hoàn tác thay đổi plan waves và dùng context --task.
+
+### D-525 · 2026-11-20T10:04:23+00:00 · Khi nào chấp nhận kết quả nghiệm thu độc lập cho một SPEC?
+
+- Phương án: (1) Chỉ đối chiếu tổng số test trong JUnit · (2) Khóa SPEC và tệp nghiệm thu trước khi viết mã, đối chiếu từng tệp với JUnit khi kiểm
+- Chọn: Khóa SPEC và tệp nghiệm thu trước khi viết mã, đối chiếu từng tệp với JUnit khi kiểm
+- Lý do (tiêu chí chất lượng cuối): Tổng số ca có thể giữ nguyên dù bỏ một tệp. Ánh xạ testcase về tệp trong phạm vi giúp phát hiện sai lệch và vẫn hỗ trợ classname ánh xạ duy nhất.
+- Đường lùi: Hoàn tác tính năng opt-in và giữ kiểm commit độc lập hiện có.

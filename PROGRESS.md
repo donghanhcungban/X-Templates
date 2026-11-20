@@ -3,6 +3,8 @@
 > Giai đoạn hiện tại: G8 Vận hành & tiến hoá (khung 3.34.0, pha `harden` — D-136) · Cập nhật: 2026-11-20
 
 ## Đang làm
+
+- Bản dùng thử ghi chú lên CI của gói, với SPEC khóa trước khi viết mã, nghiệm thu độc lập và bàn giao bằng git bundle. Mốc đạt được cập nhật theo [PLAN](docs/autopilot/PLAN-factory-e2e.md).
 - 2026-11-19 **3.34.0 đã phát hành** (tag `v3.34.0` = `ef146b0`, agent ký GO-NO-GO §5 ở #674): harden ADR-0080 xong 14 đợt (D-494…D-509; guard mặc định chặn D-503; giới hạn đã biết ở `harness-files.md`, có hạn 2027-01-21). Đợt [audit 20/11](docs/ops/AUDIT-REPORT-2026-11-20-delta.md) rà 13 nhóm (SEC, PERF và DOC rút gọn); 🟠 chấp nhận AUD-DEP-037 (D-514).
 - ADR-0081 (D-511, #673): `compose` giữ quy mô cũ (lỗi đọc → dừng, AUD-HAR-437), mặc định mới S; `doctor` ở build không cảnh báo chậm MINOR/PATCH ([đo dự án đích](research/2026-11-19-target-project-speed.md)). Nâng khung kèm `actions/setup-python` 3.15.2 ở CI dự án gọi `xt.py` (ADR-0078).
 - D-524 (#694): [`plan waves --handoff`](docs/adr/0086-plan-wave-handoff.md) gộp ngữ cảnh đợt đầu và giảm tổng số đợt từ 463 xuống 444 khi phát lại 42 PLAN.

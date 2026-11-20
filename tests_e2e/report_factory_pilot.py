@@ -70,8 +70,16 @@ def generate(app, browser_path, started_file, idea, steps, run_url, output):
         require(current is not None, "Thiếu receipt dev")
         events = [entry for entry in ledger["events"] if entry["env"] == "dev"]
         require(
-            len(events) == 2
-            and events[0] == current
+            (
+                len(events) == 2
+                or (
+                    len(events) == 3
+                    and events[0]["result"] == "deployed"
+                    and events[0]["subject"]["digest"] == current["previous_digest"]
+                    and events[0]["subject"]["digest"] != current["subject"]["digest"]
+                )
+            )
+            and events[-2] == current
             and events[-1]["result"] == "rolled_back"
             and events[-1]["served_digest"] == current["subject"]["digest"]
             and events[-1]["subject"]["digest"] != current["subject"]["digest"],

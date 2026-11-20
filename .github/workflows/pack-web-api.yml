@@ -16,6 +16,8 @@ on:
       - tests_e2e/pack_rollback.py
       - tests_e2e/factory_lifecycle.py
       - tests_e2e/report_factory_pilot.py
+      - tests_e2e/factory_notes.py
+      - tests_e2e/notes/**
       - tests_e2e/verify_factory_pilot.py
       - tests/test_factory_pilot_evidence.py
       - tests_e2e/repairs/**
@@ -32,6 +34,8 @@ on:
       - tests_e2e/pack_rollback.py
       - tests_e2e/factory_lifecycle.py
       - tests_e2e/report_factory_pilot.py
+      - tests_e2e/factory_notes.py
+      - tests_e2e/notes/**
       - tests_e2e/verify_factory_pilot.py
       - tests/test_factory_pilot_evidence.py
       - tests_e2e/repairs/**
@@ -121,6 +125,18 @@ jobs:
         id: dependencies
         working-directory: ${{ runner.temp }}/app
         run: pnpm install --frozen-lockfile
+      - name: Cài Chromium cho luồng duyệt MVP
+        id: browser_setup
+        if: matrix.case == 'clean'
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          python -m pip install --quiet --require-hashes -r tests_e2e/requirements.txt
+          bash tests_e2e/prepare-chromium.sh python
+      - name: Chốt SPEC và nghiệm thu độc lập trước khi tùy biến sổ ghi chú
+        if: matrix.case == 'clean'
+        env:
+          PG_TOOLS_CONTAINER: ${{ job.services.postgres.id }}
+        run: python tests_e2e/factory_notes.py prepare --app "$RUNNER_TEMP/app" --state "$RUNNER_TEMP/notes-state"
       - name: Áp ca sai cố ý
         if: matrix.case != 'clean'
         run: python3 tests/pack_mutants.py apply "$PACK" "$CASE" "$RUNNER_TEMP/app"
@@ -166,13 +182,6 @@ jobs:
           test -z "$(git status --porcelain)"
           python3 .xtemplates/scripts/xt.py release-check --json > "$RUNNER_TEMP/release.json" || true
           python3 "$GITHUB_WORKSPACE/tests/pack_mutants.py" promotion "$RUNNER_TEMP/release.json"
-      - name: Cài Chromium cho luồng duyệt MVP
-        id: browser_setup
-        if: matrix.case == 'clean'
-        working-directory: ${{ runner.temp }}/app
-        run: |
-          python -m pip install --quiet --require-hashes -r tests_e2e/requirements.txt
-          bash tests_e2e/prepare-chromium.sh python
       - name: Dựng bản dev và xác nhận ghi chú qua trình duyệt
         id: browser_preview
         if: matrix.case == 'clean'
@@ -210,6 +219,20 @@ jobs:
             ${{ runner.temp }}/rollout-drill.json
             ${{ runner.temp }}/app/docs/ops/DEPLOYS.json
             ${{ runner.temp }}/factory-pilot-1/
+      - name: Nghiệm thu độc lập, trình MVP và kiểm bundle sổ ghi chú
+        if: matrix.case == 'clean'
+        env:
+          PG_TOOLS_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          python tests_e2e/factory_notes.py finish --app "$RUNNER_TEMP/app" --state "$RUNNER_TEMP/notes-state" \
+            --started-file "$RUNNER_TEMP/pilot-1-started" --output "$RUNNER_TEMP/notes-delivery"
+      - name: Giao lịch sử dự án và bằng chứng sổ ghi chú
+        if: matrix.case == 'clean'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: factory-notes-delivery
+          if-no-files-found: error
+          path: ${{ runner.temp }}/notes-delivery/
       - name: Ba vòng sửa chữa với PostgreSQL và Chromium
         if: matrix.case == 'clean'
         env:

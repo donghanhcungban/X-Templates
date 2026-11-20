@@ -3148,6 +3148,17 @@ def tick_plan_task(base: Path, st: Dict[str, Any], task: str, cmd_str: str) -> b
     return bool(n)
 
 
+def acceptance_module() -> Any:
+    """Bản cài có module nghiệm thu cạnh xt.py; giữ CLI một file của các bản cài cũ."""
+    if not (SCRIPT_DIR / "xt_acceptance.py").is_file():
+        return None
+    if str(SCRIPT_DIR) not in sys.path:
+        sys.path.insert(0, str(SCRIPT_DIR))
+    import xt_acceptance
+
+    return xt_acceptance
+
+
 def loop_record(
     task: str, cmd: List[str], base: Optional[Path] = None, executor: Optional[str] = None, tick: bool = True
 ) -> int:
@@ -3179,6 +3190,10 @@ def loop_record(
     # Một đối số = chuỗi shell nguyên văn (cho phép `a && b`, ống); nhiều đối số = argv, ghép bằng shlex để giữ nháy (AUD-HAR-002).
     cmd_str = cmd[0] if len(cmd) == 1 else shlex.join(cmd)
     code, out = run_gate_shell(cmd_str, base, timeout)
+    module = acceptance_module()
+    lock_problems = module.verify(sys.modules[__name__], base.resolve())["problems"] if module else []
+    if lock_problems:
+        code, out = code or 1, out + "\n" + "\n".join(lock_problems)
     ev: Dict[str, Any] = {
         "task": task,
         "cmd": redact(cmd_str),
@@ -3190,6 +3205,8 @@ def loop_record(
         "head": _git_head(base),
         "output_tail": redact_tail(out, 40),
     }
+    if lock_problems:
+        ev["acceptance_lock_red"] = True
     if code == ZERO_TESTS_EXIT and ZERO_TESTS_MARK in out:
         ev["zero_tests_red"] = True  # lý do đỏ dù lệnh exit 0 — Stop hook/người đọc evidence thấy ngay
     if executor:
@@ -3285,6 +3302,8 @@ def _append_run(base: Path, st: Dict[str, Any], ev: Dict[str, Any], signature: O
     Fail-open (AGENTS.md §7): ghi lỗi chỉ cảnh báo — bằng chứng và đếm lỗi lặp đã ghi trước đó. Không đi theo symlink
     đặt sẵn (O_NOFOLLOW, như `write_atomic` — AUD-HAR-009)."""
     row = {k: ev[k] for k in ("task", "exit_code", "started", "finished", "head")}
+    if ev.get("acceptance_lock_red"):
+        row["acceptance_lock_red"] = True
     row.update({"signature": signature, "loop": st.get("started"), "executor": ev.get("executor")})
     try:
         _append_line(base, RUNS_FILE, json.dumps(row, ensure_ascii=False))
@@ -3416,6 +3435,10 @@ def loop_stats(base: Path, all_loops: bool = False) -> Dict[str, Any]:
     )
     return {
         **_delegation_stats(per, rows),
+        "acceptance_red_tasks": len({r["task"] for r in rows if r.get("acceptance_lock_red")}),
+        "acceptance_amendments": module.verify(sys.modules[__name__], base.resolve())["amendments"]
+        if (module := acceptance_module())
+        else 0,
         "tasks": per,
         "task_count": len(per),
         "runs": len(rows),
@@ -12041,9 +12064,16 @@ def _merge_eval(pr: Dict[str, Any], local: bool = False) -> Tuple[Dict[str, Any]
         # (#213: build → harden) từng merge như build. PR đụng xt.yaml luôn tính harden (review #213, D-137).
         phase, phase_notes = "harden", [*phase_notes, "PR sửa xt.yaml — tính pha harden (D-137)"]
     risk = merge_risk_globs(project_dir(), ref)
+    module = acceptance_module()
+    protected = (
+        module.review_paths(sys.modules[__name__], project_dir().resolve(), ref, list(_risky_paths(pr)))
+        if module
+        else []
+    )
+    risk = [*risk, *protected]
     rec = _pr_record(read_reviews(project_dir()), str(pr.get("number", ""))) if local else None
     decision = merge_check_result(pr, autonomy, risk, hard_auto, phase, rec)
-    if _committed_xt_keys(project_dir(), ref).get("merge_review", "optional") == "optional":
+    if not protected and _committed_xt_keys(project_dir(), ref).get("merge_review", "optional") == "optional":
         decision = optional_review_decision(pr, autonomy, risk, hard_auto, phase)
     return decision, notes + hard_notes + phase_notes
 
@@ -14356,6 +14386,11 @@ def release_check(base: Path, blueprint: str, status: str, unchecked_must: str =
         _release_stage(base),
         _release_review_debt(base, status),
         *(row for row, _ in runs.values()),
+        *(
+            module.release_rows(sys.modules[__name__], base.resolve(), runs["acceptance"])
+            if (module := acceptance_module())
+            else []
+        ),
         *([art_row] if art_row else []),
         *_release_deploy(base, subject),
         _release_unchecked_must(base, blueprint, unchecked_must),
@@ -21233,6 +21268,19 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
     if all((SCRIPT_DIR / f).is_file() for f in ("xt_ops_setup.py", "xt_release_ops.py", "xt_flow.py")):
         _add_release_ops(sub)
+    if module := acceptance_module():
+        acceptance = sub.add_parser("acceptance", help="khoá, kiểm và sửa bộ nghiệm thu độc lập")
+        actions = acceptance.add_subparsers(dest="action", required=True)
+        check = actions.add_parser("check")
+        check.add_argument("--json", action="store_true")
+        lock = actions.add_parser("lock")
+        lock.add_argument("--spec", required=True)
+        lock.add_argument("--author", required=True)
+        lock.add_argument("--existing", metavar="D-NNN")
+        amend = actions.add_parser("amend")
+        for flag in ("--lock", "--decision", "--why", "--reviewer"):
+            amend.add_argument(flag, required=True)
+        acceptance.set_defaults(fn=lambda args: module.command(sys.modules[__name__], args))
     pv = sub.add_parser("validate")
     pv.add_argument(
         "--stale", type=int, metavar="N", help="cảnh báo mọi 'xác minh YYYY-MM-DD' cũ hơn N ngày (AUD-DOC-177)"

@@ -37,6 +37,7 @@ AGENT_KEYS = {"name", "description", "model_reasoning_effort", "developer_instru
 # Giá trị kỳ vọng viết tay theo 5 agent của khung (không tính lại bằng bộ đọc frontmatter của mã): `effort` khai ở
 # executor-deep (high) và reviewer-alt (max); ba agent còn lại không khai.
 EXPECTED_EFFORT = {
+    "acceptance-author": None,
     "executor": None,
     "executor-deep": "high",
     "researcher": None,
@@ -44,6 +45,7 @@ EXPECTED_EFFORT = {
     "reviewer-alt": "max",
 }
 DESCRIPTION_HEAD = {
+    "acceptance-author": "Viết bài nghiệm thu độc lập",
     "executor": "Thực thi một task RÕ PHẠM VI",
     "executor-deep": "Tầng thực thi SÂU (ADR-0029)",
     "researcher": "Xác minh dữ kiện từ NGUỒN SỐNG",
@@ -51,6 +53,7 @@ DESCRIPTION_HEAD = {
     "reviewer-alt": "Reviewer độc lập NĂNG LỰC CAO NHẤT",
 }
 BODY_HEAD = {
+    "acceptance-author": "Bạn viết bài nghiệm thu",
     "executor": "Bạn là người thực thi theo spec",
     "executor-deep": "Bạn là tầng thực thi sâu",
     "researcher": "Bạn là người tra cứu.",
