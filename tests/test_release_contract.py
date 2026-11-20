@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import xt
+import xt_release_ops
 from test_xt import audit_status_text
 from test_xt_cli import TmpDirCase, TmpRepoCase, run_main
 
@@ -789,6 +790,58 @@ class PromotionTest(ReleaseCase):
         self.assertEqual(p["reasons"], ["docs/ops/GO-NO-GO-v1.2.0.md"])
         _, out, _ = run_main("release-check")
         self.assertIn("promotion: approved", out)
+
+    def test_tag_waits_for_separate_signoff_and_binds_exact_sha(self):
+        self.setup_xt()
+        unsigned = self.git("rev-parse", "HEAD")
+        tag = xt_release_ops.approved_for_tag
+        self.assertFalse(tag(xt, self.repo, self.repo, unsigned))
+        self.go_no_go()
+        signed = self.git("rev-parse", "HEAD")
+        self.assertTrue(tag(xt, self.repo, self.repo, signed))
+        with self.assertRaisesRegex(ValueError, "SHA"):
+            tag(xt, self.repo, self.repo, unsigned)
+
+        previous = self.repo.parent / "signed-candidate"
+        self.git("worktree", "add", "--detach", str(previous), signed)
+        self.go_no_go(decision="NO-GO")
+        with self.assertRaisesRegex(ValueError, "đã đổi"):
+            tag(xt, previous, self.repo, signed)
+        with self.assertRaisesRegex(ValueError, "rejected"):
+            tag(xt, self.repo, self.repo, self.git("rev-parse", "HEAD"))
+
+    def test_historical_tag_requires_current_version_and_release_policy(self):
+        self.setup_xt()
+        self.go_no_go()
+        signed = self.git("rev-parse", "HEAD")
+        candidate = self.tmp / "signed"
+        self.git("worktree", "add", "--detach", str(candidate), signed)
+        (self.repo / "readme.md").write_text("Independent change on main.\n")
+        self.commit()
+        self.assertTrue(xt_release_ops.approved_for_tag(xt, candidate, self.repo, signed))
+
+        for name, change in (("VERSION", b"1.3.0\n"), ("xt.yaml", b"release_approval_days: 1\n")):
+            with self.subTest(name=name):
+                path = self.repo / name
+                original = path.read_bytes()
+                path.write_bytes(change)
+                self.commit()
+                with self.assertRaisesRegex(ValueError, name):
+                    xt_release_ops.approved_for_tag(xt, candidate, self.repo, signed)
+                path.write_bytes(original)
+                self.commit()
+
+    def test_tag_refuses_changed_content_and_failed_candidate_checks(self):
+        self.setup_xt()
+        self.go_no_go()
+        (self.repo / "app.py").write_text("print(2)\n")
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "pending_human"):
+            xt_release_ops.approved_for_tag(xt, self.repo, self.repo, self.git("rev-parse", "HEAD"))
+        (self.repo / "BLUEPRINT.md").unlink()
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "blocked"):
+            xt_release_ops.approved_for_tag(xt, self.repo, self.repo, self.git("rev-parse", "HEAD"))
 
     def test_unreadable_git_index_blocks_promotion(self):
         tracked = self.repo / "app.py"

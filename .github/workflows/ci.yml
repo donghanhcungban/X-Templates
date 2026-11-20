@@ -31,8 +31,8 @@ jobs:
   # (dep-audit.yml) ở workflow khác. Nguyên tắc: required check phải là job có thật (protection-guard đối chiếu).
   # `merge-gate.yml` chỉ là stub tạm (D-122, ADR-0036) giữ context `merge-gate` tới khi chủ repo gỡ khỏi ruleset sống.
   # Fan-out/fan-in (WF-CI-024): mỗi task của `scripts/dev-task.sh gate` (build · typecheck · lint · test) là MỘT job song
-  # song gọi đúng `dev-task.sh <task>` (lệnh trong xt.yaml — WF-CI-002); `test` chia 6 shard theo lớp, `coverage` gộp dữ
-  # liệu các shard và đòi đúng ngưỡng của `test`; `test-main` (checkout tên nhánh main) 4 shard; `checks` (bench + kiểm của repo khung).
+  # song gọi đúng `dev-task.sh <task>` (lệnh trong xt.yaml — WF-CI-002); `test` chia theo lớp, `coverage` gộp dữ liệu
+  # các shard và đòi đúng ngưỡng của `test`; `test-main` kiểm checkout tên nhánh main; `checks` chạy bench và kiểm khung.
   # Wall time ≈ nhánh chậm nhất (test → coverage) thay vì cộng dồn. Test `tests/test_ci.py` giữ cho không trôi: mọi task
   # của `gate` có job, `quality` needs mọi job con và `if: always()`.
   build:
@@ -92,18 +92,17 @@ jobs:
       - name: lint — đúng lệnh trong xt.yaml (validate · link · progress · changelog · ci-check · ruff · shellcheck · JSON)
         run: scripts/dev-task.sh lint
 
-  # Test có coverage, 6 shard theo lớp, chia tham lam theo trọng số đo thật (`xt.yaml` `test_weights`, LPT; lớp lạ lấy trung vị — D-095). Mỗi shard tải dữ liệu
+  # Test có coverage, chia tham lam theo trọng số đo thật (`xt.yaml` `test_weights`, LPT; lớp lạ lấy trung vị — D-095). Mỗi shard tải dữ liệu
   # `.coverage.*` lên artefact; job `coverage` gộp và đòi 100 % — cùng tập test, cùng ngưỡng với `xt.yaml` `test`.
-  # Số shard theo tổng trọng số (D-516, AUD-CI-035): 2 605 s / 4 = 651 s mỗi shard, vượt trần 10 phút của job (shard 3/4 bị
-  # huỷ ở #672, #674); 6 shard ≈ 434 s. Trần thời gian giữ nguyên — thêm test làm shard sát trần thì tăng số shard.
+  # Run main 44697721941: shard có coverage 3/6 mất 593 s trên giới hạn 600 s. Chia thành 8 shard để giảm tải mỗi runner.
   test:
-    name: test ${{ matrix.shard }}/6
+    name: test ${{ matrix.shard }}/8
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false # shard khác vẫn chạy hết để thấy mọi lớp đỏ; kết quả gộp của job vẫn là `failure`
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -135,7 +134,7 @@ jobs:
           SHARD: ${{ matrix.shard }}
           COVERAGE_CORE: sysmon
           XT_REQUIRE_BUN: "1" # thiếu bun → test plugin OpenCode đỏ thay vì skip (AUD-TEST-056)
-        run: scripts/dev-task.sh test-shard "$SHARD" 6 "$RUNNER_TEMP/cov"
+        run: scripts/dev-task.sh test-shard "$SHARD" 8 "$RUNNER_TEMP/cov"
       # actions/upload-artifact, actions/download-artifact: tag mới nhất giải ra SHA commit bằng `git ls-remote` (tag nhẹ),
       # xác minh 2026-10-20. File dữ liệu coverage bắt đầu bằng `.` → cần `include-hidden-files`.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -365,12 +364,15 @@ jobs:
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          set -uo pipefail
-          rules=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/rules/branches/$BRANCH" || echo "[]")
-          for t in pull_request required_status_checks deletion non_fast_forward; do
-            if ! python3 -c "import json,sys; r=json.loads(sys.argv[1]); sys.exit(0 if any(x.get('type')==sys.argv[2] for x in r) else 1)" "$rules" "$t"; then
-              echo "::warning::Nhánh $BRANCH chưa có rule '$t' — import .github/rulesets/main.json (Settings → Rules → Rulesets → Import)."
-            fi
-          done
-          echo "Đã kiểm ruleset (cảnh báo nếu thiếu)."
+          set -euo pipefail
+          branch_path=$(jq -nr --arg branch "$BRANCH" '$branch | @uri')
+          if ! gh api --paginate --slurp "repos/$REPO/rules/branches/$branch_path?per_page=100" > "$RUNNER_TEMP/live-rules.json"; then
+            echo "::warning::Không đọc được quy tắc GitHub của nhánh mặc định."
+            exit 0
+          fi
+          jq -r --slurpfile wanted .github/rulesets/main.json '
+            def contexts: [.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context] | unique;
+            (add // []) as $live | $wanted[0].rules as $expected |
+            (($expected | map(.type) | unique) - ($live | map(.type) | unique) | .[] | "::warning::Thiếu quy tắc GitHub: " + .),
+            (($expected | contexts) - ($live | contexts) | .[] | "::warning::Thiếu required check trên GitHub: " + .)
+          ' "$RUNNER_TEMP/live-rules.json"

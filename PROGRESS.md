@@ -16,7 +16,7 @@
 1a. Đợt 18 xong (ADR-0082, D-519/D-520, #684, #685, #689, #693): harness Codex sinh từ `.claude/` (`install.py --harness codex`, `--sync-codex`, `tests.test_codex_harness`); guard bảo vệ nó và tệp nối guard host khác, chặn khôi phục tệp hàng rào từ commit cũ và giải nén có nêu thành viên vào đích máy chặn (AUD-SEC-987…990, 992 đã sửa; `FenceBaselineMonotoneTest` ghim quyết định nền). 🔴/🟠 mở 0. Chưa chạy Codex thật; tin cậy hook bằng `/hooks`. Nợ 🟢: AUD-SEC-991/993, AUD-HAR-446.
 2. **3.35.0**: đề xuất stored XT-H-117…139 (research 2026-11-10/16/18); tách `guard.py` (>22 000 dòng) thành module theo họ luật (D-142) để executor song song không xung đột; đưa `pre-push.sh` (kiểm bẫy trước push) vào repo; kiểm máy PROGRESS không lạc hậu (AUD-HAR-436); nợ test AUD-TEST-125…127.
 3. Hạn: 2026-12-02 bỏ `pull_request_target` khỏi `pr-review.yml`; 2026-12-31 rà stored; **2027-01-21** xét lại hàng rào guard + đánh giá sandbox Bash opt-in (D-331/D-332, ADR-0072) và các chấp nhận AUD-SEC-406/931/943/955/965.
-4. Việc của người: import lại `.github/rulesets/main.json` (ruleset sống thiếu `pack-npm-audit`; tắt resolve thread là chủ ý ADR-0079); xoá stash `d497-dup`, `d498-dup-x9`; `XT_STEWARD_TOKEN`, Dependabot security updates (RUNBOOK-PR-STEWARD §1).
+4. Ruleset GitHub của `main` đã bổ sung `pack-npm-audit` ngày 2026-11-20, đủ 5 check. Việc của người: xoá stash `d497-dup`, `d498-dup-x9`; `XT_STEWARD_TOKEN`, Dependabot security updates (RUNBOOK-PR-STEWARD §1).
 5. Còn: máy hoá `LOOP-HARNESS-031`, `LOOP-STOP-030`; task `[perf]` trong `loop` (D-041); URL phiên do máy chủ MCP gắn vào thân PR; ép báo "đã đo/chưa đo" cho UI (`LOOP-DESIGN-021`); `xt.pyz` (ADR-0010).
 6. Cách làm nhanh: CI là cổng đầy đủ; chạy `pre-push.sh` trước khi đẩy; PR sổ gộp vào PR sửa (mở draft để steward không merge sớm); một executor cho một tệp nóng.
 7. Giữ cổng: C901 ≤ 10, `mypy --strict`, coverage dòng + nhánh 100 %, `changelog-check`, trần byte (`tests/test_docs_budget.py`, ADR-0043), không ngưỡng thời gian/CPU cứng (BASE-GATE-005), tên định danh tránh secret/token/password/credential (CodeQL) — không `noqa`/pragma, không nới trần.
@@ -34,5 +34,5 @@
 - Coverage cục bộ < 100 % khi `coverage` cài ở site người dùng: hook chạy `python3 -I` nên tiến trình con không được đo — CI là cổng coverage (đo 2026-11-05).
 
 ## Bàn giao phiên
-- Mốc `main` `39f982c` (#694). Xét PR xanh theo số tăng dần. Phiên "tiếp tục" đọc sổ [audit](docs/ops/AUDIT-STATUS.md), PLAN-harden-2026-11-17 và CHANGELOG.
+- Mốc `main` `6e134c6` (#693). Xét PR xanh theo số tăng dần. Phiên "tiếp tục" đọc sổ [audit](docs/ops/AUDIT-STATUS.md), PLAN-harden-2026-11-17 và CHANGELOG.
 - Container mới: `scripts/dev-task.sh setup`; trước khi đẩy `gate-fast`, CI là cổng đầy đủ. Subagent dùng scratch riêng dưới `/home/liend` (không `/tmp`: tmpfs, mất khi khởi động lại). Gate cục bộ: `coverage` và `pip` phải ở site-packages của `python3` (hook chạy `python3 -I`) — venv 3.15 đầu PATH; G7 cần `fetch --unshallow --tags`; `release-check` chạy ở worktree sạch (`.agents/`, `.codex/` chưa commit làm hàng `tree` đỏ).

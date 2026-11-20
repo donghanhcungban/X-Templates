@@ -1,79 +1,155 @@
 name: Release tag
 
-# Tạo annotated tag `v<VERSION>` trên `main` (BASE-REPO-006). Tự chạy khi `VERSION` đổi trên `main` (D-179, chủ repo
-# 2026-10-25) — VERSION chỉ đổi qua PR đã merge theo làn; chữ ký GO-NO-GO tách khỏi tag (người ký, hoặc agent khi
-# `release_signoff: agent` — ADR-0074). `workflow_dispatch`
-# giữ làm đường lùi (gắn tag cho commit cũ, hay khi GITHUB_TOKEN không đẩy được — xem dưới).
-# Lý do có workflow: phiên agent bị proxy/bộ phân loại chặn push tag; tag tạo ở đây vẫn là annotated (`git cat-file -t` = `tag`).
-# Token: secret tuỳ chọn `XT_RELEASE_TOKEN` (fine-grained PAT: contents + workflows) nếu có, không thì `GITHUB_TOKEN`.
-# GITHUB_TOKEN không được đẩy tag khi commit đích đổi file workflow so với tag trước ("refusing to allow a GitHub App to
-# create or update workflow … without workflows permission", AUD-CI-014): thiếu secret thì người đẩy tag tay.
+# VERSION tạo ứng viên. Chữ ký GO trên cùng nội dung có thể đến trong một PR sau.
+# workflow_dispatch nhận SHA đã merge; cả hai đường đều kiểm promotion trước khi ký và đẩy tag.
 on:
   push:
     branches: [main]
-    paths: [VERSION]
+    paths:
+      - VERSION
+      - 'GO-NO-GO*.md'
+      - 'docs/GO-NO-GO*.md'
+      - 'docs/ops/GO-NO-GO*.md'
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit trên main để gắn tag (để trống = đầu main). Phải là tổ tiên của main và có VERSION/CHANGELOG khớp."
+        description: "Commit đã merge có VERSION, xt.yaml và GO-NO-GO khớp main (để trống = SHA của sự kiện)."
         required: false
         default: ""
 
 permissions:
   contents: read
 
-concurrency:
-  group: release-tag
-  cancel-in-progress: false
-
 jobs:
-  tag:
-    name: tag
+  approve:
+    name: Kiểm ứng viên trên main
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # ký Sigstore qua mạng
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read # release-check đối chiếu nợ review bằng PR đã merge
+    outputs:
+      target: ${{ steps.candidate.outputs.target }}
+      version: ${{ steps.candidate.outputs.version }}
+      main: ${{ steps.candidate.outputs.main }}
+      approved: ${{ steps.approval.outputs.approved }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tìm ứng viên đã merge và phiên bản chưa phát hành
+        id: candidate
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          target=$(git rev-parse --verify --end-of-options "${INPUT_SHA:-$GITHUB_SHA}^{commit}")
+          git merge-base --is-ancestor "$target" "$GITHUB_SHA"
+          git merge-base --is-ancestor "$target" HEAD
+          v=$(git show "$target:VERSION")
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git show "$target:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md"
+          awk -v header="## [$v]" '$0 == header || index($0, header " ") == 1 {found=1} END {exit !found}' "$RUNNER_TEMP/CHANGELOG.md"
+          if git show-ref --verify --quiet "refs/tags/v$v"; then
+            echo "::notice::v$v đã phát hành. Giữ nguyên tag."
+            exit 0
+          fi
+          git worktree add --detach "$RUNNER_TEMP/candidate" "$target"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "main=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.candidate.outputs.target != ''
+        with:
+          python-version: "3.15.2"
+      - name: Công cụ cho các lệnh kiểm blueprint
+        if: steps.candidate.outputs.target != ''
+        run: pip install --quiet --require-hashes -r "$RUNNER_TEMP/candidate/requirements-dev.txt"
+      - name: Xác nhận promotion của đúng SHA và chữ ký còn hiệu lực trên main
+        id: approval
+        if: steps.candidate.outputs.target != ''
+        env:
+          TARGET: ${{ steps.candidate.outputs.target }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/candidate"
+          PYTHONPATH="$GITHUB_WORKSPACE/scripts" python3 -P - <<'PY'
+          import os
+          from pathlib import Path
+          import xt
+          from xt_release_ops import approved_for_tag
+
+          approved = approved_for_tag(xt, Path.cwd(), Path(os.environ["GITHUB_WORKSPACE"]), os.environ["TARGET"])
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"approved={str(approved).lower()}", file=output)
+          PY
+
+  tag:
+    name: tag
+    needs: approve
+    if: needs.approve.outputs.approved == 'true'
+    concurrency:
+      group: release-tag-v${{ needs.approve.outputs.version }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
-      id-token: write # OIDC cho chứng chỉ Sigstore của attestation (AUD-DEP-010)
-      attestations: write # lưu attestation vào GH attestations API của repo
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.XT_RELEASE_TOKEN || github.token }}
-      - name: Tạo annotated tag từ VERSION
+      - name: Tạo archive và annotated tag
         id: tag
         env:
-          INPUT_SHA: ${{ inputs.sha }}
+          TARGET: ${{ needs.approve.outputs.target }}
+          V: ${{ needs.approve.outputs.version }}
+          CHECKED_MAIN: ${{ needs.approve.outputs.main }}
         run: |
           set -euo pipefail
-          target=$(git rev-parse --verify "${INPUT_SHA:-$GITHUB_SHA}^{commit}")
-          git merge-base --is-ancestor "$target" "$GITHUB_SHA" || { echo "::error::$target không thuộc lịch sử main"; exit 1; }
-          v=$(git show "$target:VERSION" | tr -d '[:space:]')
-          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::VERSION không phải SemVer: $v"; exit 1; }
-          # Không `git show | grep -q`: grep thoát sớm, `git show` nhận SIGPIPE (141) khi CHANGELOG > bộ đệm ống, pipefail đỏ.
-          git show "$target:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md"
-          grep -q "^## \[$v\]" "$RUNNER_TEMP/CHANGELOG.md" || { echo "::error::CHANGELOG.md tại $target thiếu mục ## [$v]"; exit 1; }
-          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then echo "::error::Tag v$v đã tồn tại"; exit 1; fi
+          # Hai run có thể cùng duyệt trước khi một job đẩy tag. Job sau chỉ chấp nhận cùng annotated tag.
+          if git show-ref --verify --quiet "refs/tags/v$V"; then
+            test "$(git rev-parse "refs/tags/v$V^{commit}")" = "$TARGET"
+            test "$(git cat-file -t "refs/tags/v$V")" = tag
+            echo "::notice::v$V đã được phát hành ở đúng SHA."
+            exit 0
+          fi
+          # Kiểm lại chữ ký và cấu hình nếu main tiến trong lúc chờ. Các thay đổi độc lập vẫn có thể merge.
+          cat > "$RUNNER_TEMP/verify-main.sh" <<'SH'
+          set -euo pipefail
+          git fetch --quiet --no-tags origin refs/heads/main
+          git merge-base --is-ancestor "$CHECKED_MAIN" FETCH_HEAD
+          git diff --exit-code --quiet "$CHECKED_MAIN" FETCH_HEAD -- VERSION xt.yaml \
+            ':(glob)GO-NO-GO*.md' ':(glob)docs/GO-NO-GO*.md' ':(glob)docs/ops/GO-NO-GO*.md' || {
+            echo "::error::Quyết định hoặc cấu hình phát hành đã đổi trên main. Chạy lại workflow."
+            exit 1
+          }
+          SH
+          bash "$RUNNER_TEMP/verify-main.sh"
+          git merge-base --is-ancestor "$TARGET" "$CHECKED_MAIN"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$v" -m "v$v" "$target"
-          test "$(git cat-file -t "v$v")" = tag
-          # Nguồn phát hành = `git archive` của commit gắn tag; attestation ký TRƯỚC khi đẩy tag — ký lỗi thì chưa có tag,
-          # chạy lại workflow được (tag đã có thì workflow từ chối).
-          git archive --format=tar.gz --prefix="X-Templates-v$v/" -o "$RUNNER_TEMP/X-Templates-v$v.tar.gz" "$target"
-          echo "archive=$RUNNER_TEMP/X-Templates-v$v.tar.gz" >> "$GITHUB_OUTPUT"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-      # Provenance SLSA của nguồn phát hành (AUD-DEP-010): `gh attestation verify X-Templates-vX.Y.Z.tar.gz --repo
-      # www-donghanhcungban-org/X-Templates` với file từ `git archive --format=tar.gz --prefix=X-Templates-vX.Y.Z/ vX.Y.Z`.
-      # attest-build-provenance 4.2.2 (MIT, xác minh 2026-11-02): repo công khai dùng Sigstore public-good.
+          git tag -a "v$V" -m "v$V" "$TARGET"
+          test "$(git cat-file -t "v$V")" = tag
+          git archive --format=tar.gz --prefix="X-Templates-v$V/" -o "$RUNNER_TEMP/X-Templates-v$V.tar.gz" "$TARGET"
+          echo "archive=$RUNNER_TEMP/X-Templates-v$V.tar.gz" >> "$GITHUB_OUTPUT"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.tag.outputs.archive != ''
         with:
           subject-path: ${{ steps.tag.outputs.archive }}
       - name: Đẩy tag
+        if: steps.tag.outputs.archive != ''
         env:
-          V: ${{ steps.tag.outputs.version }}
+          V: ${{ needs.approve.outputs.version }}
+          CHECKED_MAIN: ${{ needs.approve.outputs.main }}
         run: |
           set -euo pipefail
+          bash "$RUNNER_TEMP/verify-main.sh"
           git push origin "refs/tags/v$V"
-          echo "OK — annotated tag v$V"

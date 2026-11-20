@@ -224,9 +224,105 @@ class PlanWavesTest(unittest.TestCase):
         for packet in result["tasks"]:
             rc, individual, err = self.run_main("context", "--task", packet["task"], "--json")
             self.assertEqual((rc, err), (0, ""))
-            self.assertEqual(packet, {**json.loads(individual), "topology": "self", "tier": "default"})
+            self.assertEqual(
+                packet,
+                {
+                    **json.loads(individual),
+                    "topology": "self",
+                    "tier": "default",
+                    "executor": None,
+                    "escalated": False,
+                    "default_failures": 0,
+                },
+            )
         write(path, task("T-003", files=["held"]))
         self.assertEqual(json.loads(self.run_main("plan", "waves", "--handoff")[1])["tasks"], [])
+
+    def test_handoff_requires_evidence_and_keeps_independent_work_ready(self):
+        path = self.base / "plan.md"
+        write(
+            path,
+            "\n".join(
+                [
+                    task("T-001", "x", files=["api"]),
+                    task("T-002", after=["T-001"], files=["ui"]),
+                    task("T-003", after=["T-002"], files=["e2e"]),
+                    task("T-004", files=["docs"]),
+                ]
+            ),
+        )
+        self.assertEqual(self.run_main("loop", "init", "--plan", "plan.md")[0], 0)
+        status = json.loads(self.run_main("loop", "status", "--json")[1])
+        self.assertEqual((status["verdict"], status["task"]), ("verify", "T-001"))
+        dispatch = ("plan", "waves", "--handoff")
+        result = json.loads(self.run_main(*dispatch)[1])
+        self.assertEqual([p["task"] for p in result["tasks"]], ["T-004"])
+        self.assertEqual([b["id"] for b in result["blocked"]], ["T-001", "T-002", "T-003"])
+        self.assertEqual(result["blocked"][0]["reason"], status["reason"])
+        self.assertEqual(self.run_main("loop", "record", "--task", "T-001", "--", "true")[0], 0)
+        ready = json.loads(self.run_main(*dispatch)[1])
+        self.assertEqual([p["task"] for p in ready["tasks"]], ["T-002", "T-004"])
+        self.assertEqual(ready["blocked"], [])
+
+    def test_handoff_accepts_carried_evidence_and_isolates_explicit_plan(self):
+        path = self.base / "plan.md"
+        lines = "\n".join([task("T-001", "x", files=["api"]), task("T-002", after=["T-001"], files=["ui"])])
+        write(path, lines)
+        write(self.base / "other.md", lines)
+        st = {"active": True, "plan": "plan.md", "started": "2026-03-01T00:00:00Z"}
+        xt.write_state(st, self.base)
+        write(
+            xt.state_dir(self.base) / "evidence" / "T-001.json",
+            json.dumps({"cmd": "true", "exit_code": 0, "finished": "2026-02-01T00:00:00Z"}),
+        )
+        dispatch = ("plan", "waves", "--handoff")
+        self.assertEqual(json.loads(self.run_main(*dispatch)[1])["tasks"], [])
+        xt.write_state({**st, "carried": ["T-001"]}, self.base)
+        self.assertEqual([p["task"] for p in json.loads(self.run_main(*dispatch)[1])["tasks"]], ["T-002"])
+        xt.write_state({**st, "deferred": {"T-002": {"reason": "chờ"}}}, self.base)
+        standalone = json.loads(self.run_main(*dispatch, "--plan", "other.md")[1])
+        self.assertEqual(standalone["blocked"], [])
+        self.assertEqual([p["task"] for p in standalone["tasks"]], ["T-002"])
+
+    def test_handoff_matches_executor_escalation_after_two_failed_gates(self):
+        path = self.base / "plan.md"
+        write(path, task("T-001", files=["a"], extra=" (topo: parallel)").replace("`true`", "`false`"))
+        self.assertEqual(self.run_main("loop", "init", "--plan", "plan.md")[0], 0)
+        for _ in range(2):
+            self.assertEqual(
+                self.run_main("loop", "record", "--task", "T-001", "--executor", "executor", "--", "false")[0], 1
+            )
+        status = json.loads(self.run_main("loop", "status", "--json")[1])
+        packet = json.loads(self.run_main("plan", "waves", "--handoff")[1])["tasks"][0]
+        self.assertEqual((status["tier"], status["executor"]), ("deep", "executor-deep"))
+        for field in ("task", "topology", "tier", "executor", "escalated", "default_failures"):
+            self.assertEqual(packet[field], status[field])
+
+    def test_handoff_and_status_reject_the_same_unreadable_or_malformed_plan(self):
+        path = self.base / "plan.md"
+        predecessor = task("T-001", files=["api"])
+        successor = task("T-002", after=["T-001"], files=["ui"])
+        write(path, predecessor + "\n" + successor)
+        self.assertEqual(self.run_main("loop", "init", "--plan", "plan.md")[0], 0)
+        for content, verdict, reason in [
+            ((predecessor.replace("`T-001`", "T-001") + "\n" + successor).encode(), "verify", "dòng 1"),
+            (b"# PLAN\n", "blocked", "không có task"),
+            (b"\xff", "blocked", "UTF-8"),
+        ]:
+            with self.subTest(reason=reason):
+                path.write_bytes(content)
+                status = json.loads(self.run_main("loop", "status", "--json")[1])
+                self.assertEqual(status["verdict"], verdict)
+                self.assertIn(reason, status["reason"])
+                rc, out, err = self.run_main("plan", "waves", "--handoff")
+                self.assertEqual((rc, out), (2, ""))
+                self.assertIn(status["reason"], err)
+
+        path.unlink()
+        missing = json.loads(self.run_main("loop", "status", "--json")[1])
+        self.assertEqual(missing["verdict"], "blocked")
+        self.assertIn("không thấy PLAN", missing["reason"])
+        self.assertEqual(self.run_main("plan", "waves", "--handoff")[:2], (2, ""))
 
     def test_handoff_refuses_ambiguous_or_locked_work(self):
         path = self.base / "plan.md"
