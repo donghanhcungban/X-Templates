@@ -810,6 +810,27 @@ class PromotionTest(ReleaseCase):
         with self.assertRaisesRegex(ValueError, "rejected"):
             tag(xt, self.repo, self.repo, self.git("rev-parse", "HEAD"))
 
+    def test_historical_tag_requires_current_version_and_release_policy(self):
+        self.setup_xt()
+        self.go_no_go()
+        signed = self.git("rev-parse", "HEAD")
+        candidate = self.tmp / "signed"
+        self.git("worktree", "add", "--detach", str(candidate), signed)
+        (self.repo / "readme.md").write_text("Independent change on main.\n")
+        self.commit()
+        self.assertTrue(xt_release_ops.approved_for_tag(xt, candidate, self.repo, signed))
+
+        for name, change in (("VERSION", b"1.3.0\n"), ("xt.yaml", b"release_approval_days: 1\n")):
+            with self.subTest(name=name):
+                path = self.repo / name
+                original = path.read_bytes()
+                path.write_bytes(change)
+                self.commit()
+                with self.assertRaisesRegex(ValueError, name):
+                    xt_release_ops.approved_for_tag(xt, candidate, self.repo, signed)
+                path.write_bytes(original)
+                self.commit()
+
     def test_tag_refuses_changed_content_and_failed_candidate_checks(self):
         self.setup_xt()
         self.go_no_go()

@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit trên main có VERSION, CHANGELOG và GO-NO-GO của ứng viên (để trống = SHA của sự kiện)."
+        description: "Commit đã merge có VERSION, xt.yaml và GO-NO-GO khớp main (để trống = SHA của sự kiện)."
         required: false
         default: ""
 

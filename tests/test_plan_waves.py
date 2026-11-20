@@ -298,6 +298,32 @@ class PlanWavesTest(unittest.TestCase):
         for field in ("task", "topology", "tier", "executor", "escalated", "default_failures"):
             self.assertEqual(packet[field], status[field])
 
+    def test_handoff_and_status_reject_the_same_unreadable_or_malformed_plan(self):
+        path = self.base / "plan.md"
+        predecessor = task("T-001", files=["api"])
+        successor = task("T-002", after=["T-001"], files=["ui"])
+        write(path, predecessor + "\n" + successor)
+        self.assertEqual(self.run_main("loop", "init", "--plan", "plan.md")[0], 0)
+        for content, verdict, reason in [
+            ((predecessor.replace("`T-001`", "T-001") + "\n" + successor).encode(), "verify", "dòng 1"),
+            (b"# PLAN\n", "blocked", "không có task"),
+            (b"\xff", "blocked", "UTF-8"),
+        ]:
+            with self.subTest(reason=reason):
+                path.write_bytes(content)
+                status = json.loads(self.run_main("loop", "status", "--json")[1])
+                self.assertEqual(status["verdict"], verdict)
+                self.assertIn(reason, status["reason"])
+                rc, out, err = self.run_main("plan", "waves", "--handoff")
+                self.assertEqual((rc, out), (2, ""))
+                self.assertIn(status["reason"], err)
+
+        path.unlink()
+        missing = json.loads(self.run_main("loop", "status", "--json")[1])
+        self.assertEqual(missing["verdict"], "blocked")
+        self.assertIn("không thấy PLAN", missing["reason"])
+        self.assertEqual(self.run_main("plan", "waves", "--handoff")[:2], (2, ""))
+
     def test_handoff_refuses_ambiguous_or_locked_work(self):
         path = self.base / "plan.md"
         args = ("plan", "waves", "--handoff", "--plan", "plan.md")

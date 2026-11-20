@@ -76,6 +76,9 @@ def matches(candidate: Doc, other: Any) -> bool:
 
 def approved_for_tag(core: ModuleType, base: Path, main: Path, target: str) -> bool:
     """Verify a merged source release in a read-only job. An unsigned version bump waits for its signoff PR."""
+    for name in ("VERSION", "xt.yaml"):
+        if (base / name).read_bytes() != (main / name).read_bytes():
+            raise ValueError(f"{name} đã đổi trên main. Chọn SHA dùng phiên bản và cấu hình phát hành hiện hành.")
     version = (base / "VERSION").read_text(encoding="utf-8").strip()
     if dict(core._go_no_go_docs(base, version)) != dict(core._go_no_go_docs(main, version)):
         raise ValueError(f"Quyết định GO-NO-GO của v{version} đã đổi trên main. Kiểm lại commit có chữ ký hiện hành.")
