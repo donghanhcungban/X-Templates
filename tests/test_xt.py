@@ -2249,6 +2249,30 @@ class LedgerArchiveTest(unittest.TestCase):
         self.books([], [], table=False)
         self.assertEqual(self.check()[0], ["AUDIT-STATUS-ARCHIVE.md: thiếu bảng `## Phát hiện`"])
 
+    def test_rows_after_moved_note_are_read_everywhere(self):
+        """AUD-HAR-448: lưu trữ dời theo đợt — dòng trống + ghi chú `> Đợt … dời nguyên văn` chen giữa bảng. Mọi máy
+        đọc sổ (findings, check, bench) phải thấy dòng sau ghi chú, kể cả lỗi ở đó (trùng ID, không `đã sửa`)."""
+        late = "AUD-HAR-010 | 🟠 | đã sửa | e | đo được: x | `t` | #4"
+        self.books([self.OPEN], [self.FIXED])
+        archive = self.d / "AUDIT-STATUS-ARCHIVE.md"
+        base = archive.read_text(encoding="utf-8")
+        archive.write_text(base + f"\n> Đợt 2026-11-17: dời nguyên văn AUD-HAR-010\n\n| {late} |\n", encoding="utf-8")
+        self.assertEqual(
+            [r["ID"] for r in xt.audit_findings(self.status)], ["AUD-SEC-002", "AUD-SEC-001", "AUD-HAR-010"]
+        )
+        errors, counts = self.check()
+        self.assertEqual((errors, counts["lưu trữ"]), ([], 2))
+        need = xt.autonomy_required(self.d, "không-có.md", "AUDIT-STATUS.md")
+        self.assertEqual(need["audit"], ["AUD-SEC-001", "AUD-HAR-010"])
+        archive.write_text(base + f"\n> Đợt 2\n\n| {self.FIXED} |\n| {self.OPEN.replace('002', '003')} |\n", "utf-8")
+        self.assertEqual(
+            self.check()[0],
+            [
+                "AUD-SEC-003: sổ lưu trữ AUDIT-STATUS-ARCHIVE.md chỉ nhận dòng `đã sửa` (đang `mở`)",
+                "AUD-SEC-001: ID trùng 2 lần",
+            ],
+        )
+
     def test_no_archive_keeps_counts(self):
         self.books([self.FIXED])
         errors, counts = self.check()

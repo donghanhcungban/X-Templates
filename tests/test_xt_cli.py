@@ -203,6 +203,32 @@ class MarkdownTableTest(unittest.TestCase):
         text = "## T\n\n| a |\n|---|\n| 1 |\n\ntext\n\n| b |\n|---|\n| 2 |\n"
         self.assertEqual(xt.md_tables(text), {"T": [{"a": "1"}]})
 
+    def test_md_tables_continued_reads_rows_after_blank_and_note(self):
+        """AUD-HAR-448: sổ audit (lưu trữ) chen dòng trống + ghi chú `>` giữa bảng — `continued=True` đọc tiếp cùng bảng;
+        mặc định giữ nguyên (chỉ đoạn đầu)."""
+        text = "## T\n\n| a | b |\n|---|---|\n| 1 | x |\n\n> Đợt 2: dời nguyên văn\n\n| 2 | y |\n>ghi chú dính\n| 3 | z |\n"
+        self.assertEqual(xt.md_tables(text), {"T": [{"a": "1", "b": "x"}]})
+        rows = xt.md_tables(text, continued=True)["T"]
+        self.assertEqual([r["a"] for r in rows], ["1", "2", "3"])
+        self.assertEqual(rows[1], {"a": "2", "b": "y"})
+
+    def test_md_tables_continued_skips_repeated_header_and_stops_at_other_table(self):
+        """Đoạn sau ghi chú có thể lặp lại tiêu đề (cùng bảng → bỏ tiêu đề, đọc tiếp); bảng tiêu đề KHÁC hay đoạn văn → hết
+        bảng (giữ ngữ nghĩa bảng đầu tiên); heading mới đọc bảng của nó."""
+        head = "| a | b |\n|---|---|\n"
+        same = "## T\n" + head + "| 1 | x |\n\n> n\n\n" + head + "| 2 | y |\n"
+        self.assertEqual([r["a"] for r in xt.md_tables(same, continued=True)["T"]], ["1", "2"])
+        other = (
+            "## T\n"
+            + head
+            + "| 1 | x |\n\n> n\n\n| c | d |\n|---|---|\n| 9 | 9 |\n\n| 8 | 8 |\n## U\n| e |\n|---|\n| 5 |\n"
+        )
+        self.assertEqual(xt.md_tables(other, continued=True), {"T": [{"a": "1", "b": "x"}], "U": [{"e": "5"}]})
+        prose = "## T\n" + head + "| 1 | x |\n\nvăn bản\n\n| 2 | y |\n"
+        self.assertEqual(xt.md_tables(prose, continued=True), {"T": [{"a": "1", "b": "x"}]})
+        last = "## T\n" + head + "| 1 | x |\n\n> n\n| 2 | y |"  # đoạn tiếp cuối file, không có dòng sau
+        self.assertEqual([r["a"] for r in xt.md_tables(last, continued=True)["T"]], ["1", "2"])
+
     def test_md_tables_pads_short_rows(self):
         self.assertEqual(xt.md_tables("## T\n| a | b |\n|---|---|\n| 1 |\n"), {"T": [{"a": "1", "b": ""}]})
 
