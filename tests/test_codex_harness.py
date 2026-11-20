@@ -674,7 +674,10 @@ class CodexInstallCasesTest(unittest.TestCase):
         files = [{"path": f".claude/{p}", "action": "copied"} for p in forced]  # như `--force-harness`
         planned = {e["path"]: e["action"] for e in install.codex_plan(self.target, files, ["codex"])}
         updated = (".agents/skills/gate/SKILL.md", ".agents/skills/adr/SKILL.md", ".codex/agents/reviewer.toml")
-        kept_new = (".agents/skills/review/SKILL.md", *(f".codex/agents/{n}.toml" for n in AGENT_NAMES[:3]))
+        kept_new = (
+            ".agents/skills/review/SKILL.md",
+            *(f".codex/agents/{n}.toml" for n in ("executor", "executor-deep", "researcher")),
+        )
         want = {rel: "updated" for rel in updated} | {rel: "updated-new" for rel in kept_new}
         self.assertEqual({rel: planned[rel] for rel in want}, want)
         baseline = install.codex_baseline(self.target)  # cài thật: đọc trước bước harness

@@ -50,6 +50,57 @@ class FactoryEntryTest(unittest.TestCase):
             self.assertEqual(flow["next"]["owner"], "coordinator")
             self.assertEqual(json.loads(command(cli, "stage", "status", "--json"))["stage"], original)
 
+    def test_offline_bundle_restores_exact_installed_product(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            original, bundle, restored = (base / n for n in ("so-ghi-chu", "so-ghi-chu.bundle", "ban-giao"))
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/install.py"),
+                    str(original),
+                    "--new",
+                    "--pack",
+                    "web-api-ts",
+                    "--idea",
+                    "Sổ ghi chú",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            # Clone mới mô phỏng máy bàn giao, chỉ mang lịch sử đã commit của sản phẩm.
+            delivery = base / "checkout"
+            subprocess.run(["git", "clone", "-q", str(original), str(delivery)], check=True)
+            original = delivery
+            checklist = Path("docs/ops/SETUP-ONCE.md")
+            (original / checklist).parent.mkdir(parents=True, exist_ok=True)
+            (original / checklist).write_text("Repo: thiếu remote\nBản dev: loopback của runner\n", encoding="utf-8")
+
+            def git(root, *args):
+                r = subprocess.run(["git", "-C", str(root), *args], capture_output=True)
+                self.assertEqual(r.returncode, 0, r.stderr.decode(errors="replace"))
+                return r.stdout
+
+            git(original, "add", checklist.as_posix())
+            git(
+                original,
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "-qm",
+                "docs(ops): ghi checklist bàn giao bản dev",
+            )
+            sha = git(original, "rev-parse", "HEAD")
+            git(original, "bundle", "create", str(bundle), "HEAD")
+            git(original, "bundle", "verify", str(bundle))
+            git(base, "clone", str(bundle), str(restored))
+            self.assertEqual(git(restored, "rev-parse", "HEAD"), sha)
+            for rel in (checklist, Path("docs/autopilot/STAGE.json"), Path("PROJECT.md")):
+                self.assertEqual((original / rel).read_bytes(), (restored / rel).read_bytes())
+            self.assertFalse((restored / ".autopilot").exists())
+
     def test_each_stage_has_its_checks_and_handoff(self):
         """Chặn hồi quy về bản skill cũ chỉ nhắc tên hai giai đoạn sau ở cuối MVP."""
         body = (ROOT / CLAUDE).read_text(encoding="utf-8")
@@ -70,6 +121,11 @@ class FactoryEntryTest(unittest.TestCase):
             (
                 body[first:second],
                 [
+                    "acceptance lock --spec",
+                    "acceptance check --json",
+                    "SETUP-ONCE.md",
+                    "git bundle create <bundle> HEAD",
+                    "git bundle verify <bundle>",
                     "ACCEPTANCE.paths",
                     "xt_acceptance.py check --base",
                     "--project <repo-sản-phẩm>",

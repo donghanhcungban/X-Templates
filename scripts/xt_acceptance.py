@@ -163,16 +163,22 @@ def raise_walk_error(exc: OSError) -> None:
 def _ledger(base: Path, core: ModuleType) -> dict[str, Any]:
     path = project_file(base, LEDGER)
     if not path.exists():
-        if (base / ".git").exists() and core._git(
-            base, "log", "--all", "-1", "--format=%H", "--", LEDGER
-        ).stdout.strip():
+        if (
+            any((p / ".git").exists() for p in (base, *base.parents))
+            and core._git(base, "log", "--all", "-1", "--format=%H", "--", LEDGER).stdout.strip()
+        ):
             raise ValueError(f"Thiếu sổ đã có trong Git: {LEDGER}")
         return {"schema": 1, "locks": [], "events": []}
     doc = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(doc, dict) or set(doc) != {"schema", "locks", "events"} or doc["schema"] != 1:
         raise ValueError(f"Sổ {LEDGER} sai schema")
-    if not isinstance(doc["locks"], list) or not doc["locks"] or not isinstance(doc["events"], list):
+    if not isinstance(doc["locks"], list) or not isinstance(doc["events"], list):
         raise ValueError(f"Sổ {LEDGER} thiếu khoá/lịch sử")
+    if (
+        not doc["locks"]
+        and core._git(base, "log", "--all", "-1", "-G", r'"A-[0-9]+"', "--format=%H", "--", LEDGER).stdout.strip()
+    ):
+        raise ValueError(f"Sổ {LEDGER} mất các khoá đã có trong Git")
     _validate_records(doc, core)
     return doc
 
@@ -234,7 +240,11 @@ def _validate_records(doc: dict[str, Any], core: ModuleType) -> None:
         specs.add(row["spec"])
         owned.update(row["files"])
     if not all(
-        isinstance(e, dict) and e.get("lock") in ids and e.get("event") in ("lock", "amend") for e in doc["events"]
+        isinstance(e, dict)
+        and isinstance(e.get("lock"), str)
+        and e["lock"] in ids
+        and e.get("event") in ("lock", "amend")
+        for e in doc["events"]
     ):
         raise ValueError(f"Sổ {LEDGER} có sự kiện sai")
     if {e["lock"] for e in doc["events"] if e["event"] == "lock"} != ids:
@@ -424,7 +434,7 @@ class GuardDenied(ValueError):
 
 
 def _baseline(
-    core: ModuleType, base: Path, cmd: str, report: str, owned: set[str], selected: set[str], red: bool
+    core: ModuleType, base: Path, cmd: str, report: str, available: set[str], selected: set[str], red: bool
 ) -> dict[str, int]:
     if core.gate_noop(cmd) or not report:
         raise ValueError("Cần khai acceptance và acceptance_report trong xt.yaml")
@@ -437,7 +447,7 @@ def _baseline(
         before and before.st_mtime_ns == path.stat().st_mtime_ns and before.st_ino == path.stat().st_ino
     ):
         raise ValueError("Thiếu report JUnit mới do lần chạy này sinh")
-    counts, failed = report_counts(path.read_bytes(), owned | selected)
+    counts, failed = report_counts(path.read_bytes(), available)
     if any(not counts[f] for f in selected):
         raise ValueError(
             "Thiếu ca đã chạy cho file nghiệm thu: " + ", ".join(sorted(f for f in selected if not counts[f]))
@@ -501,13 +511,13 @@ def update(core: ModuleType, base: Path, args: argparse.Namespace) -> str:
     paths = sorted(set(paths) | set(previous["paths"] if previous else []))
     scenarios = _scenarios(core, base, spec)
     actual = snapshot(base, paths)
-    files = {f: digest for f, (digest, ids) in sorted(actual.items()) if ids.intersection(scenarios)}
     owners = {f for r in locks if r is not previous for f in r["files"]}
-    if owners.intersection(files):
-        raise ValueError("Mỗi file nghiệm thu chỉ thuộc một khoá")
+    files = {
+        f: digest for f, (digest, ids) in sorted(actual.items()) if f not in owners and ids.intersection(scenarios)
+    }
     missing = scenarios.difference(*(actual[f][1] for f in files))
     if missing:
-        raise ValueError("Thiếu nghiệm thu cho " + ", ".join(sorted(missing)))
+        raise ValueError("Thiếu nghiệm thu cho " + ", ".join(sorted(missing)) + " (mỗi file chỉ thuộc một khoá)")
     if previous and not amend:
         if (
             previous["files"] == files
@@ -516,7 +526,7 @@ def update(core: ModuleType, base: Path, args: argparse.Namespace) -> str:
         ):
             return str(previous["id"])
         raise ValueError(f"{previous['id']} đã có, dùng amend")
-    counts = _baseline(core, base, cmd, report, owners, set(files), not amend and not decision)
+    counts = _baseline(core, base, cmd, report, set(actual) | owners, set(files), not amend and not decision)
     if (
         snapshot(base, paths) != actual
         or _scenarios(core, base, spec) != scenarios

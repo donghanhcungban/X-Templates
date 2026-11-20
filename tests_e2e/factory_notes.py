@@ -69,6 +69,12 @@ def locked(app, baseline):
     return check
 
 
+def checked_junit(app):
+    cases = ElementTree.parse(app / "reports/acceptance.xml").getroot().findall("testcase")
+    if sorted(t.get("name") for t in cases) != ["S-101", "S-102", "S-103", "S-104"] or any(len(t) for t in cases):
+        raise ValueError("JUnit thiếu tình huống hoặc có ca thất bại")
+
+
 def prepare(app, state):
     state.mkdir()
     if run(app, "git", "rev-list", "--count", "HEAD") != "1" or run(app, "git", "remote"):
@@ -117,6 +123,7 @@ def prepare(app, state):
     lock = json.loads((app / "docs/autopilot/ACCEPTANCE.json").read_text())["locks"]
     if len(lock) != 1 or lock[0]["cases"] != 4 or lock[0]["head"] != baseline:
         raise ValueError("Thiếu bốn ca trên starter thật trước lúc tùy biến")
+    checked_junit(app)
     ui = app / "src/notes-ui/index.html"
     html = ui.read_text()
     if html.count("Sổ tay nhóm") != 2:
@@ -150,9 +157,7 @@ def finish(app, state, out, started):
         r["task"] == "T-001" and r["exit_code"] == 0 and not r.get("kept") for r in verified["results"]
     ):
         raise ValueError("Cổng nghiệm thu nghiệp vụ chưa chạy lại trên cây cuối")
-    cases = ElementTree.parse(app / "reports/acceptance.xml").getroot().findall("testcase")
-    if sorted(t.get("name") for t in cases) != ["S-101", "S-102", "S-103", "S-104"] or any(len(t) for t in cases):
-        raise ValueError("JUnit thiếu tình huống hoặc có ca thất bại")
+    checked_junit(app)
     run(
         app,
         *XT,
@@ -187,13 +192,17 @@ def finish(app, state, out, started):
     (proof / "handoff.json").write_text(json.dumps(check, ensure_ascii=False, indent=2) + "\n")
     idea = (app / "PROJECT.md").read_text().split("## Ý tưởng gốc\n\n> ", 1)[1].split("\n\n", 1)[0]
     report = out / "FACTORY-PILOT-1.md"
+    runs = [json.loads(line) for line in (app / ".autopilot/runs.jsonl").read_text().splitlines()]
+    if not runs or any(row["task"] != "T-001" for row in runs):
+        raise ValueError("Thiếu lịch sử chạy task sản phẩm của pilot")
+    (proof / "task-gates.json").write_text(json.dumps(runs, indent=2) + "\n")
     summary = dict(
         idea=idea,
         started=check["started"],
         head=receipt["subject"]["head"],
         digest=receipt["subject"]["digest"],
-        tasks=1,
-        failed_gates=0,
+        tasks=len({row["task"] for row in runs}),
+        failed_gates=sum(row["exit_code"] != 0 for row in runs),
         human_questions=0,
         cost_usd=None,
     )
@@ -212,6 +221,7 @@ def finish(app, state, out, started):
             "Mục cổng đỏ đếm task sản phẩm; phép thử quay lui mong đợi lỗi ứng viên B.\n\n"
             "Repo đã đóng bundle và kiểm lại. Bản dev chỉ mở trên loopback runner. Giai đoạn 1 đang chờ duyệt. "
             "Hai giai đoạn sau và phát hành production chưa diễn ra trên sản phẩm này.\n\n"
+            f"[Lượt chạy GitHub]({receipt['runner']['run_url']}) · [Cổng sản phẩm](FACTORY-PILOT-1/task-gates.json) · "
             "[Receipt](FACTORY-PILOT-1/DEPLOYS.json) · [Trình duyệt](FACTORY-PILOT-1/preview-browser.json) · "
             "[Nghiệm thu](FACTORY-PILOT-1/acceptance.xml) · [Sổ giai đoạn](FACTORY-PILOT-1/STAGE.json) · "
             "[Bàn giao](FACTORY-PILOT-1/handoff.json) · [Checklist](FACTORY-PILOT-1/SETUP-ONCE.md)\n"

@@ -96,6 +96,9 @@ class AcceptanceLockTest(unittest.TestCase):
         row = lock.release_rows(xt, self.base, run)[0]
         self.assertEqual((row["result"], row["level"]), ("PASS", "BLOCKER"))
         self.assertIn("A-001", row["evidence"])
+        self.write(self.case, "# S-101 bị sửa")
+        self.assertIn(self.case, lock.release_rows(xt, self.base, run)[0]["evidence"])
+        self.write(self.case, "# S-101\n")
         # Tổng vẫn là hai nhưng một file được thay bằng ca thứ hai của file khác.
         self.report(False, [self.case, self.case])
         run = xt._release_run(self.base, "BLUEPRINT.md", "acceptance", "")
@@ -120,6 +123,8 @@ class AcceptanceLockTest(unittest.TestCase):
             self.assertIn(text, check)
         self.git("add", lock.LEDGER)
         self.git("commit", "-qm", "Khoá")
+        self.write(lock.LEDGER, json.dumps({"schema": 1, "locks": [], "events": []}))
+        self.assertIn("mất các khoá", self.cli("check", code=1))
         (self.base / lock.LEDGER).unlink()
         self.assertIn("trong Git", self.cli("check", code=1))
 
@@ -164,6 +169,9 @@ class AcceptanceLockTest(unittest.TestCase):
         self.assertIn("độc lập", self.cli("lock", "--spec", self.spec, "--author", "self", code=1))
         self.configure("", "")
         self.assertFalse(json.loads(self.cli("check", "--json"))["enabled"])
+        self.write(lock.LEDGER, json.dumps({"schema": 1, "locks": [], "events": []}))
+        self.assertFalse(json.loads(self.cli("check", "--json"))["enabled"])
+        (self.base / lock.LEDGER).unlink()
         self.assertEqual(lock.release_rows(xt, self.base, ({}, None)), [])
         self.configure(command="")
         self.assertIn("Cần khai", self.create(code=1))
@@ -215,6 +223,7 @@ class AcceptanceLockTest(unittest.TestCase):
         bad = [
             {},
             {**doc, "locks": []},
+            {**doc, "locks": {}},
             {**doc, "locks": [{}]},
             {**doc, "locks": [{**doc["locks"][0], "cases": 0}]},
             {**doc, "locks": doc["locks"] * 2},
@@ -236,6 +245,36 @@ class AcceptanceLockTest(unittest.TestCase):
         self.assertEqual(lock.review_paths(xt, self.base, "HEAD", files), files[:-1])
         self.write(lock.LEDGER, "{}")
         self.assertEqual(lock.review_paths(xt, self.base, "HEAD", files), files)
+
+    def test_gate_review_and_compatibility_for_opted_out_products(self):
+        from tests.test_merge_review_source import std
+
+        self.create()
+        self.configure()
+        with (self.base / "xt.yaml").open("a") as f:
+            f.write("merge_autonomy: L3\nmerge_hard_exceptions: auto\nmerge_review: optional\ndelivery_phase: build\n")
+        self.git("add", ".")
+        self.git("commit", "-qm", "Duyệt thay đổi nghiệm thu")
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        decision, _ = xt._merge_eval(std() | {"files": [{"path": self.case}]})
+        self.assertEqual(decision["verdict"], "review", decision)
+        unrelated, _ = xt._merge_eval(std() | {"files": [{"path": "README.md"}]})
+        self.assertEqual(unrelated["review"], "optional")
+        with patch.object(xt, "SCRIPT_DIR", self.base):
+            self.assertIsNone(xt.acceptance_module())
+            self.assertIsNotNone(xt.build_parser())
+        with patch.object(sys, "path", [p for p in sys.path if p != str(xt.SCRIPT_DIR)]):
+            self.assertIs(xt.acceptance_module(), lock)
+        (self.base / lock.LEDGER).unlink()
+        self.assertEqual(self.cli("check", code=1).count("Git"), 1)
+
+    def test_guard_classifies_ledger_as_machine_only(self):
+        case = json.loads((ROOT / "tests/fixtures/autonomy/guard.json").read_text())["cases"][0]
+        result = xt._bench_guard(case["input"], xt.BenchEnv(self.base))
+        self.assertEqual({k: result[k] for k in case["expect"]}, case["expect"])
+        guard = xt.BenchEnv(self.base).module("guard")
+        self.assertEqual(guard.classify_path(lock.LEDGER), "evidence")
+        self.assertEqual(guard.classify_path("docs/autopilot/ACCEPT*.json"), "evidence")
 
     def test_concurrent_write_and_input_changes_are_not_accepted(self):
         original = xt._state_lock
