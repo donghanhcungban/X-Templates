@@ -594,3 +594,10 @@
 - Chọn: Dùng sổ giai đoạn, trạng thái vòng lặp và chứng cứ bản chạy hiện có; chốt phạm vi nghiệm thu ở Git; diễn tập trước chuyển giao cho CD của sản phẩm
 - Lý do (tiêu chí chất lượng cuối): Giữ một nguồn trạng thái cho mỗi quyết định, tôn trọng duyệt đúng bản, đo thời gian và kiểm lại được trên repo sinh mới và repo có sẵn
 - Đường lùi: Các dự án có thể tiếp tục dùng những lệnh stage, loop, release-check, deploy và perf riêng; kiểm lại hợp đồng khi thay adapter đích.
+
+### D-522 · 2026-11-20T01:05:30+00:00 · Trình MVP lúc nào?
+
+- Phương án: (1) Sau smoke · (2) Sau audit
+- Chọn: Sau smoke
+- Lý do (tiêu chí chất lượng cuối): Duyệt bản dev; trả nợ ở pha 2 (ADR-0084).
+- Đường lùi: Revert ADR-0084.
