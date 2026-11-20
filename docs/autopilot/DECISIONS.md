@@ -587,3 +587,10 @@
 - Chọn: Sửa tài liệu và tên test (b): tệp Codex là sản phẩm SINH từ .claude/; tệp trùng đầu ra sinh được ghi nhận (như mọi tệp harness trùng bản khung) và đi theo .claude/ ở các lần cài sau, kể cả khi --force-harness thay nguồn; chỉ tệp khác bản đã ghi nhận mới được giữ kèm .xtemplates-new
 - Lý do (tiêu chí chất lượng cuối): Đúng: gương là bản sao byte của nguồn; khi người dùng chủ động --force-harness thay .claude/skills/<tên> thì gương giữ bản cũ sẽ LỆCH nguồn (test gương trùng byte của dự án như dhcb đỏ) — đi theo nguồn mới là hành vi nhất quán với mô hình 'tệp trùng bản khung ghi là của khung' mà install.py dùng cho mọi tệp harness. Phương án (a) thêm một ngoại lệ nữa vào luật sở hữu, để lại gương lệch nguồn, và nội dung cũ vẫn còn trong git. Lần cài ĐẦU với --force-harness vẫn giữ gương và để .xtemplates-new (chưa có ghi nhận) — đã sửa ở lượt 2.
 - Đường lùi: Áp phương án (a) trong install.py + test cài hai lượt
+
+### D-521 · 2026-11-19T23:39:27+00:00 · Điều phối một dự án từ ý tưởng qua ba giai đoạn tới vận hành bằng gì?
+
+- Phương án: (1) Dùng sổ giai đoạn, trạng thái vòng lặp và chứng cứ bản chạy hiện có; chốt phạm vi nghiệm thu ở Git; diễn tập trước chuyển giao cho CD của sản phẩm · (2) Tạo bộ điều phối riêng với sổ trạng thái, quyền duyệt và hạ tầng production mặc định
+- Chọn: Dùng sổ giai đoạn, trạng thái vòng lặp và chứng cứ bản chạy hiện có; chốt phạm vi nghiệm thu ở Git; diễn tập trước chuyển giao cho CD của sản phẩm
+- Lý do (tiêu chí chất lượng cuối): Giữ một nguồn trạng thái cho mỗi quyết định, tôn trọng duyệt đúng bản, đo thời gian và kiểm lại được trên repo sinh mới và repo có sẵn
+- Đường lùi: Các dự án có thể tiếp tục dùng những lệnh stage, loop, release-check, deploy và perf riêng; kiểm lại hợp đồng khi thay adapter đích.

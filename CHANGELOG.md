@@ -8,6 +8,16 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- `xt.py pr title-check --range BASE..HEAD` kiểm lịch sử trong một lần đọc Git. Cổng `BASE-REPO-005` dùng lệnh này để giảm thời gian chờ CI.
+- Quy trình ba giai đoạn của `/factory` nối tiếp từ sổ hiện tại. `xt_flow.py` cho biết ai làm gì tiếp theo,
+  thời gian chờ duyệt và các số đo có dữ liệu. Có thể chốt SPEC và bộ nghiệm thu tại một commit đã review
+  bằng `xt_acceptance.py`. Pilot phiếu sửa chữa kiểm trên PostgreSQL và Chromium ở một sản phẩm sinh mới.
+  [ADR-0083](docs/adr/0083-factory-lifecycle-flow.md) giải thích mốc duyệt, cách đọc số và phạm vi diễn tập.
+- Với dự án có cấu hình triển khai dev, `release-check` kiểm receipt của đúng nội dung và artifact.
+  `registry pull --from` tổng hợp receipt từ các checkout đã đăng ký. `admin-plan` liệt kê việc cấu hình,
+  `rollout-drill` diễn tập bàn giao và `ops-check` đối chiếu cửa sổ SLO với lần triển khai hiện hành.
+  Dự án đích nhận công cụ qua installer. Bước chuẩn bị Chromium của gói `web-api-ts` dùng lại trình duyệt
+  đã ghim và chỉ cài thư viện hệ thống khi phép thử khởi chạy cho thấy còn thiếu.
 - Dự án mới dùng `web-api-ts` có giao diện ghi chú tiếng Việt, PostgreSQL và bản dev trên loopback.
   Từ gốc dự án, `pnpm build` và `xt.py deploy run --env dev` dựng ứng dụng, thử luồng nghiệp vụ và ghi receipt
   sau khi kiểm digest qua HTTP. `deploy rollback --env dev` dùng lại ảnh trước đã lưu. Dữ liệu và tài khoản thử
