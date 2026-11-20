@@ -10,7 +10,7 @@
 - D-522/523: trình MVP sau smoke. [Vòng sửa–thử nhanh](docs/adr/0085-fast-development-feedback.md) cho gói web, PLAN và CI.
 - **Factory**: MVP sổ ghi chú chạy trên CI, qua bốn ca nghiệm thu và bàn giao bằng git bundle. [Báo cáo](docs/ops/FACTORY-PILOT-1.md) · [PLAN](docs/autopilot/PLAN-factory-e2e.md).
 - Dự án đích ([registry](docs/ops/registry.json)): X-Company, xboss, dhcb, x-shop và hotel-manager ở 3.34.0. Hotel Manager đã nâng khung (#159); [pilot lọc tầng](research/2026-11-20-hotel-floor-pilot.md) từ checkout đến merge mất 18 phút 11 giây. Còn mở AUD-TEST-061 (CodeQL) và bài kiểm trên host Codex/Gemini.
-- D-457: PLAN factory-A/BE đã lưu kho. `LOOP-ORCH-020`: chỉ tăng agent khi có số. 10 nhóm `cong-cu` chờ phân loại ([TARGETS](docs/ops/TARGETS.md)). Hoãn: T-1690/T-1691 (quét lại SEC-091…099); rà `seeker19110/stored` chờ chủ repo (hạn xét 2026-12-31).
+- D-457: PLAN factory-A/BE đã lưu kho. `LOOP-ORCH-020`: chỉ tăng agent khi có số. [Đã phân loại 10 nhóm phản hồi công cụ](docs/ops/FEEDBACK-ROUTINE-CHECK.md). Hoãn: T-1690/T-1691 (quét lại SEC-091…099); rà `seeker19110/stored` chờ chủ repo (hạn xét 2026-12-31).
 
 ## Tiếp theo
 1. Đợt 16–17 xong (D-516…D-518, #676–#680): CI `test` 8 shard (#696), ban đầu 6 shard, `test-select` chọn theo lớp, `/complete` chạy lại `doctor` sau `harden`, commit trong worktree cùng repo qua cổng commit. Còn mở: T-3965/AUD-HAR-443 (tệp chưa track kéo test ở cổng commit — làm khi guard.py báo "`git commit` đứng một mình", cùng đợt tách `guard.py` D-142 và nới guard cho lệnh chỉ-đọc dạng ghép). Nợ: AUD-TEST-131, AUD-HAR-444.

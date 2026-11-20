@@ -12015,11 +12015,199 @@ def _feedback_aggregate(args: argparse.Namespace, base: Path) -> int:
     return 0
 
 
+REPORT_PATH = re.compile(r"docs/ops/feedback/REPORT-(\d{4}-\d{2}-\d{2})\.md")
+
+
+class FeedbackReport(NamedTuple):
+    at: _dt.datetime
+    sources: Dict[str, str]
+
+
+def _routine_api(path: str, pages: bool = False) -> List[Any]:
+    """Read public GitHub metadata on the named host, independent of gh's cwd/GH_REPO."""
+    try:
+        values = _gh_api(path, paginate=pages, host="github.com")
+    except ValueError as exc:
+        raise PrInputError("GitHub trả dữ liệu không hợp lệ") from exc
+    if not values:
+        raise PrInputError("GitHub không trả kết quả")
+    if not pages:
+        return values
+    if not all(isinstance(v, list) for v in values) or (len(values) >= GH_MAX_PAGES and len(values[-1]) == 100):
+        raise PrInputError("không đọc đủ các trang GitHub")
+    return [v for page in values for v in page]
+
+
+def _routine_report(repo: str, file: Dict[str, Any], published: _dt.datetime) -> FeedbackReport:
+    name = str(file["filename"])
+    sha = str(file.get("sha", ""))
+    if not COMMIT_SHA_RE.fullmatch(sha):
+        raise PrInputError(f"{name}: thiếu SHA blob của tệp báo cáo")
+    blob = _routine_api(f"{repo}/git/blobs/{sha}")[0]
+    try:
+        if blob["encoding"] != "base64" or not 0 < blob["size"] <= 256_000:
+            raise ValueError("kích thước/encoding")
+        body = base64.b64decode("".join(blob["content"].split()), validate=True).decode("utf-8")
+        stamps = re.findall(r"^Feedback-Cutoff: (\S+)\s*$", body, re.M)
+        at = _dt.datetime.fromisoformat(stamps[0])
+        if (
+            len(stamps) != 1
+            or at.utcoffset() != _dt.timedelta(0)
+            or at > published
+            or at.date().isoformat() not in name
+        ):
+            raise ValueError("mốc đọc ngoài ngày báo cáo hoặc sau khi PR công bố")
+        sources = {}
+        for value in re.findall(r"^Feedback-Source: ([^\n]+)$", body, re.M):
+            slug, revision = value.split()
+            slug = slug.lower()
+            if slug in sources or not REGISTRY_REPO_RE.fullmatch(slug) or not COMMIT_SHA_RE.fullmatch(revision):
+                raise ValueError("nguồn trùng hoặc SHA sai")
+            sources[slug] = revision
+        if not sources:
+            raise ValueError("thiếu nguồn đã đọc")
+        return FeedbackReport(at, sources)
+    except (ValueError, KeyError, TypeError, IndexError) as exc:
+        raise PrInputError(f"{name}: mốc UTC hoặc nguồn báo cáo không hợp lệ ({exc})") from exc
+
+
+def _routine_last_report(base: Path) -> Optional[FeedbackReport]:
+    origin = _go_git(base, "origin repo khung", "config", "--local", "--no-includes", "--get", "remote.origin.url")
+    slug = github_origin_slug(origin.strip())
+    if not slug:
+        raise ValueError("origin của repo khung phải là một repo github.com")
+    repo = f"repos/{slug}"
+    opened = _routine_api(f"{repo}/pulls?state=open&base=main&per_page=100", True)
+    pulls = {p["number"]: p for p in opened if (p["head"].get("repo") or {}).get("id") == p["base"]["repo"]["id"]}
+    for commit in _routine_api(f"{repo}/commits?sha=main&path=docs/ops/feedback&per_page=100", True):
+        linked = _routine_api(f"{repo}/commits/{commit['sha']}/pulls?per_page=100", True)
+        pulls.update({p["number"]: p for p in linked if p.get("merged_at") and p["base"]["ref"] == "main"})
+    reports = []
+    for number, pull in pulls.items():
+        files = _routine_api(f"{repo}/pulls/{int(number)}/files?per_page=100", True)
+        for f in files:
+            if f["status"] == "added" and REPORT_PATH.fullmatch(f["filename"]):
+                published = _parse_iso(pull.get("merged_at") or pull.get("updated_at", ""))
+                if published is None:
+                    raise PrInputError(f"PR #{number} thiếu ngày cập nhật/merge")
+                reports.append(_routine_report(repo, f, published))
+    return max(reports, key=lambda r: r.at, default=None)
+
+
+def _routine_target_head(slug: str) -> str:
+    page = _routine_api(f"repos/{slug}/commits?per_page=1")[0]
+    if (
+        not isinstance(page, list)
+        or not page
+        or not isinstance(page[0], dict)
+        or not COMMIT_SHA_RE.fullmatch(str(page[0].get("sha", "")))
+    ):
+        raise PrInputError(f"không xác định được HEAD nhánh mặc định của {slug}")
+    return str(page[0]["sha"])
+
+
+def _routine_paths(clone: Path, sha: str) -> set[str]:
+    tree = _go_git(
+        clone,
+        "thiếu commit đã đối chiếu; fetch clone",
+        "--no-replace-objects",
+        "ls-tree",
+        "-r",
+        "-z",
+        sha,
+        "--",
+        FEEDBACK_DIR,
+    )
+    files = set()
+    for line in filter(None, tree.split("\0")):
+        mode, _, path = line.partition("\t")
+        if path == FEEDBACK_DIR:
+            raise ValueError(f"{path}: cần một thư mục Git")
+        if Path(path).parent.as_posix() == FEEDBACK_DIR and FB_FILE_RE.fullmatch(Path(path).name):
+            if mode.split()[0] not in {"100644", "100755"}:
+                raise ValueError(f"{path}: phản hồi phải là tệp đã commit")
+            files.add(path)
+    return files
+
+
+def _first_feedback(clone: Path, head: str, files: set[str]) -> _dt.datetime:
+    log = _go_git(
+        clone,
+        "lịch sử phản hồi",
+        "--no-replace-objects",
+        "log",
+        "--first-parent",
+        "--diff-merges=first-parent",
+        "--no-renames",
+        "--diff-filter=A",
+        "--format=%x1e%cI",
+        "--name-only",
+        head,
+        "--",
+        FEEDBACK_DIR,
+    )
+    dates: Dict[str, _dt.datetime] = {}
+    for record in filter(str.strip, log.split("\x1e")):
+        stamp, *names = record.strip().splitlines()
+        for name in files.intersection(names):
+            dates.setdefault(name, _dt.datetime.fromisoformat(stamp))
+    if set(dates) != files:
+        raise ValueError("lịch sử chưa đủ để xác định lần thêm phản hồi trên nhánh chính")
+    return min(dates.values())
+
+
+def _feedback_routine(args: argparse.Namespace, base: Path) -> int:
+    registry, errors = registry_load(base / REGISTRY_FILE, base)
+    if registry is None or args.days < 1:
+        print("✗ " + ("; ".join(errors) or "--days phải dương"), file=sys.stderr)
+        return 2
+    try:
+        repos = {p["repo"].lower() for p in registry["products"]}
+        clones = _registry_clones(Path(args.source), repos)
+        if missing := sorted(repos - clones.keys()):
+            raise ValueError("thiếu clone: " + ", ".join(missing))
+        report = _routine_last_report(base)
+        total = pending = 0
+        first = []
+        for slug, clone in clones.items():
+            head = _routine_target_head(slug)
+            files = _routine_paths(clone, head)
+            previous = report.sources.get(slug) if report else None
+            seen: set[str] = set()
+            if previous:
+                _go_git(
+                    clone,
+                    "mốc báo cáo thiếu hoặc ngoài nhánh mặc định; fetch lịch sử",
+                    "--no-replace-objects",
+                    "merge-base",
+                    "--is-ancestor",
+                    previous,
+                    head,
+                )
+                seen = _routine_paths(clone, previous)
+            total += len(files)
+            pending += len(files - seen)
+            if not report and files:
+                first.append(_first_feedback(clone, head, files))
+    except (PrInputError, KeyError, TypeError, IndexError) as exc:
+        print(f"✗ Không đối chiếu được PR/nguồn trên GitHub: {exc}", file=sys.stderr)
+        return 3
+    except (OSError, ValueError, DeployError) as exc:
+        print(f"✗ Không đọc được các nguồn phản hồi: {exc}", file=sys.stderr)
+        return 2
+    since = report.at if report else min(first, default=None)
+    print(
+        f"{pending} mục mới trong {total} phản hồi; PR báo cáo gần nhất: {report.at.isoformat() if report else 'chưa có'}"
+    )
+    return int(bool(pending and since and (_dt.datetime.now(_dt.timezone.utc) - since).days >= args.days))
+
+
 FEEDBACK_HANDLERS: Dict[str, Callable[[argparse.Namespace, Path], int]] = {
     "add": _feedback_add,
     "collect": _feedback_collect,
     "list": _feedback_list,
     "aggregate": _feedback_aggregate,
+    "routine-check": _feedback_routine,
 }
 
 
@@ -21786,6 +21974,9 @@ def build_parser() -> argparse.ArgumentParser:
     fg = fsub.add_parser("aggregate", help="repo khung: gộp phản hồi nhiều dự án theo (loại, ID)")
     fg.add_argument("--from", dest="source", action="append", required=True, metavar="DỰ_ÁN=GỐC_REPO|THƯ_MỤC")
     fg.add_argument("--json", action="store_true")
+    routine = fsub.add_parser("routine-check", help="kiểm tín hiệu mới ở các clone trong registry và PR báo cáo")
+    routine.add_argument("--from", dest="source", required=True, metavar="THƯ_MỤC_CLONE")
+    routine.add_argument("--days", type=int, default=8)
     pfb.set_defaults(fn=cmd_feedback)
     phc = sub.add_parser("harness-check", help="lệnh kiểm chỉ đọc mục hàng rào: guard, settings, agents (T-2621)")
     phc.set_defaults(fn=cmd_harness_check)
