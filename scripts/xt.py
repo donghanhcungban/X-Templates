@@ -11990,11 +11990,82 @@ def _feedback_aggregate(args: argparse.Namespace, base: Path) -> int:
     return 0
 
 
+REPORT_PATH = re.compile(r"docs/ops/feedback/REPORT-\d{4}-\d{2}-\d{2}\.md")
+
+
+def _routine_report_pr(repo: str, pull: dict[str, Any]) -> Optional[_dt.datetime]:
+    number = int(pull["number"])
+    files = _gh_items(f"{repo}/pulls/{number}/files?per_page=100")
+    if not any(f.get("status") in {"added", "modified"} and REPORT_PATH.fullmatch(f["filename"]) for f in files):
+        return None
+    at = _parse_iso(pull["created_at"])
+    if at is None:
+        raise PrInputError(f"ngày mở PR #{number} không hợp lệ")
+    return at
+
+
+def _routine_last_report() -> Optional[_dt.datetime]:
+    """Đối chiếu tệp của PR thật; một tiêu đề hay commit trực tiếp không phải PR báo cáo."""
+    repo = "repos/{owner}/{repo}"
+    opened = _gh_items(f"{repo}/pulls?state=open&base=main&per_page=100")
+    pulls = [p for p in opened if (p["head"].get("repo") or {}).get("id") == p["base"]["repo"]["id"]]
+    for commit in _gh_items(f"{repo}/commits?sha=main&path=docs/ops/feedback&per_page=100"):
+        prs = _gh_items(f"{repo}/commits/{commit['sha']}/pulls?per_page=100")
+        pulls.extend(p for p in prs if p.get("merged_at") and p["base"]["ref"] == "main")
+    unique = {p["number"]: p for p in pulls}
+    return max((at for p in unique.values() if (at := _routine_report_pr(repo, p)) is not None), default=None)
+
+
+def _routine_dates(clone: Path) -> list[_dt.datetime]:
+    directory = clone / FEEDBACK_DIR
+    if not directory.resolve().is_relative_to(clone) or any(f.is_symlink() for f in directory.glob("FB-*.md")):
+        raise ValueError("thư mục phản hồi chứa liên kết ngoài phạm vi")
+    dates = []
+    for entry in feedback_entries(directory):
+        at = _parse_iso(entry.get("date", ""))
+        if at is None:  # phản hồi cũ dùng nhãn khác; mốc commit vẫn xác minh được
+            stamp = _git(clone, "log", "-1", "--format=%cI", "--", f"{FEEDBACK_DIR}/{entry['file']}").stdout.strip()
+            at = _parse_iso(stamp)
+        if at is None:
+            raise ValueError(f"không có ngày phản hồi hay commit cho {entry['file']}")
+        dates.append(at)
+    return dates
+
+
+def _feedback_routine(args: argparse.Namespace, base: Path) -> int:
+    registry, errors = registry_load(base / REGISTRY_FILE, base)
+    if registry is None or args.days < 1:
+        print("✗ " + ("; ".join(errors) or "--days phải dương"), file=sys.stderr)
+        return 2
+    try:
+        repos = {p["repo"].lower() for p in registry["products"]}
+        clones = _registry_clones(Path(args.source), repos)
+        missing = sorted(repos - clones.keys())
+        if missing:
+            raise ValueError("thiếu clone: " + ", ".join(missing))
+        dates = [at for clone in clones.values() for at in _routine_dates(clone)]
+        last = _routine_last_report()
+    except (PrInputError, KeyError) as exc:
+        print(f"✗ Không đối chiếu được PR báo cáo trên GitHub: {exc}", file=sys.stderr)
+        return 3
+    except (OSError, ValueError, DeployError) as exc:
+        print(f"✗ Không đọc được các nguồn phản hồi: {exc}", file=sys.stderr)
+        return 2
+    pending = [at for at in dates if last is None or at > last]
+    now = _dt.datetime.now(_dt.timezone.utc)
+    overdue = bool(pending) and (now - (last or min(pending))).days >= args.days
+    print(
+        f"{len(pending)} mục mới trong {len(dates)} phản hồi; PR báo cáo gần nhất: {last.isoformat() if last else 'chưa có'}"
+    )
+    return int(overdue)
+
+
 FEEDBACK_HANDLERS: Dict[str, Callable[[argparse.Namespace, Path], int]] = {
     "add": _feedback_add,
     "collect": _feedback_collect,
     "list": _feedback_list,
     "aggregate": _feedback_aggregate,
+    "routine-check": _feedback_routine,
 }
 
 
@@ -21734,6 +21805,9 @@ def build_parser() -> argparse.ArgumentParser:
     fg = fsub.add_parser("aggregate", help="repo khung: gộp phản hồi nhiều dự án theo (loại, ID)")
     fg.add_argument("--from", dest="source", action="append", required=True, metavar="DỰ_ÁN=GỐC_REPO|THƯ_MỤC")
     fg.add_argument("--json", action="store_true")
+    routine = fsub.add_parser("routine-check", help="kiểm tín hiệu mới ở các clone trong registry và PR báo cáo")
+    routine.add_argument("--from", dest="source", required=True, metavar="THƯ_MỤC_CLONE")
+    routine.add_argument("--days", type=int, default=8)
     pfb.set_defaults(fn=cmd_feedback)
     phc = sub.add_parser("harness-check", help="lệnh kiểm chỉ đọc mục hàng rào: guard, settings, agents (T-2621)")
     phc.set_defaults(fn=cmd_harness_check)
