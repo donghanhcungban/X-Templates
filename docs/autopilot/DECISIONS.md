@@ -573,3 +573,10 @@
 - Chọn: Sau smoke
 - Lý do (tiêu chí chất lượng cuối): Duyệt bản dev; trả nợ ở pha 2 (ADR-0084).
 - Đường lùi: Revert ADR-0084.
+
+### D-523 · 2026-11-20T02:47:33+00:00 · Rút ngắn phản hồi từ sửa mã đến CI?
+
+- Phương án: (1) Dựng lại sau mỗi lần sửa, chạy test theo tên · (2) Dùng watch lúc viết, giữ nghiệm thu bản đóng gói, xếp lớp test nặng trước và gom Gate một lượt
+- Chọn: Dùng watch lúc viết, giữ nghiệm thu bản đóng gói, xếp lớp test nặng trước và gom Gate một lượt
+- Lý do (tiêu chí chất lượng cuối): Giảm việc lặp, giữ tập test và thứ tự Gate theo PLAN.
+- Đường lùi: Hoàn tác thay đổi của lượt này.
