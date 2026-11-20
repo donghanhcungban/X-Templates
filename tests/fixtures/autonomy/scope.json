@@ -719,6 +719,18 @@
     "AUD-SEC-986",
     "AUD-HAR-445"
    ]
+  },
+  {
+   "reason": "Bàn giao phụ thuộc và tier đọc đồng thời PLAN + state.json của vòng thật. Các adapter corpus hiện có không mô hình hoá thao tác plan waves --handoff. CLI chạy trong repo tạm ở tests.test_plan_waves.PlanWavesTest: test_handoff_requires_evidence_and_keeps_independent_work_ready và test_handoff_matches_executor_escalation_after_two_failed_gates.",
+   "ids": [
+    "AUD-XFEAT-049"
+   ]
+  },
+  {
+   "reason": "Origin của trang login, chuyển hướng HTTP, WebSocket và health của smoke là hợp đồng trình duyệt Playwright trên dev. Các adapter corpus hiện có không điều khiển browser/network. tests.test_pack_ui.PackUiTest.test_browser_preview_restricts_fixture_login_and_redirects kiểm origin, redirect và receipt; hành trình Chromium kiểm hai phiên.",
+   "ids": [
+    "AUD-SEC-994"
+   ]
   }
  ]
 }

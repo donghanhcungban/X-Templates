@@ -69,6 +69,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Smoke của gói `web-api-ts` kiểm đúng origin của trang đăng nhập, API và health của bản dev trước khi ghi bằng chứng. Dự án đích đã tùy biến starter cần đối chiếu bài kiểm sở hữu tại dự án khi nâng khung.
+
 - `plan waves --handoff` kiểm bằng chứng của tiền nhiệm trong vòng hiện hành và chọn cùng cấp executor với `loop status`. Việc độc lập vẫn giao được. Dự án đích nhận thay đổi qua installer.
 - Workflow phát hành xác minh `release-check`, trạng thái promotion và chữ ký của đúng ứng viên trước khi chứng thực và đẩy tag. PR ký riêng có thể kích hoạt bước phát hành sau PR tăng phiên bản.
 - CI tăng nhóm kiểm coverage lên 8 shard, giữ trần 10 phút và coverage 100%. Thêm ca hồi quy cho Mutation guard. Job `protection-guard` so các tên check bắt buộc trong Git với cấu hình đang áp dụng.

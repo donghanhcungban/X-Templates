@@ -14,10 +14,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
-from urllib.parse import urlparse
 from uuid import uuid4
 
-from playwright.sync_api import Page, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
+
+
+PREVIEW_ORIGIN = "http://127.0.0.1:4317"
 
 
 def require(condition: bool, reason: str) -> None:
@@ -30,50 +32,79 @@ def confirmed_candidate() -> tuple[dict, str]:
     state = ledger["envs"]["dev"]
     current = state["current"]
     require(not state["unknown"] and current["result"] == "deployed", "Chưa có bản dev được xác nhận")
-    url = urlparse(current["url"])
-    require(url.scheme == "http" and url.hostname == "127.0.0.1", "Bài kiểm chỉ đăng nhập vào preview loopback")
+    require(current["url"] == PREVIEW_ORIGIN, "Receipt phải trỏ đúng origin của adapter preview")
     digest = hashlib.sha256(Path("dist/app.tgz").read_bytes()).hexdigest()
     artifacts = {a["path"]: a["sha256"] for a in current["artifacts"]}
     require(artifacts.get("dist/app.tgz") == digest, "Artifact cục bộ khác receipt")
     return current, digest
 
 
-def login(page: Page, url: str, account: dict[str, str]) -> None:
-    page.goto(url)
+def preview_request(route: Route) -> None:
+    # Kiểm từng request và không cho một phản hồi redirect chuyển request đã duyệt sang origin khác.
+    if not route.request.url.startswith(PREVIEW_ORIGIN + "/"):
+        route.abort()
+        return
+    response = route.fetch(max_redirects=0)
+    try:
+        if 300 <= response.status < 400:
+            route.abort()
+        else:
+            route.fulfill(response=response)
+    finally:
+        response.dispose()
+
+
+def preview_context(browser: Browser) -> BrowserContext:
+    context = browser.new_context(service_workers="block")
+    context.route("**/*", preview_request)
+    # Gói notes dùng HTTP. Phiên có tài khoản thử không cần mở WebSocket.
+    context.route_web_socket("**/*", lambda socket: socket.close())
+    return context
+
+
+def login(page: Page, account: dict[str, str]) -> None:
+    page.goto(PREVIEW_ORIGIN + "/")
+    require(page.url == PREVIEW_ORIGIN + "/", "Trang đăng nhập phải thuộc origin preview")
     page.locator("#email").fill(account["email"])
     page.locator("#password").fill(account["password"])
-    with page.expect_response(lambda r: urlparse(r.url).path == "/v1/login" and r.request.method == "POST") as result:
+    with page.expect_response(lambda r: r.url == PREVIEW_ORIGIN + "/v1/login" and r.request.method == "POST") as result:
         page.locator("#login-form").get_by_role("button", name="Đăng nhập").click()
     require(result.value.status == 200, "Không đăng nhập được vào API")
     expect(page.locator("#note-form")).to_be_visible()
 
 
-def browser_flow(url: str, expected_digest: str, account: dict[str, str]) -> str:
+def served_digest(context: BrowserContext, expected_digest: str) -> str:
+    health_url = PREVIEW_ORIGIN + "/healthz"
+    health = context.request.get(health_url, max_redirects=0)
+    require(health.url == health_url and health.status == 200, "HTTP /healthz không thành công")
+    observed = health.json()["digest"]
+    require(observed == expected_digest, "Digest HTTP khác ứng viên")
+    return observed
+
+
+def browser_flow(expected_digest: str, account: dict[str, str]) -> str:
     body = "Kiểm thử ghi chú " + uuid4().hex
     with sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get("XT_E2E_CHROMIUM"))
-        with browser.new_context() as first:
-            health = first.request.get(url.rstrip("/") + "/healthz")
-            require(health.ok, "HTTP /healthz không thành công")
-            observed = health.json()["digest"]
-            require(observed == expected_digest, "Digest HTTP khác ứng viên")
+        with preview_context(browser) as first:
+            observed = served_digest(first, expected_digest)
             page = first.new_page()
-            login(page, url, account)
+            login(page, account)
             page.locator("#note-body").fill(body)
             with page.expect_response(
-                lambda r: urlparse(r.url).path == "/v1/notes" and r.request.method == "POST"
+                lambda r: r.url == PREVIEW_ORIGIN + "/v1/notes" and r.request.method == "POST"
             ) as saved:
                 page.locator("#note-form").get_by_role("button", name="Lưu ghi chú").click()
             require(saved.value.status == 201, "API chưa tạo ghi chú")
             note = saved.value.json()
             require(note["body"] == body and bool(note["id"]), "API trả ghi chú khác nội dung đã nhập")
             expect(page.locator("#notes-list")).to_contain_text(body)
-        with browser.new_context() as second:
+        with preview_context(browser) as second:
             page = second.new_page()
             with page.expect_response(
-                lambda r: urlparse(r.url).path == "/v1/notes" and r.request.method == "GET"
+                lambda r: r.url == PREVIEW_ORIGIN + "/v1/notes" and r.request.method == "GET"
             ) as loaded:
-                login(page, url, account)
+                login(page, account)
             require(loaded.value.status == 200, "Không lấy lại được ghi chú từ API")
             matches = [item for item in loaded.value.json()["notes"] if item["id"] == note["id"]]
             require(len(matches) == 1 and matches[0]["body"] == body, "Ghi chú không tồn tại ở phiên mới")
@@ -94,7 +125,7 @@ def main() -> None:
         ["node", "scripts/dev-preview.mjs", "credentials"], capture_output=True, text=True, check=True, timeout=10
     )
     account = json.loads(result.stdout)["owner"]
-    observed = browser_flow(current["url"], current["subject"]["digest"], account)
+    observed = browser_flow(current["subject"]["digest"], account)
     require(current["served_digest"] == observed, "Digest HTTP không khớp receipt")
     run_url = os.environ.get("GITHUB_RUN_ID")
     if run_url:
