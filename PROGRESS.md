@@ -34,5 +34,5 @@
 - Coverage cục bộ < 100 % khi `coverage` cài ở site người dùng: hook chạy `python3 -I` nên tiến trình con không được đo — CI là cổng coverage (đo 2026-11-05).
 
 ## Bàn giao phiên
-- Mốc `main` `008b03b0` (#696). Xét PR xanh theo số tăng dần. Phiên "tiếp tục" đọc sổ [audit](docs/ops/AUDIT-STATUS.md), PLAN-harden-2026-11-17 và CHANGELOG.
+- Mốc `main` `4439d48b` (#697). Xét PR xanh theo số tăng dần. Phiên "tiếp tục" đọc sổ [audit](docs/ops/AUDIT-STATUS.md), PLAN-harden-2026-11-17 và CHANGELOG.
 - Container mới: `scripts/dev-task.sh setup`; trước khi đẩy `gate-fast`, CI là cổng đầy đủ. Subagent dùng scratch riêng dưới `/home/liend` (không `/tmp`: tmpfs, mất khi khởi động lại). Gate cục bộ: `coverage` và `pip` phải ở site-packages của `python3` (hook chạy `python3 -I`) — venv 3.15 đầu PATH; G7 cần `fetch --unshallow --tags`; `release-check` chạy ở worktree sạch (`.agents/`, `.codex/` chưa commit làm hàng `tree` đỏ).
