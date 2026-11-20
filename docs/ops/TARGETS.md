@@ -19,8 +19,7 @@
 - www-donghanhcungban-org/X-Agents — có `.xtemplates/` (2.0.0), PR #584. Hook dùng lõi 2.0.0, `/factory` dùng `.xtemplates/factory` ghim `3a1cd54`.
 
 Lần gộp 2026-10-23 (T-2410, `feedback aggregate --from` bản clone nông cả 4 repo public, exit 0): đủ ngưỡng 63 nhóm —
-`mien-tru` 47, `cong-cu` 10, `hook-chan-nham` 5, `hook-lot` 1; dưới ngưỡng 61. Nhóm `cong-cu` đủ ngưỡng cần phân loại
-(đã sửa / còn lỗi) thành task: `merge-check` (phân trang `/repositories/{id}` bị proxy 403), `blueprint-status`, `doctor`,
+`mien-tru` 47, `cong-cu` 10, `hook-chan-nham` 5, `hook-lot` 1; dưới ngưỡng 61. Mười nhóm `cong-cu` đã được [đối chiếu với phiên bản và commit](FEEDBACK-ROUTINE-CHECK.md): `merge-check` (phân trang `/repositories/{id}` bị proxy 403), `blueprint-status`, `doctor`,
 `loop init` (×2), `pr steward`, `feedback collect`, `loop decide`, `loop record` (pipefail — đã sửa `1a877b0`),
 `loop record/status` (worktree). Nội dung phản hồi giữ ở repo dự án (dữ liệu dự án), không chép vào đây.
 
