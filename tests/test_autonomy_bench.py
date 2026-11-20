@@ -73,6 +73,27 @@ class AutonomyBenchRepoTest(unittest.TestCase):
         self.assertEqual(sorted(covered & set(scope)), [])
         self.assertTrue(all(scope.values()))
 
+    def test_scope_ids_are_all_required(self):
+        """AUD-TEST-127: scope.json chỉ chứa ID bắt buộc (REC §2 + 🔴/🟠 `đã sửa`), như `note` và `autonomy_required`.
+
+        Đọc từng dòng `| AUD-…` của cả hai sổ thay `audit_findings`: bảng lưu trữ bị các dòng `>` cắt ngang nên
+        `md_tables` chỉ thấy phần đầu (ngoài phạm vi test này)."""
+        _, scope = xt.autonomy_corpus(CORPUS)
+        rows: dict[str, list[tuple[str, str]]] = {}
+        for name in ("AUDIT-STATUS.md", "AUDIT-STATUS-ARCHIVE.md"):
+            for line in (ROOT / "docs" / "ops" / name).read_text(encoding="utf-8").splitlines():
+                if line.startswith("| AUD-"):
+                    cells = xt.split_md_row(line)
+                    rows.setdefault(cells[0], []).append((cells[1], cells[2]))
+        plan = (ROOT / xt.AUTONOMY_REMEDIATION).read_text(encoding="utf-8")
+        rec = set(xt.REC_ROW_RE.findall(plan.split("\n## 2.", 1)[-1].split("\n## 3.", 1)[0]))
+        extra = sorted(
+            i
+            for i in scope
+            if i not in rec and not any(m in ("🔴", "🟠") and s == "đã sửa" for m, s in rows.get(i, []))
+        )
+        self.assertEqual(extra, [], "ID không bắt buộc nằm trong scope.json: gỡ khỏi out_of_scope")
+
     def test_autonomy_bench_pins_default_exec_path_only(self):
         """D-510: quyết định của corpus không phụ thuộc uid chạy bench — root (mọi đường đều đổi được) vẫn coi exec-path
         mặc định là cố định, đường khác xét thật; không đọc được exec-path thì không ghim gì; ghim lại không chồng lớp."""

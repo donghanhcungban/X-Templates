@@ -11,13 +11,13 @@ import os
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 import unittest.mock as mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
+import cpu_budget
 from git_fixture import fixture_git, init_git_fixture, isolated_git_environment
 from nonet import isolate_network
 
@@ -1732,9 +1732,8 @@ class GhPostingStrictTest(unittest.TestCase):
             self.assertEqual(self._decide(d, cmd), "deny")
 
     def test_gh_post_re_linear(self):  # review lát C 🟠: `-{1,2}[\w-]+` lặp là ReDoS 2^n
-        t = time.monotonic()
         self.assertIsNone(guard.GH_POST_RE.search("gh pr " + "--x " * 40 + "y"))
-        self.assertLess(time.monotonic() - t, 1.0)
+        cpu_budget.assert_not_quadratic(self, lambda n: guard.GH_POST_RE.search("gh pr " + "--x " * n + "y"), 2_500)
 
     def test_denied(self):
         with tempfile.TemporaryDirectory() as d:
@@ -2050,9 +2049,9 @@ class GuardStrictDebtTest(unittest.TestCase):
             "cat <<A <<B\n" + "x" * 40000 + "\nA\n" + "y" * 40000 + "\nB",
         ):
             with self.subTest(cmd=cmd[:20]):
-                start = time.monotonic()
+                # Không trần giây: thiếu nắp thì quét chạm hạn `DECISION_SECONDS` của guard → BUDGET với lý do hạn giờ,
+                # không có AUD-PERF-017 — đỏ ở assertIn dưới.
                 d = decide(cmd)
-                self.assertLess(time.monotonic() - start, 5.0)
                 self.assertEqual((d["decision"], d.get("code")), ("deny", "BUDGET"), d["reason"][:300])
                 self.assertIn("AUD-PERF-017", d["reason"])
                 self.assertIn("viết lại:", d["reason"])

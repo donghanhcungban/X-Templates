@@ -24,6 +24,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
+import cpu_budget
 import xt
 
 SECTION_DIRS = ("01-baseline", "02-profiles", "03-industries", "08-backend")
@@ -1486,10 +1488,10 @@ class LoopRecordBranchesTest(TmpMixin, RealAutopilotUntouchedMixin, unittest.Tes
         """review #220: con `setsid` (khác phiên, như app server) còn giữ stdout — trước đây `communicate()` chờ EOF mãi."""
         pid_file = self.base / "det.pid"
         cmd = f"setsid sleep 40 & echo $! > {pid_file}; echo bat-dau; sleep 30"
-        t0 = time.monotonic()
         with unittest.mock.patch.object(xt, "GATE_KILL_GRACE", 1):
-            code, out = xt.run_gate_shell(cmd, self.base, 1)
-        self.assertLess(time.monotonic() - t0, 10)
+            code, out = cpu_budget.run_with_deadline(
+                self, lambda: xt.run_gate_shell(cmd, self.base, 1), 10, hang="chờ EOF của con `setsid sleep 40`"
+            )
         self.assertEqual(code, 124)
         self.assertIn("bat-dau", out)
         with contextlib.suppress(ProcessLookupError, ValueError, OSError):

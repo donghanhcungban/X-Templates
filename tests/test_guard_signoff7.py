@@ -8,17 +8,20 @@ DENY: mẫu tái hiện mà guard ở `1b462999` cho chạy. ALLOW: dạng lành
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import os
 import sys
-import time
 import unittest
 import unittest.mock as mock
 from pathlib import Path
+from typing import Iterator
 
 ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("XT_GUARD_PHASE", "harden")
 sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
+sys.path.insert(0, str(ROOT / "tests"))
+import cpu_budget
 import guard
 
 H = chr(126)  # `~` dựng bằng chr: chữ xoá home không nằm nguyên văn trong tệp test
@@ -26,12 +29,24 @@ FP = "git push " + "--force origin main"  # đẩy đè nhánh chính
 WIPE = "rm -rf " + H
 
 
-def decide(cmd: str, root: Path = ROOT) -> dict:
+@contextlib.contextmanager
+def pinned(root: Path = ROOT) -> Iterator[None]:
+    """Ghim môi trường và nhánh cho guard. Bản vá toàn cục: mở ở luồng gọi, không trong `fn` của `run_with_deadline`."""
     with (
         mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(root), "XT_GUARD_POLICY": ""}),
         mock.patch.object(guard, "_current_branch", return_value="feat"),
     ):
-        return guard.apply_policy(guard.bash_decision(cmd, str(root), str(root)))
+        yield
+
+
+def guard_decide(cmd: str, root: Path = ROOT) -> dict:
+    """Lời gọi thuần (không vá) — dùng trong `pinned()`."""
+    return guard.apply_policy(guard.bash_decision(cmd, str(root), str(root)))
+
+
+def decide(cmd: str, root: Path = ROOT) -> dict:
+    with pinned(root):
+        return guard_decide(cmd, root)
 
 
 PARALLEL_DENY = (
@@ -223,10 +238,9 @@ CLEAN_WRAPS = ("bare", "shc", "bashc", "nice", "timeout", "env", "cmd")
 
 class ShadowMatrixTest(unittest.TestCase):
     def test_matrix_denied(self):
-        start = time.monotonic()
+        # Không trần giây cho cả ma trận: đúng/sai do `leaked` kiểm; mỗi lệnh đã có hạn `DECISION_SECONDS` của guard.
         leaked = [k for k, cmd in shadow_matrix() if decide(cmd)["decision"] not in ("deny", "ask")]
         self.assertEqual(leaked, [])
-        self.assertLess(time.monotonic() - start, 120)
 
     def test_reported(self):
         for wrap in ("sh -c", "bash -c"):
@@ -313,10 +327,10 @@ class DeadlineTest(unittest.TestCase):
         return head + sep.join(out)
 
     def _timed(self, cmd: str) -> dict:
-        start = time.monotonic()
-        d = decide(cmd)
-        self.assertLess(time.monotonic() - start, 30)
-        return d
+        with pinned():
+            return cpu_budget.run_with_deadline(
+                self, lambda: guard_decide(cmd), 30, hang="guard bỏ qua hạn DECISION_SECONDS 15 s, quét không dừng"
+            )
 
     def test_many_sed(self):
         d = self._timed(self._grow('sed -i "s/x{0}/$V/" f{0}.md', " && ", "V=1.2.3; "))

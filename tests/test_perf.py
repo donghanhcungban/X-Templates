@@ -167,10 +167,15 @@ class PerfSampleTest(unittest.TestCase):
 
     def test_sample_timeout(self):
         before = threading.active_count()
-        t0 = time.perf_counter()
         with self.assertRaisesRegex(RuntimeError, "quá 0.2 s ở lần 1"):
-            xt.perf_sample([sys.executable, "-c", "import time; time.sleep(5)"], runs=1, warmup=0, timeout=0.2)
-        self.assertLess(time.perf_counter() - t0, 2)
+            cpu_budget.run_with_deadline(
+                self,
+                lambda: xt.perf_sample(
+                    [sys.executable, "-c", "import time; time.sleep(30)"], runs=1, warmup=0, timeout=0.2
+                ),
+                5,
+                hang="hạn 0,2 s không giết lệnh `sleep 30`",
+            )
         self.assertEqual(threading.active_count(), before)  # thread chờ đã join
 
     # AUD-PERF-003 (T-3561): đo thời gian không lượng tử. Kiểm đặc tính, không ghim ranh giới bậc (phụ thuộc máy); lấy
@@ -216,22 +221,32 @@ class PerfSampleTest(unittest.TestCase):
         self.assertEqual((rc, len(calls)), (0, 1))  # chỉ lần dọn nhóm sau khi xong
         self.assertLess(elapsed, 0.2)
 
+    @staticmethod
+    def interrupt_when_started(pidfile: Path, main: int) -> None:
+        """Gửi SIGINT cho luồng chính ngay khi lệnh đã chạy (đã ghi `pidfile`) — không đoán giờ khởi động của `sh`."""
+        deadline = time.monotonic() + 10
+        while not pidfile.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.2)  # để luồng chính vào `done.wait`
+        signal.pthread_kill(main, signal.SIGINT)
+
     def test_sample_timing_resolution_real_sigint_interrupts_blocking_wait(self):
-        # Chờ chặn (waitpid) vẫn phải nhả khi Ctrl-C thật: SIGINT gửi đúng luồng chính → KeyboardInterrupt, nhóm bị giết.
+        # Chờ chặn (waitpid) phải nhả NGAY khi Ctrl-C thật: SIGINT gửi đúng luồng chính → KeyboardInterrupt, nhóm bị giết
+        # trước khi lệnh tới `touch`. Kiểm bằng hành vi, không trần giây: Ctrl-C bị hoãn (nuốt KeyboardInterrupt, chờ
+        # tiếp tới khi lệnh xong rồi mới ném) thì `assertRaises` vẫn qua nhưng `late` đã được tạo → đỏ.
         old = signal.signal(signal.SIGINT, signal.default_int_handler)
         try:
             with tempfile.TemporaryDirectory() as d:
-                pidfile = Path(d) / "pid"
-                script = f"sleep 30 & echo $! > {pidfile}; wait"
+                pidfile, late = Path(d) / "pid", Path(d) / "late"
+                script = f"sleep 30 & echo $! > {pidfile}; sleep 10; touch {late}; wait"
                 main = threading.main_thread().ident
                 assert main is not None
-                sender = threading.Timer(0.5, signal.pthread_kill, (main, signal.SIGINT))
+                sender = threading.Thread(target=self.interrupt_when_started, args=(pidfile, main))
                 sender.start()
-                t0 = time.perf_counter()
                 with self.assertRaises(KeyboardInterrupt):
-                    xt._perf_run(["sh", "-c", script], 30)
+                    xt._perf_run(["sh", "-c", script], 60)
                 sender.join()
-                self.assertLess(time.perf_counter() - t0, 10)
+                self.assertFalse(late.exists(), "Ctrl-C bị hoãn: lệnh đã chạy qua `sleep 10` trước khi nhóm bị giết")
                 pid = int(pidfile.read_text())
         finally:
             signal.signal(signal.SIGINT, old)
@@ -277,22 +292,31 @@ class PerfSampleTest(unittest.TestCase):
 
     def test_sample_timing_resolution_eperm_raises_on_time(self):
         # Nhóm có tiến trình khác real uid (vd `sudo -n bench` khi không chạy bằng root): killpg ném PermissionError.
-        # Lỗi phải về luồng chính đúng hạn như trước T-3561, không treo tới khi lệnh tự xong.
+        # Lỗi phải về luồng chính đúng hạn như trước T-3561, không treo tới khi lệnh tự xong. Kiểm bằng hành vi, không
+        # trần giây: không sớm — lúc killpg được gọi lệnh đã qua `sleep 0.1` (`started` có); không muộn — khi lỗi về,
+        # lệnh chưa qua `sleep 3` (`ended` chưa có).
         procs = self.spawned()
         before = threading.active_count()
         real_killpg = os.killpg
-        t0 = time.perf_counter()
-        try:
-            with unittest.mock.patch.object(os, "killpg", side_effect=PermissionError(1, "Operation not permitted")):
-                with self.assertRaises(PermissionError):
-                    xt.perf_sample(["sleep", "3"], runs=1, warmup=0, timeout=0.3)
-            spent = time.perf_counter() - t0
-        finally:
-            for proc in procs:
-                with contextlib.suppress(ProcessLookupError):
-                    real_killpg(proc.pid, signal.SIGKILL)
-                proc.wait()
-        self.assertTrue(0.29 <= spent < 1.0, spent)
+        seen: list[bool] = []
+        with tempfile.TemporaryDirectory() as d:
+            started, ended = Path(d) / "started", Path(d) / "ended"
+
+            def denied(pgid: int, sig: int) -> None:
+                seen.append(started.exists())
+                raise PermissionError(1, "Operation not permitted")
+
+            cmd = ["sh", "-c", f"sleep 0.1; touch {started}; sleep 3; touch {ended}"]
+            try:
+                with unittest.mock.patch.object(os, "killpg", denied), self.assertRaises(PermissionError):
+                    xt.perf_sample(cmd, runs=1, warmup=0, timeout=0.5)
+                self.assertFalse(ended.exists(), "lỗi chỉ về khi lệnh tự xong — luồng chính treo tới hết lệnh")
+            finally:
+                for proc in procs:
+                    with contextlib.suppress(ProcessLookupError):
+                        real_killpg(proc.pid, signal.SIGKILL)
+                    proc.wait()
+        self.assertEqual(seen, [True], "killpg gọi trước hạn 0,5 s (lệnh chưa qua `sleep 0.1`)")
         self.settle_threads(before)  # thread chờ chỉ sống tới khi lệnh kết thúc, không rò
 
     def test_sample_timing_resolution_thread_start_failure_kills_child(self):
@@ -1812,11 +1836,114 @@ class CpuBudgetTest(unittest.TestCase):
             cpu_budget.assert_not_quadratic(self, work, 10_000, clock=clock)
 
     def test_no_hard_cpu_thresholds_left(self):
-        hard = re.compile(r"assertLess\(\s*time\.process_time\(\)\s*-\s*\w+\s*,\s*[0-9.]+\s*\)")
         found = [
             f"{p.name}:{i}"
             for p in sorted((ROOT / "tests").glob("test*.py"))
-            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-            if hard.search(line)
+            for i in cpu_budget.hard_time_thresholds(p.read_text(encoding="utf-8"))
         ]
-        self.assertEqual(found, [], "ngưỡng CPU cứng — dùng cpu_budget.assert_not_quadratic")
+        self.assertEqual(
+            found,
+            [],
+            "ngưỡng giây/CPU cứng — dùng cpu_budget.assert_not_quadratic hoặc kiểm hành vi; chống treo thật:"
+            " cpu_budget.run_with_deadline(…, hạn ≥ HANG_FLOOR, hang='…')",
+        )
+
+    def test_hard_time_detector_flags_every_clock_form(self):
+        positives = (
+            "self.assertLess(time.process_time() - t0, 2.0)",
+            "self.assertLess(time.monotonic() - t0, 5)",
+            "self.assertLessEqual(time.perf_counter() - t0, 1)",
+            "self.assertGreater(time.time() - t0, 0.5)",
+            "self.assertLess(perf_counter_ns() - t0, 10**9)",
+            "elapsed = time.monotonic() - t0\nself.assertLess(elapsed, 2.0)",
+            "end = time.monotonic()\nself.assertTrue(end - start < 3)",
+            "spent = time.perf_counter() - t0\nself.assertTrue(0.29 <= spent < 1.0, spent)",
+            "assert time.monotonic() - t0 < 5",
+            "self.assertFalse(time.monotonic() - t0 > 5)",
+            "t0: float = time.monotonic()\nself.assertLess(x - t0, 5)",  # AnnAssign
+            "elapsed: float = time.monotonic() - t0\nself.assertLess(elapsed, 5)",
+            "if time.monotonic() - t0 > 5:\n    self.fail('chậm')",
+            "elapsed = time.monotonic() - t0\nif elapsed > 5:\n    raise AssertionError(elapsed)",
+            "self.assertLess(first=time.monotonic() - t0, second=5)",  # đối số từ khoá
+            "LIMIT = 5\nself.assertLess(time.monotonic() - t0, LIMIT)",  # tên gán từ hằng số làm trần
+            "start = time.monotonic()\ndef inner():\n    self.assertLess(time.monotonic() - start, 5)",  # bao đóng
+            "cpu_budget.run_with_deadline(self, lambda: work(10**6), 0.2)",  # trần tốc độ đội lốt chống treo
+            "run_with_deadline(self, f, 0.2, hang='x')",  # hạn dưới HANG_FLOOR
+            "run_with_deadline(self, f, 30)",  # thiếu lý do `hang`
+            "run_with_deadline(self, f, 30, hang='  ')",
+            "run_with_deadline(self, f, limit, hang='x')",  # hạn không kiểm được
+        )
+        for body in positives:
+            with self.subTest(body=body):
+                src = "def f(self):\n" + "".join(f"    {line}\n" for line in body.splitlines())
+                self.assertEqual(len(cpu_budget.hard_time_thresholds(src)), 1, body)
+        sources = {  # nguồn đủ (import, nhiều phạm vi) → dòng bị bắt
+            "self.assertLess(time.monotonic() - t0, 1)": [1],  # mức module
+            "import time as t\ndef f(self):\n    self.assertLess(t.monotonic() - t0, 5)": [3],
+            "from time import monotonic as clock\ndef f(self):\n    s = clock()\n    self.assertLess(x - s, 5)": [4],
+            "from time import time\ndef f(self):\n    self.assertLess(time() - t0, 5)": [3],
+            "start = time.monotonic()\ndef f(self):\n    self.assertLess(x - start, 5)": [3],  # tên toàn cục
+        }
+        for src, lines in sources.items():
+            with self.subTest(src=src):
+                self.assertEqual(cpu_budget.hard_time_thresholds(src), lines)
+
+    def test_hard_time_detector_ignores_waits_ratios_and_other_calls(self):
+        negatives = (
+            "deadline = time.monotonic() + 10\nwhile busy() and time.monotonic() < deadline:\n    time.sleep(0.05)",
+            "elapsed = time.monotonic() - t0\nreturn elapsed",
+            "spent = time.process_time() - start\nself.assertLess(four, 8 * one)",
+            "self.assertLess(a - b, 5)",
+            "self.assertLess(x.time() - t0, 5)",
+            "self.assertLess(time.monotonic() - t0, limit)",
+            "self.assertEqual(time.monotonic() - t0, 5)",
+            "self.assertTrue(True)",
+            "self.assertLess(len(out), 5)",
+            "assert shown",
+            "(lambda: 0)()",
+            "if time.monotonic() - t0 > 5:\n    log('chậm')",  # `if` không làm test đỏ
+            "LIMIT = 'x'\nself.assertLess(time.monotonic() - t0, LIMIT)",
+            "run_with_deadline(self, f, 30, hang='FIFO không ai ghi')",
+            "cpu_budget.run_with_deadline(self, f, cpu_budget.HANG_FLOOR, hang='sleep 30')",
+            "run_with_deadline(self, f, seconds=5.0, hang='sleep 30')",
+        )
+        for body in negatives:
+            with self.subTest(body=body):
+                src = "def f(self):\n" + "".join(f"    {line}\n" for line in body.splitlines())
+                self.assertEqual(cpu_budget.hard_time_thresholds(src), [], body)
+        sources = (
+            # tên gán từ đồng hồ ở hàm anh em không rò sang hàm khác (phạm vi module chỉ là câu lệnh cấp module)
+            "def a():\n    start = time.monotonic()\ndef b(self):\n    start = 3\n    self.assertLess(x - start, 10)",
+            "def a():\n    start = time.monotonic()\ndef b(self):\n    self.assertLess(x - start, 10)",
+            # gán lại / tham số cục bộ che tên toàn cục
+            "start = time.monotonic()\ndef f(self, start):\n    self.assertLess(x - start, 5)",
+            "start = time.monotonic()\ndef f(self):\n    start = 3\n    self.assertLess(x - start, 5)",
+            # tên ở thân lớp không lọt vào phương thức; tham số lambda không che tên của hàm (không ảnh hưởng ca âm)
+            "class C:\n    t0 = time.monotonic()\n    def f(self):\n        self.assertLess(x - t0, 5)",
+            "import os as time\ndef f(self):\n    self.assertLess(x.monotonic() - t0, 5)",
+        )
+        for src in sources:
+            with self.subTest(src=src):
+                self.assertEqual(cpu_budget.hard_time_thresholds(src), [])
+
+    def test_run_with_deadline(self):
+        floor = cpu_budget.HANG_FLOOR
+        self.assertEqual(cpu_budget.run_with_deadline(self, lambda: 7, cpu_budget.HANG_FLOOR, hang="ca thử"), 7)
+        with self.assertRaises(ZeroDivisionError):
+            cpu_budget.run_with_deadline(self, lambda: 1 // 0, cpu_budget.HANG_FLOOR, hang="ca thử")
+        cpu_budget.check_hang(floor, "ca thử")
+        for seconds, reason in ((floor - 0.1, "ca thử"), (floor, " "), (floor, "")):
+            with self.subTest(seconds=seconds, reason=reason), self.assertRaisesRegex(ValueError, "HANG_FLOOR"):
+                cpu_budget.check_hang(seconds, reason)
+        with unittest.mock.patch.object(cpu_budget, "check_hang", side_effect=ValueError("HANG_FLOOR")):
+            with self.assertRaisesRegex(ValueError, "HANG_FLOOR"):  # kiểm trước khi chạy `fn`
+                cpu_budget.run_with_deadline(self, self.fail, cpu_budget.HANG_FLOOR, hang="ca thử")
+        gate = threading.Event()
+        try:  # hết hạn: `join` (giả, trả ngay) để luồng còn sống → test đỏ, không phải chờ đủ HANG_FLOOR giây
+            with (
+                unittest.mock.patch.object(threading.Thread, "join"),
+                self.assertRaisesRegex(AssertionError, "treo \\(ca thử\\)"),
+            ):
+                cpu_budget.run_with_deadline(self, lambda: gate.wait(30), cpu_budget.HANG_FLOOR, hang="ca thử")
+        finally:
+            gate.set()
