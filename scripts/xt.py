@@ -2071,7 +2071,7 @@ def _with_dispatch(
         v["milestone_done"] = done
         v["milestone_audit"] = "g7" if build else "signoff"
         v["reason"] += f" · mốc «{done}» đã xong · " + (
-            "pha build: audit delta ở cuối đợt (D-177), làm tiếp task kế"
+            "pha build: làm task kế, cuối đợt dùng loop next-step để chọn trình MVP hoặc audit delta"
             if build
             else "pha harden: audit delta dồn về cổng ký (ADR-0080), làm tiếp task kế"
         )
@@ -8483,6 +8483,19 @@ def _step_signoff(f: Dict[str, Any]) -> Dict[str, Any]:
     return _signoff_part(pkg, "máy đã đạt (`release-check` không FAIL BLOCKER); gói nghiệm thu nháp")
 
 
+def _mvp_preview_first(base: Path) -> bool:
+    """Chỉ bản thử quy mô S có cổng smoke thực thi mới được trình trước audit tổng thể."""
+    try:
+        keys = _xt_keys(base)
+    except (OSError, ValueError):
+        return False
+    return (
+        keys.get(PHASE_KEY) == "build"
+        and blueprint_scale(base)[0] == "S"
+        and not gate_noop(keys.get("preview_smoke", ""))
+    )
+
+
 def stage_facts(base: Path, *, offline: bool = False) -> Optional[Dict[str, Any]]:
     """Sổ giai đoạn cho `next-step` (ADR-0058): None khi không dùng; sổ hỏng → {"error"}; còn lại chu kỳ/giai đoạn/trạng
     thái và SHA chờ duyệt."""
@@ -8500,6 +8513,7 @@ def stage_facts(base: Path, *, offline: bool = False) -> Optional[Dict[str, Any]
         "status": led["status"],
         "sha": sha,
         "changed": _stage_changed(base, sub) if sha else [],
+        "preview_first": led["stage"] == 1 and _mvp_preview_first(base),
         "agent_approval": not offline and stage_agent_approval(base),  # đọc offline không fetch và không cấp quyền
     }
 
@@ -8607,6 +8621,24 @@ def _harden_stage_lock(sf: Optional[Dict[str, Any]]) -> StepPart:
     }
 
 
+def _step_batch(f: Dict[str, Any], harden: bool) -> StepPart:
+    audit = f["audit"]
+    needs_repair = any(not e.endswith(": chưa quét (--strict)") for e in audit["errors"])
+    if harden:
+        # Sổ có thể đọc và đã quét: sửa các mục đã biết trước khi rà diff cuối.
+        if audit["exists"] and audit["scanned"] and not needs_repair:
+            return _step_harden(f) or _step_audit(f)
+        return _step_audit(f)
+    if (f.get("stage") or {}).get("preview_first") and not needs_repair:
+        if audit["open"]:
+            return _step_stalled(f) or {
+                "action": "replan",
+                "reason": f"Sửa {audit['open']} phát hiện hoặc nợ review đang mở trước khi trình MVP. Các MUST ngoài PLAN còn trong blueprint cho pha hoàn thiện.",
+            }
+        return None  # PLAN đã verify; sổ nợ và MUST còn nguyên cho giai đoạn 2.
+    return _step_audit(f) or _step_work(f)
+
+
 def _next_step_part(f: Dict[str, Any], harden: bool) -> Dict[str, Any]:
     """Bước kế (action/reason/…) của `next_step`, theo thứ tự ưu tiên: khoá giai đoạn của harden → vòng → PR → sổ audit →
     việc → gói/giai đoạn."""
@@ -8623,7 +8655,7 @@ def _next_step_part(f: Dict[str, Any], harden: bool) -> Dict[str, Any]:
             # chỉ sổ/PROGRESS đổi (hay không so được) sau bản đã kiểm lại cuối lúc `submit`, hoặc container mới chưa bật
             # vòng: không bắt chạy lại mọi Gate/lập đợt mới — vẫn chờ người (review #330)
             loop = None
-    part = loop or _step_prs(f) or _step_audit(f) or (_step_harden(f) if harden else _step_work(f))
+    part = loop or _step_prs(f) or _step_batch(f, harden)
     if part is None and harden:
         part = _step_signoff(f)
     pending = f"; {f['verdict']['reason']}" if f["verdict"]["verdict"] == PENDING_HUMAN else ""

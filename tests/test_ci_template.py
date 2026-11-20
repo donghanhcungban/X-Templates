@@ -247,10 +247,36 @@ class CiTemplateTest(unittest.TestCase):
         self.assertIn(f'mode="$({DEV_TASK} e2e-mode)"\n', e2e)  # gán riêng: lỗi dev-task → bước đỏ (set -e)
         self.assertIn("set -euo pipefail", e2e)
         self.assertLess(e2e.index("actions/setup-python@"), e2e.index("e2e-mode"))
+        for header in ("id: framework-python", "name: Runtime của khung"):
+            self.assertIn(f"- {header}\n        if: steps.config.outputs.empty != 'true'\n", e2e)
         self.assertLess(e2e.index("e2e-mode"), e2e.index(SETUP))
         self.assertIn(f'run: {DEV_TASK} e2e "$SHARD" "$TOTAL"\n', e2e)
         self.assertIn("fail-fast: false", e2e)
         self.assertIn("steps.mode.outputs.mode == 'whole' && matrix.shard == 1", e2e)
+
+    def test_only_explicit_empty_e2e_skips_runtime_install(self):
+        script = step_run(self.jobs["e2e"], "Nhận diện cấu hình E2E")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            output = root / "output"
+            template = (ROOT / "framework/templates/xt.yaml").read_text()
+            for config, skip in [
+                (None, False),
+                (template, True),
+                ("e2e: command", False),
+                ('e2e: ""\ne2e: command', False),
+                ("other: 1", False),
+            ]:
+                if config is not None:
+                    (root / "xt.yaml").write_text(config)
+                output.write_text("")
+                subprocess.run(
+                    ["bash", "-eu", "-c", script],
+                    cwd=root,
+                    check=True,
+                    env={**os.environ, "GITHUB_OUTPUT": str(output)},
+                )
+                self.assertEqual(output.read_text() == "empty=true\n", skip)
 
     def test_hardening_kept(self):
         """Ghim SHA, quyền tối thiểu, timeout mỗi job, concurrency theo PR, persist-credentials: false, không

@@ -8,6 +8,8 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- MVP quy mô S ở pha build có smoke được trình sau khi PLAN đã kiểm lại và PR đã xử lý. Audit tổng thể và các MUST còn lại thuộc pha hoàn thiện. Khi sổ audit hợp lệ đã có kết quả quét, pha hoàn thiện sửa các việc đã biết trước khi rà phần mã thay đổi. Job E2E bỏ bước cài Python khi dùng cấu hình E2E rỗng của mẫu. Lệnh tạo dự án nhận `--harness` ngay lần đầu. [ADR-0084](docs/adr/0084-preview-before-full-audit.md).
+
 - `xt.py pr title-check --range BASE..HEAD` kiểm lịch sử trong một lần đọc Git. Cổng `BASE-REPO-005` dùng lệnh này để giảm thời gian chờ CI.
 - Quy trình ba giai đoạn của `/factory` nối tiếp từ sổ hiện tại. `xt_flow.py` cho biết ai làm gì tiếp theo,
   thời gian chờ duyệt và các số đo có dữ liệu. Có thể chốt SPEC và bộ nghiệm thu tại một commit đã review

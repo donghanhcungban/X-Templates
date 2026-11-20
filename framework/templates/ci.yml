@@ -130,12 +130,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Nhận diện cấu hình E2E trống của mẫu
+        id: config
+        run: |
+          # Chỉ nhận đúng một khoá rỗng tường minh. Mọi cấu hình khác dùng bộ phân giải đầy đủ bên dưới.
+          if [[ -f xt.yaml ]] && awk '/^e2e:/ { n++; if ($0 ~ /^e2e:[[:blank:]]*""([[:blank:]]+#.*|[[:blank:]]*)$/) empty++ } END { exit !(n == 1 && empty == 1) }' xt.yaml; then
+            echo 'empty=true' >> "$GITHUB_OUTPUT"
+          fi
       - id: framework-python
+        if: steps.config.outputs.empty != 'true'
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.15.2"
           update-environment: false
       - name: Runtime của khung
+        if: steps.config.outputs.empty != 'true'
         env:
           FRAMEWORK_PYTHON: ${{ steps.framework-python.outputs.python-path }}
         run: printf 'XT_FRAMEWORK_PYTHON=%s\n' "$FRAMEWORK_PYTHON" >> "$GITHUB_ENV"
