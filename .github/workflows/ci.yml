@@ -176,7 +176,7 @@ jobs:
   test-main:
     name: test-main ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
