@@ -117,3 +117,75 @@ class SetupEvidenceEdges(GithubFixture, TmpRepoCase):
         self.assertIn('gh api --method PUT "repos/$GH_REPO/automated-security-fixes"', script)
         self.assertNotIn("gh secret set", script)
         self.assertNotIn("--method POST", script)
+
+    def test_repo_about_describes_project_and_stays_optional(self):
+        """WF-DOC-021: About/homepage/topics trống hoặc nhắc khung ngoài ghi chú nguồn → tuỳ chọn kèm `gh repo edit`
+        (không làm admin-plan đỏ); mô tả dự án → đạt; không origin/repo khung → không áp; API không đọc được → chưa biết."""
+        origin = mock.Mock(spec=setup.Origin)
+        origin.has_origin, origin.base = False, self.repo
+        self.assertEqual(setup.about_status(origin), (setup.SKIP, []))
+        origin.has_origin = True
+        origin.get.return_value = None
+        self.assertEqual(setup.about_status(origin), (setup.UNKNOWN, []))
+        note = "Áp dụng từ phiên bản v3.34.0 của dự án X-Templates"
+        cases = [
+            ({"description": "Quản lý khách sạn", "topics": ["hotel"], "homepage": None}, setup.OK),
+            ({"description": f"Quản lý khách sạn. {note}", "topics": "bad"}, setup.OK),
+            ({"description": "  ", "topics": []}, setup.OPTIONAL),
+            ({"description": None}, setup.OPTIONAL),
+            ({"description": "Bản sao X-Templates"}, setup.OPTIONAL),
+            ({"description": "Khách sạn", "homepage": "https://github.com/o/X-Templates"}, setup.OPTIONAL),
+            ({"description": "Khách sạn", "topics": ["x-templates"]}, setup.OPTIONAL),
+        ]
+        for doc, expected in cases:
+            with self.subTest(doc=doc):
+                origin.get.return_value = doc
+                status, changes = setup.about_status(origin)
+                self.assertEqual(status, expected)
+                self.assertEqual(bool(changes), expected == setup.OPTIONAL)
+                if changes:
+                    self.assertIn('gh repo edit --description "<mô tả dự án>"', changes[0])
+        (self.repo / "framework" / "00-method").mkdir(parents=True)
+        (self.repo / "framework" / "00-method" / "README.md").write_text("# khung\n")
+        self.assertEqual(setup.about_status(origin), (setup.SKIP, []))
+
+    def test_repo_about_row_renders_once_under_optional_heading(self):
+        self.fake_github()
+        _, text, _ = run_main("admin-plan", "--json")
+        items = {i["id"]: i for i in json.loads(text)["items"]}
+        self.assertEqual(items["repo-about"]["status"], setup.OPTIONAL)  # không vào BLOCKS: test_admin_plan rc 0
+        _, markdown, _ = run_main("admin-plan")
+        self.assertEqual(markdown.count("## Tuỳ chọn — chủ dự án quyết"), 1)
+        self.assertIn('- gh repo edit --description "<mô tả dự án>"', markdown)
+        done = {"dev": {"state": "absent", "digest": None}, "at": "2026-11-21", "head": None}
+        items = [{"id": "repo-about", "status": setup.OK, "changes": []}]
+        self.assertNotIn("## Tuỳ chọn", setup.markdown({**done, "items": items}))
+        routing = self.tmp / "routes.json"
+        routes = json.loads(routing.read_text())
+        routes[""]["description"] = "Sổ ghi chú cho nhóm"
+        routing.write_text(json.dumps(routes))
+        _, text, _ = run_main("admin-plan", "--json")
+        self.assertEqual({i["id"]: i["status"] for i in json.loads(text)["items"]}["repo-about"], setup.OK)
+
+    def test_core_protocol_covers_every_referenced_attribute_on_xt(self):
+        """AUD-ARCH-015: xt_ops_setup, xt_release_ops, xt_deploy dùng Core(Protocol) thay vì ModuleType; mọi thuộc tính
+        truy cập qua core trong AST đều khai trên Protocol và có thật trên module xt."""
+        import ast
+        import xt_deploy
+        import xt_release_ops
+
+        for mod in (setup, xt_release_ops, xt_deploy):
+            declared = {k for cls in mod.Core.__mro__ for k in getattr(cls, "__annotations__", {})}
+            tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
+            used = {
+                node.attr
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Attribute)
+                and (
+                    (isinstance(node.value, ast.Name) and node.value.id == "core")
+                    or (isinstance(node.value, ast.Attribute) and node.value.attr == "core")
+                )
+            }
+            self.assertTrue(used <= declared, f"{mod.__name__}: thiếu trong Core Protocol: {sorted(used - declared)}")
+            missing = [name for name in declared if not hasattr(xt, name)]
+            self.assertEqual(missing, [], f"{mod.__name__}: tên không có trên xt: {missing}")

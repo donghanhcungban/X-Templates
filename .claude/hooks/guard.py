@@ -2364,13 +2364,12 @@ def _dyn_text_why(v: _CodeView, live: str, bare: str) -> str:
     return "biến bash tự chạy cùng ngữ cảnh kích hoạt (AUD-SEC-287/291/299/300)" if hit else ""
 
 
-# ADR-0065 (D-322): lớp mở rộng động theo DANH SÁCH TRẮNG. Ba lượt vá AUD-SEC-388 theo cấu trúc lệnh đều lọt dạng mới
-# (#372, review #422: hàm `function`, `((` giả trong nháy, từ lệnh có nháy, `read` định nghĩa trong `eval`, `exec read`).
-# OR với mọi luật cũ (bài học #352/#372); không suy cấu trúc (hàm, vòng `for`, vùng số học…) để miễn:
+# ADR-0065 (D-322): lớp mở rộng động theo DANH SÁCH TRẮNG (vá theo cấu trúc lệnh từng lọt: AUD-SEC-388).
+# OR với mọi luật cũ; không suy cấu trúc (hàm, vòng `for`, vùng số học…) để miễn:
 # (A) từ lệnh — sau gán đầu lệnh, từ khoá, lệnh bọc guard biết — có `$`/backtick, kể cả trong nháy → chặn (AUD-SEC-391);
 # (B) chữ thô nhắc `IFS` (mọi dạng chỉ-chữ-số) hay có gán tên-đích-động (tên đích không nguyên văn, nameref, `${!x}`,
-#     đổi hoa từ dữ liệu, biểu thức số học nhắc tên/mở rộng — bash đánh giá ĐỆ QUY giá trị biến nên `(( a ))` với `a`
-#     đọc từ tệp trong `eval` gán được `IFS`, mã cùng shell guard không đọc) → mọi `$` KHÔNG nằm trực tiếp trong nháy kép
+#     đổi hoa từ dữ liệu, biểu thức số học nhắc tên/mở rộng — bash đánh giá ĐỆ QUY, lý do ở ADR) → mọi `$` KHÔNG nằm
+#     trực tiếp trong nháy kép
 #     (không nháy, nháy đơn — thân eval/trap/sh -c —, trong `${…}`/`$(…)`, `\\$` kể cả trong nháy kép — chữ mà
 #     `mapfile -C`/`${x@P}` đọc lại, review adr-guard) → chặn (AUD-SEC-388); giá trị cờ không nháy của
 #     read/mapfile/printf/wait/unset (bash tách thành thêm cờ/tên đích) và thân heredoc không nháy cũng bật (B). Chỉ miễn
@@ -12896,7 +12895,7 @@ def _gh_merge_rule(args: List[str], root: str) -> Optional[Tuple[str, str]]:
     return None if rest is None else _pr_flag_merge_rule(args, rest, root)
 
 
-# F-144: `gh release edit` (gh 2.89 `--help`) — cờ ăn giá trị, để đọc đúng tag của release (đối số vị trí đầu).
+# F-144: cờ ăn giá trị của `gh release edit` (gh 2.89 `--help`).
 GH_RELEASE_EDIT_VALUE_OPTS = (
     *("-t", "--title", "-n", "--notes", "-F", "--notes-file", "--target", "--discussion-category", "--tag"),
     *("-R", "--repo", "--hostname"),
@@ -12905,9 +12904,8 @@ PFLAG_TRUE = frozenset({"1", "t", "T", "TRUE", "true", "True"})  # strconv.Parse
 
 
 def _gh_release_cli_tag(args: List[str]) -> bool:
-    """F-144: `gh release create|new` (`new` là tên gọi khác của `create`) có từ là tag phiên bản hoặc tag (đối số vị
-    trí đầu) không đọc được; `gh release edit` đổi tag (`--tag`) sang tag phiên bản/không đọc được, hay phát hành bản
-    nháp (`--draft=false` — GitHub tạo tag lúc phát hành) mà tag của release là tag phiên bản/không đọc được."""
+    """F-144: `release create|new` có từ là tag phiên bản hay tag (đối số vị trí đầu) không đọc được; `edit` đổi tag
+    (`--tag`) hay phát hành bản nháp (`--draft=false`: GitHub tạo tag) với tag phiên bản/không đọc được."""
     if args[:1] != ["release"] or args[1:2] not in (["create"], ["new"], ["edit"]):
         return False
     rest = args[2:]
@@ -12926,8 +12924,8 @@ GH_RELEASE_CREATE_SHORT_BOOL = frozenset("dp")  # gh 2.95 `release create --help
 
 
 def _gh_release_create_words(rest: List[str], valued: Tuple[str, ...]) -> Tuple[List[str], List[str]]:
-    """(từ trừ giá trị cờ, đối số vị trí) đọc như pflag (AUD-SEC-998): cờ ăn giá trị nuốt từ kế kể cả `-…` (`-pn
-    --title v1.2.3`: tag `v1.2.3`); chữ lạ trong cụm → (`rest`, []) — xét mọi từ."""
+    """(từ trừ giá trị cờ, đối số vị trí) như pflag (AUD-SEC-998: `-pn --title v1.2.3` — tag `v1.2.3`); chữ lạ trong
+    cụm → (`rest`, [])."""
     shorts = frozenset(o[1] for o in valued if len(o) == 2)
     words: List[str] = []
     pos: List[str] = []
@@ -12960,6 +12958,39 @@ def _pflag_eats(a: str, valued: Tuple[str, ...], shorts: FrozenSet[str]) -> Opti
         if body[j + 1 : j + 2] == "=":  # `-p=true`
             return 0
     return 0
+
+
+def _gh_release_split(cmd: str) -> str:
+    """AUD-SEC-999: từ `$`/glob không nháy (bash tách ra cờ, lệnh) của `gh` trước tên lệnh (lệnh khác `release`: cổng
+    BUDGET không bắt; tên động: AUD-SEC-587); cả lệnh nếu chưa rõ lệnh, `release` trần, `edit`; `create|new` trừ tài sản."""
+    for _, words in _simple_cmds(cmd) or []:
+        p = [_dequote(w) for w in words]
+        gh = p[:1] != [] and posixpath.basename(p[0]) == "gh"
+        path = [j + 1 for j in _gh_path(p[1:])] if gh else []
+        rel = [p[j] for j in path[:1]] == ["release"]
+        path, sub = (path, [p[j] for j in path][1:2]) if rel else (path[:1], [])
+        end = path[-1] if path else len(p)
+        hits = words[1:end] if gh and (rel or not _gate_bad_word(words)) else []
+        hits += words[end + 1 :] if rel and sub in ([], ["edit"]) else []
+        hits += _gh_create_hits(words, p, end + 1) if sub in (["create"], ["new"]) else []
+        for a in hits:
+            v = _CodeView(a)
+            if any(v.top[j] and v.kind[j] == "c" and c in "$*?[" for j, c in enumerate(a)):
+                return f"Lệnh bị khung chặn ({RELEASE_TAG_WHY}; cần nháy `{clean_text(a)[:80]}`): {cmd[:300]}"
+    return ""
+
+
+def _gh_create_hits(words: List[str], p: List[str], i: int) -> List[str]:
+    """Sau lệnh con (pflag): cờ, giá trị cờ, tag; chữ lạ trong cụm → mọi từ."""
+    tag, out = False, list[str]()
+    while i < len(p) and p[i] != "--":
+        e = _pflag_eats(p[i], (*GH_UPLOADS[("release", "new")], *GH_GLOBAL_VALUE_OPTS), frozenset("tnFR"))
+        if e is None:
+            return out + words[i:]
+        pos = p[i][:1] != "-" or p[i] == "-"
+        out += [] if pos and tag else words[i : i + 1 + e]
+        tag, i = tag or pos, i + 1 + e
+    return out + ([] if tag else words[i + 1 : i + 2])
 
 
 # AUD-SEC-623: `gh repo sync --force` gọi `PATCH …/git/refs/heads/<b>` `force:true` (gh 2.89 "Hard reset the branch").
@@ -22120,19 +22151,14 @@ COPY_VALUE_OPTS = {
 }
 CLOUD_URL_RE = re.compile(r"(?:s3|gs|az|r2|b2)://")
 CLOUD_COPIERS = ("aws", "gsutil", "rclone", "gcloud", "azcopy")
-# ADR-0076 lát 0: tên lệnh có luật — lệnh đơn mà basename từ đầu thuộc tập này qua cổng tập con dương
-# (`_ruled_word_why`, lát 2). Gom từ bảng có sẵn: git/gh, shell, eval/source, trình bọc và mọi tên luật của
-# `_scan_command` (bắc cầu, cả phương thức lớp) rẽ nhánh; `GuardGateNamesTest` đọc mã và khẳng định các tập khớp nhau —
-# tên rẽ nhánh mà bộ đọc không thấy (biến vòng lặp/comprehension, kết quả hàm phụ) khai ở `GATE_UNREAD` của test kèm lý
-# do và lệnh mẫu. Rẽ nhánh theo tiền tố hay biểu thức chính quy (`mkfs*`, `git-<lệnh con>`, `INTERP_RE`: `python3.12`,
-# `pypy3`, `nodejs`) không nằm ở đây — tập hợp không biểu diễn được (review #526).
-# D-434: tên luật có rẽ nhánh nhưng KHÔNG kích hoạt cổng — trình thông dịch không phải shell (ADR-0076: `python3
-# scripts/xt.py …` không qua cổng) và lệnh chỉ đọc/in (bảng thụ động của D-432): không thuộc bảng ghi tệp, chạy lệnh từ
-# đối số, ra mạng hay ghi biến theo tên nào của guard (`GuardGateNamesTest.ACTIVE_TABLES`). Ngoại lệ đã biết, có từ trước
-# ADR-0076 (guard cho qua, không thuộc bảng ghi/chạy nào): `less -o FILE` ghi tệp. Công cụ đọc có cờ chạy chương
-# trình (`READER_EXEC_OPTS`: `rg --pre`, `ugrep --filter`, `bat --pager`, `less --lesskey-*`…) ở `GATE_NAMES` để cờ có mở rộng (`--pre$E`)
-# qua cổng (AUD-SEC-727). Lệnh đọc mà có dạng ghi (`sort -o`, `uniq in out`, `touch`, `tee`, trình soạn thảo, formatter) ở lại `GATE_NAMES`; `printf` cũng vậy
-# (D-439: `printf -v VAR` ghi biến như `read`/`let`).
+# ADR-0076 lát 0: tên lệnh có luật — lệnh đơn có basename từ đầu thuộc tập này qua cổng tập con dương (`_ruled_word_why`,
+# lát 2): git/gh, shell, eval/source, trình bọc và mọi tên luật rẽ nhánh của `_scan_command` (bắc cầu). `GuardGateNamesTest`
+# khẳng định các tập khớp mã; tên bộ đọc không thấy khai ở `GATE_UNREAD` của test. Rẽ nhánh theo tiền tố/regex (`mkfs*`,
+# `git-<lệnh con>`, `INTERP_RE`) không nằm ở đây (review #526).
+# D-434: tên luật rẽ nhánh nhưng KHÔNG kích hoạt cổng — trình thông dịch không phải shell, lệnh chỉ đọc/in (D-432): không
+# thuộc bảng ghi/chạy/ra mạng/ghi biến nào (`GuardGateNamesTest.ACTIVE_TABLES`); ngoại lệ có từ trước: `less -o FILE`.
+# Công cụ đọc có cờ chạy chương trình (`READER_EXEC_OPTS`, AUD-SEC-727), lệnh đọc có dạng ghi (`sort -o`, `tee`) và
+# `printf -v` (D-439) ở `GATE_NAMES`.
 GATE_PASSIVE: FrozenSet[str] = frozenset(
     "python python3 node perl ruby php cat tac head tail wc grep egrep fgrep zgrep diff cmp jq echo"
     " date true false nproc pwd ls whoami hostname uname id test [ [[ basename dirname readlink realpath stat file"
@@ -24050,6 +24076,7 @@ def _bash_decision(
         else ""
     )
     deny_reason = deny_reason or _nested_commit_deny(res, asks, commands, budget, depth)  # T-3952 F1, sau ghi công
+    deny_reason = deny_reason or (_gh_release_split(cmd) if strict else "")
     if deny_reason:
         res.update(decision="deny", reason=deny_reason)
         return res

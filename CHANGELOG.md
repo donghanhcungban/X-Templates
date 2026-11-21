@@ -8,6 +8,20 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- Nâng 5× giới hạn kích thước cho các file hướng dẫn nạp đầu phiên (`CAPS`), các nhóm thư mục (`DIR_CAPS`), hệ số mốc xét lại (`MARK_FACTOR = 5` trong `tests/test_docs_budget.py`) và trần `PROGRESS.md` (`PROGRESS_MAX_BYTES = 40960`, đồng bộ `utf8_head 40960` ở `.claude/hooks/session-start.sh`). [ADR-0089](docs/adr/0089-raise-file-and-dir-caps-5x.md).
+
+## [3.35.0] - 2026-11-21
+
+Bản harden sau audit delta 5 lô (0 🔴; mọi lô rút gọn, phần chưa rà ở báo cáo): kênh thông tin dự án phái sinh (ADR-0087)
+và làn merge `derived`; dự án đích mô tả chính dự án trên GitHub (`WF-DOC-021`); `xt.py upgrade` mở PR nâng khung tự động
+và chạy được trên CI (cần secret `XT_STEWARD_TOKEN`); factory có điều kiện duyệt, triển khai và theo dõi bản phát hành; guard
+chặn thêm đường lách tag phiên bản (AUD-SEC-996/997/999; 998 còn 🟢); harness Codex sinh từ `.claude/` (ADR-0082);
+`merge-check`/`pr next` không còn ra `merge` cho PR fork thường. Dự án đích: nâng khung bằng `install.py` (≤ 3.34.x nâng tay
+một lần). Báo cáo: [`research/2026-11-21-audit-delta-3.35.0.md`](research/2026-11-21-audit-delta-3.35.0.md).
+
+### Added
+
+- Dự án fork hoặc phát triển từ mã khung tự cập nhật thông tin của chính nó bằng PR chỉ đổi `docs/derived/<owner>--<repo>.json`. `merge-check` kiểm tệp qua API theo head repo của PR và schema 1. PR hợp lệ, CI xanh vào làn `derived`. Chỉ steward merge, không cần review, với subject và thân commit cố định do máy dựng (không lấy tiêu đề, thân hay commit của fork). `xt.py derived check/list` kiểm cục bộ hoặc theo PR. Bản ghi X-Office chuyển sang thư mục này. [ADR-0087](docs/adr/0087-derived-project-info-channel.md), [hướng dẫn](docs/derived/README.md).
 - Công cụ triển khai kiểm lại quyền và SHA của nhánh mặc định ngay trước mỗi lần đổi môi trường. Smoke thất bại sẽ khôi phục artifact trước và đối chiếu bytes đang phục vụ. Thu hồi quyền giữa chừng được ghi vào sổ triển khai.
 - Dự án có thể cấu hình trần duyệt giai đoạn 2/3 và trần ký M/L. Mỗi lần duyệt lưu SHA, tiêu chí đã đăng ký và bằng chứng. Máy ghi rõ lần ký mô phỏng. [Tiêu chí và quyền](docs/specs/SPEC-factory-scale.md).
 - Bảng trách nhiệm M/L giữ nguyên 16 ID và mức MUST. Tài liệu cập nhật WF-REVIEW-004, WF-REVIEW-007, WF-ENV-008, PM-HANDOVER-006 và PM-PLAN-005. G7 và `admin-plan` dùng chung bảng.
@@ -61,7 +75,25 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   nghiệm (chưa có payload thật). **Dự án đích:** tuỳ chọn — chạy `install.py --harness codex`, rồi tin cậy hook trong
   Codex bằng `/hooks`; tệp do `/import` của Codex sinh trước đó (`.codex/hooks/`, `hooks.json` có đường tuyệt đối) nên xoá.
 
+- `WF-DOC-021` (SHOULD, mới): chữ hiển thị trên GitHub của dự án đích mô tả dự án; khung chỉ có MỘT ghi chú "Áp dụng
+  từ phiên bản vX.Y.Z của dự án X-Templates" (kèm liên kết repo nguồn). `xt.py doctor` có nhóm `github-text` (chỉ cảnh
+  báo, chỉ ở dự án đích) báo tệp:dòng khi README gốc hay `.github/**` nhắc X-Templates ngoài ghi chú đó; `xt.py
+  admin-plan` có hàng tuỳ chọn `repo-about` (About/homepage/topics trống hoặc mô tả khung → `gh repo edit --description`).
+  `install.py --new` sinh `README.md` gốc từ tên và ý tưởng (copy-if-absent; cài thường không tạo/đụng README).
+
 ### Changed
+
+- Trần byte của repo khung `docs/ops` và `docs/autopilot` cộng +1 MiB (ADR-0088, như ADR-0050); trần theo từng file nạp vào ngữ cảnh (`AGENTS.md`, `PROGRESS.md`, skill) giữ nguyên. Lệnh kiểm `BASE-REPO-006` của `BLUEPRINT.md` chấp nhận thêm ứng viên có `GO-NO-GO*<VERSION>*.md` chờ chữ ký (D-535, AUD-HAR-459) để chữ ký đến trong PR sau không bị cửa sổ 15 phút chặn.
+- Dự án đích không còn mang lời mô tả khung trên GitHub (`WF-DOC-021`): `.xtemplates/README.md` chỉ còn ghi chú nguồn
+  và một câu "do `install.py`/`xt.py upgrade` quản lý"; tên workflow `xt-upgrade.yml` thành "Nâng cấp công cụ quy
+  trình"; tên bước và bình luận của `ci.yml`, mẫu PR, `pr-steward.yml`, gói `web-api-ts` và dòng chú thích `.gitignore`
+  không nhắc khung; khối mở đầu mẫu `AGENTS.md` trỏ `.xtemplates/README.md`. `release-tag.yml` đặt tên archive/biên nhận
+  theo tên repo (`<repo>-vX.Y.Z.tar.gz`, `.promotion.json`) — repo khung tên `X-Templates` nên tệp phát hành của khung
+  giữ nguyên `X-Templates-vX.Y.Z`, bộ xác minh nâng cấp (`xt_distribution`) không đổi. **Chủ fork khung:** đổi tên
+  repo thì tên archive lệch tiền tố `X-Templates-` mà `xt_distribution` đòi và `xt.py upgrade` của dự án cài từ fork
+  bị chặn (an toàn); giữ tên repo hoặc đổi tiền tố trong `xt_distribution`. **Dự án đích:** nâng khung là
+  nhận `.xtemplates/README.md` mới ngay; workflow, mẫu PR và `AGENTS.md` chưa sửa tay được cập nhật tại chỗ, đã sửa thì
+  nhận bản `*.xtemplates-new` để gộp tay; đặt mô tả repo theo hàng `repo-about` của `admin-plan`.
 
 - `xt.py test-select --unittest` (cổng commit `gate-fast`, khoá `test_fast`) chọn test theo **lớp** thay vì theo tệp: lớp
   chạy khi thân lớp nhắc tên tệp đổi, có glob khớp tên đó (`GO-NO-GO*.md` không còn khớp mọi `.md`), hoặc nhắc tên một
@@ -81,7 +113,11 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
-- Guard không còn để agent tạo tag phiên bản qua `git push --follow-tags`, `git fetch`/`pull` có đích `refs/tags/`, `gh release create|new` kèm cụm cờ ngắn, hay tên tag có `*?[`; `gh release new` và `gh gist new` bị chặn khi tải tệp bí mật như `create`; `gh api` xét mọi giá trị lặp của `ref`/`branch`. Lệnh `gh release create nightly --title v1.2.3` không còn bị chặn oan (AUD-SEC-996, 997, 998).
+- Audit delta 3.35.0: `merge-check` và `pr next` coi PR từ fork hoặc của tác giả không có quyền ghi (ngoài làn `derived` hợp lệ) là `human`, cùng luật với steward; trước đây PR fork thường ở L2/L3 với CI xanh ra `merge`. Làn `derived` trả `auto_merge_ok: false`; steward tự dựng subject/thân squash cho làn này, phiên agent không merge được. **Dự án đích:** PR của người ngoài, fork hay bot khác `dependabot[bot]` không còn ra `merge` ở L2/L3: `pr next` trả `defer-human`, người merge. PR do `XT_STEWARD_TOKEN` dạng GitHub App mở (tác giả `<app>[bot]`) cũng cần người merge; dùng PAT của người có quyền ghi để giữ tự merge. Fork đã xoá (`head.repo` null) coi là fork.
+- Audit delta 3.35.0: `xt.py upgrade open-pr` chạy được trên CI: cài với `--no-git-hooks`, commit không hook, không đòi BLUEPRINT.md và không chạy lệnh `— Kiểm:` của sản phẩm; token bot chỉ có ở bước đẩy từ repo trần sạch; giữ adapter và `--no-harness` của lần cài gốc; PR nâng bản trỏ bản bị thu hồi bị đóng kèm bình luận (`check` trả 10). `xt-upgrade.yml`, `xt-field.yml` chạy được theo lịch (trước đây job lịch luôn bị bỏ qua); `xt-field.yml` mở PR bằng `XT_STEWARD_TOKEN`; `release-tag.yml` không đỏ khi dự án không có `VERSION` ở gốc. `pr-steward.yml` luôn checkout nhánh mặc định (dispatch trên ref khác không chạy mã ref đó với token), `xt-upgrade.yml`/`xt-field.yml` chỉ chạy trên nhánh (không tag). **Dự án đích:** nâng khung để nhận — dự án ≤ 3.34.x phải nâng tay một lần vì bot đã cài vẫn là mã cũ; cần secret `XT_STEWARD_TOKEN` (và `XT_FIELD_READ_TOKEN` cho `xt-field.yml`).
+- Audit delta 3.35.0: tài liệu khớp mã — `WF-REVIEW-007` nêu đúng hành vi ADR-0079 (`required` đòi review độc lập; `optional` merge khi CI xanh trừ `merge_hard_exceptions: human` và `review_paths`; chọn `optional` là quyết định của dự án) và khôi phục đường `[~] — Miễn:`; `updated` nâng ở 9 tệp; mục lục mẫu nêu 4 tệp `--with-github` mới và điều kiện chạy.
+- Guard chặn giá trị cờ không nháy có thể tách thành nhiều từ ở `gh release create|new` (và `edit` khi đặt tag hoặc phát hành bản nháp): glob `*?[`, `$X`, `$(…)` đẩy từ thừa vào vị trí tag. Đặt giá trị trong nháy thì qua; lý do chặn hướng dẫn cách đặt (AUD-SEC-999).
+- Guard không còn để agent tạo tag phiên bản qua `git push --follow-tags`, `git fetch`/`pull` có đích `refs/tags/`, `gh release create|new` kèm cụm cờ ngắn, hay tên tag có `*?[`; `gh release new` và `gh gist new` bị chặn khi tải tệp bí mật như `create`; `gh api` xét mọi giá trị lặp của `ref`/`branch`. Lệnh `gh release create nightly --title v1.2.3` không còn bị chặn oan (AUD-SEC-996, 997; SEC-998 một phần, còn mở 🟢).
 - `audit check`, `pr debt` và `autonomy-bench` đọc đủ sổ audit lưu trữ khi có dòng trống hay ghi chú `>` chen giữa bảng Phát hiện; trước đây mọi dòng sau ghi chú đầu tiên bị bỏ (AUD-HAR-448). Dự án đích có dòng sai nằm sau ghi chú (ID trùng, dòng không `đã sửa`) sẽ thấy `audit check` báo lỗi mới khi nâng khung.
 - Test của repo khung không còn trần giây cứng: bộ dò AST trong `tests/cpu_budget.py` bắt ngưỡng `monotonic`/`perf_counter`/`process_time`, trần tốc độ đổi sang kiểm độ phức tạp hoặc hành vi, hạn chống treo phải khai lý do (AUD-TEST-125). `scope.json` của bench tự hành chỉ còn ID bắt buộc, có test giữ (AUD-TEST-127).
 - Smoke của gói `web-api-ts` kiểm đúng origin của trang đăng nhập, API và health của bản dev trước khi ghi bằng chứng. Dự án đích đã tùy biến starter cần đối chiếu bài kiểm sở hữu tại dự án khi nâng khung.

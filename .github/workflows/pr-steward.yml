@@ -80,6 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch }} # `workflow_dispatch` chạy được trên mọi ref: luôn chạy mã của nhánh mặc định, không mã nhánh/tag do người có quyền ghi đẩy
           persist-credentials: false
           fetch-depth: 0 # merge-check đọc xt.yaml đã commit ở origin/<nhánh đích>
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -96,7 +97,7 @@ jobs:
         run: |
           set -uo pipefail
           xt=scripts/xt.py
-          [ -f "$xt" ] || xt=.xtemplates/scripts/xt.py # dự án đích cài khung vào .xtemplates/
+          [ -f "$xt" ] || xt=.xtemplates/scripts/xt.py # dự án đích: công cụ quy trình ở .xtemplates/
           if [ -n "$PR" ]; then
             python3 "$xt" pr steward --apply --repo "$GH_REPO" --pr "$PR"
           elif [ "$EVENT" = check_suite ] || [ "$EVENT" = workflow_run ]; then

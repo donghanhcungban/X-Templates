@@ -23,6 +23,36 @@ SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
 UPGRADE_BRANCH = "chore/xt-upgrade"
 MANIFEST = ".xtemplates/manifest.json"
 WITHDRAWN = "docs/ops/WITHDRAWN-VERSIONS.txt"
+TITLE = "chore(xt): nâng khung {}"
+TITLE_VERSION = re.compile(r"chore\(xt\): nâng khung (\d+\.\d+\.\d+)")
+# install.py ADAPTERS (destination → host), checked equal by tests/test_upgrade_bot.py.
+ADAPTER_HOSTS = {
+    ".codex/hooks.json": "codex",
+    ".gemini/settings.json": "gemini",
+    ".cursor/hooks.json": "cursor",
+    ".github/hooks/xt.json": "copilot",
+    ".grok/hooks/xt.json": "grok",
+    ".opencode/plugins/xt.ts": "opencode",
+}
+# The only environment of the authenticated push: reach GitHub and let the credential helper read the bot's token.
+PUSH_ENV = frozenset(
+    ("PATH", "HOME", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy")
+    + ("GH_HOST", "GH_TOKEN", "GITHUB_TOKEN")
+)
+# WF-DOC-021: chữ hiển thị trên GitHub của dự án đích mô tả dự án; khung chỉ có MỘT ghi chú nguồn (`adopted_note`).
+ADOPTED = re.compile(r"Áp dụng từ phiên bản v?\d+\.\d+\.\d+ của dự án X-Templates", re.I)
+MENTION = re.compile(r"x-templates", re.I)
+
+
+def adopted_note(version: str, repo: object = None) -> str:
+    """Ghi chú nguồn duy nhất ở dự án đích (`.xtemplates/README.md`, chân trang README của `--new`); repo sai dạng → CANONICAL."""
+    slug = repo if isinstance(repo, str) and SLUG.fullmatch(repo) else CANONICAL
+    return f"Áp dụng từ phiên bản v{version.removeprefix('v')} của dự án X-Templates (https://github.com/{slug})."
+
+
+def stray_mentions(text: str) -> list[int]:
+    """Số dòng (từ 1) nhắc X-Templates ngoài dòng ghi chú nguồn hợp lệ."""
+    return [n for n, line in enumerate(text.splitlines(), 1) if MENTION.search(line) and not ADOPTED.search(line)]
 
 
 class DistributionError(ValueError):
@@ -218,13 +248,9 @@ def install_source(src: Path) -> dict[str, Any]:
     return source
 
 
-def tags_for_wave(git: Path, installed: str, wave: str, soak: int, now: int) -> tuple[bool, list[str]]:
-    current = TAG.fullmatch("v" + installed.partition(" ")[0].strip())
-    if not current or wave not in {"canary", "after-canary"} or soak < 0:
-        raise DistributionError("VERSION, upgrade_wave hoặc upgrade_soak_days không hợp lệ", 2)
-    present = command(git, "git", "ls-tree", "HEAD", "--", WITHDRAWN).stdout
+def withdrawn_tags(git: Path) -> set[str]:
     withdrawn = set()
-    if present:
+    if command(git, "git", "ls-tree", "HEAD", "--", WITHDRAWN).stdout:
         for line in command(git, "git", "show", f"HEAD:{WITHDRAWN}").stdout.splitlines():
             line = line.strip()
             if line and not line.startswith("#"):
@@ -232,6 +258,14 @@ def tags_for_wave(git: Path, installed: str, wave: str, soak: int, now: int) -> 
                 if not TAG.fullmatch("v" + version):
                     raise DistributionError(f"{WITHDRAWN} có phiên bản không hợp lệ")
                 withdrawn.add("v" + version)
+    return withdrawn
+
+
+def tags_for_wave(git: Path, installed: str, wave: str, soak: int, now: int) -> tuple[bool, list[str]]:
+    current = TAG.fullmatch("v" + installed.partition(" ")[0].strip())
+    if not current or wave not in {"canary", "after-canary"} or soak < 0:
+        raise DistributionError("VERSION, upgrade_wave hoặc upgrade_soak_days không hợp lệ", 2)
+    withdrawn = withdrawn_tags(git)
     listing = command(git, "git", "for-each-ref", "--format=%(refname:strip=2) %(taggerdate:unix)", "refs/tags").stdout
     newer = False
     eligible = []
@@ -248,15 +282,53 @@ def tags_for_wave(git: Path, installed: str, wave: str, soak: int, now: int) -> 
     return newer, [tag for _, tag in sorted(eligible, reverse=True)]
 
 
+def install_options(manifest: dict[str, Any]) -> list[str]:
+    """Reinstall with the adapters and harness choice recorded by the original install (the preset is kept by install.py).
+    Never install git hooks in the bot clone: they would run the product commit gate inside the upgrade job."""
+    recorded = manifest.get("adapters")
+    paths = [path for path in recorded if isinstance(path, str)] if isinstance(recorded, list) else []
+    hosts = {ADAPTER_HOSTS[path] for path in paths if path in ADAPTER_HOSTS}
+    hosts |= {"codex"} if manifest.get("codex_files") else set()
+    files = manifest.get("files")
+    harness = not isinstance(files, dict) or not files or any(str(path).startswith(".claude/") for path in files)
+    return [
+        "--with-github",
+        "--no-git-hooks",
+        *(["--harness", ",".join(sorted(hosts))] if hosts else []),
+        *([] if harness else ["--no-harness"]),
+    ]
+
+
+def remote_env() -> dict[str, str]:
+    """The only environment that holds the bot's token: reach GitHub, let the credential helper authenticate."""
+    return {k: v for k, v in os.environ.items() if k in PUSH_ENV} | {"GIT_TERMINAL_PROMPT": "0"}
+
+
+def push_branch(project: Path, url: str, hooks: Path, local_env: dict[str, str]) -> None:
+    """Publish from a fresh bare repository that never ran installer or product code, with hooks off. The working clone
+    itself never sees the bot credentials."""
+    clean = project.parent / "publish.git"
+    ref = f"refs/heads/{UPGRADE_BRANCH}"
+    command(project.parent, "git", "init", "--quiet", "--bare", f"--template={hooks}", str(clean), env=local_env)
+    command(
+        project, "git", "-c", f"core.hooksPath={hooks}", "push", "--quiet", str(clean), f"HEAD:{ref}", env=local_env
+    )
+    command(clean, "git", "-c", f"core.hooksPath={hooks}", "push", "--quiet", url, f"{ref}:{ref}", env=remote_env())
+
+
 def publish_upgrade(base: Path, repo: str, tag: str, head: str, archive: Path, temp: Path) -> None:
     """Build a reviewable PR in an isolated clone. Existing upgrade branches advance by fast-forward."""
     origin = repo_slug(command(base, "git", "remote", "get-url", "origin").stdout.strip())
+    url = f"https://github.com/{origin}.git"
     project = temp / "project"
-    command(temp, "git", "clone", "--quiet", "--", f"https://github.com/{origin}.git", str(project))
-    branch = command(project, "git", "branch", "--show-current").stdout.strip()
+    command(temp, "git", "clone", "--quiet", "--", url, str(project), env=remote_env())
+    # Nothing runs in the working clone with the bot's token, not even read-only git commands.
+    local_env = {k: v for k, v in os.environ.items() if k not in {"GH_TOKEN", "GITHUB_TOKEN", "XT_STEWARD_TOKEN"}}
+    branch = command(project, "git", "branch", "--show-current", env=local_env).stdout.strip()
     if branch == UPGRADE_BRANCH:
         raise DistributionError("nhánh nâng khung phải khác nhánh mặc định")
-    old = command(project, "git", "rev-parse", "--verify", f"refs/remotes/origin/{UPGRADE_BRANCH}", check=False)
+    ref = f"refs/remotes/origin/{UPGRADE_BRANCH}"
+    old = command(project, "git", "rev-parse", "--verify", ref, check=False, env=local_env)
     manifest = read_manifest(project)
     packs = manifest.get("packs", {})
     if not isinstance(packs, dict):
@@ -267,53 +339,49 @@ def publish_upgrade(base: Path, repo: str, tag: str, head: str, archive: Path, t
         or label != (base / ".xtemplates/VERSION").read_text(encoding="utf-8").split()[:1]
     ):
         raise DistributionError("nhánh chính của dự án đã đổi nguồn hoặc phiên bản, kiểm lại trước khi nâng")
+    hooks = temp / "no-hooks"  # empty: overrides .git/hooks and any core.hooksPath of the clone or global config
+    hooks.mkdir()
+    git = ("git", "-c", f"core.hooksPath={hooks}")
     if not old.returncode:
         # Base the new review tree on the protected default branch; retain the old bot branch as a parent.
-        command(project, "git", "merge", "--no-commit", "--no-ff", "-s", "ours", old.stdout.strip())
+        command(project, *git, "merge", "--no-commit", "--no-ff", "-s", "ours", old.stdout.strip(), env=local_env)
     # Run only installer bytes from the verified archive. Never execute the default branch or a PR checkout upstream.
     with tarfile.open(archive, "r:gz") as bundle:
         bundle.extractall(temp / "release", filter="data")
     release = temp / "release" / f"X-Templates-{tag}"
-    # Give product checks no bot credentials. GitHub authentication for the push/PR stays in the parent process.
-    local_env = {k: v for k, v in os.environ.items() if k not in {"GH_TOKEN", "GITHUB_TOKEN", "XT_STEWARD_TOKEN"}}
     for pack in list(packs) or [None]:
-        options = ["--pack", pack] if pack is not None else []
-        if ".codex/hooks.json" in manifest.get("adapters", []) or manifest.get("codex_files"):
-            options.extend(["--harness", "codex"])
-        command(
-            project, sys.executable, str(release / "scripts/install.py"), ".", "--with-github", *options, env=local_env
-        )
+        options = (["--pack", pack] if pack is not None else []) + install_options(manifest)
+        command(project, sys.executable, str(release / "scripts/install.py"), ".", *options, env=local_env)
     installed = read_manifest(project)
     installed["source"] = {"repo": repo, "tag": tag, "commit": head, "verified": True}
     (project / MANIFEST).write_text(
         json.dumps(installed, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    command(project, "git", "add", "--all")
-    command(
-        project, sys.executable, ".xtemplates/scripts/xt.py", "blueprint-status", "BLUEPRINT.md", "--run", env=local_env
-    )
-    tree = command(project, "git", "write-tree").stdout.strip()
-    title = f"chore(xt): nâng khung {tag[1:]}"
-    if old.returncode or tree != command(project, "git", "rev-parse", f"{old.stdout.strip()}^{{tree}}").stdout.strip():
-        command(project, "git", "commit", "-m", title, env=local_env)
-        command(project, "git", "push", "origin", f"HEAD:refs/heads/{UPGRADE_BRANCH}")
+    command(project, *git, "add", "--all", env=local_env)
+    if (project / "BLUEPRINT.md").is_file():
+        # Parse only. `— Kiểm:` commands are product code: the PR's own CI runs them, never this job.
+        command(project, sys.executable, ".xtemplates/scripts/xt.py", "blueprint-status", "BLUEPRINT.md", env=local_env)
+    tree = command(project, "git", "write-tree", env=local_env).stdout.strip()
+    title = TITLE.format(tag[1:])
+    if (
+        old.returncode
+        or tree != command(project, "git", "rev-parse", f"{old.stdout.strip()}^{{tree}}", env=local_env).stdout.strip()
+    ):
+        command(project, *git, "commit", "--no-verify", "-m", title, env=local_env)
+        push_branch(project, url, hooks, local_env)
+    open_or_update_pr(origin, branch, title, f"Nâng khung lên {repo}@{head} ({tag}).", release, tag, temp)
+
+
+def open_or_update_pr(origin: str, branch: str, title: str, intro: str, release: Path, tag: str, temp: Path) -> None:
     body = temp / "pr-body.md"
     changes = (release / "CHANGELOG.md").read_text(encoding="utf-8")
     match = re.search(rf"^## \[{re.escape(tag[1:])}\][^\n]*\n(.*?)(?=^## |\Z)", changes, re.M | re.S)
-    body.write_text(
-        f"Nâng khung lên {repo}@{head} ({tag}).\n\n" + (match[1].strip() if match else tag), encoding="utf-8"
-    )
-    prs = json.loads(
-        command(
-            project,
-            "gh",
-            "api",
-            f"repos/{origin}/pulls?state=open&base={branch}&head={origin.split('/')[0]}:{UPGRADE_BRANCH}",
-        ).stdout
-    )
+    body.write_text(f"{intro}\n\n" + (match[1].strip() if match else tag), encoding="utf-8")
+    query = f"repos/{origin}/pulls?state=open&base={branch}&head={origin.split('/')[0]}:{UPGRADE_BRANCH}"
+    prs = json.loads(command(temp, "gh", "api", query).stdout)
     if prs:
         command(
-            project,
+            temp,
             "gh",
             "pr",
             "edit",
@@ -327,21 +395,78 @@ def publish_upgrade(base: Path, repo: str, tag: str, head: str, archive: Path, t
         )
     else:
         command(
-            project,
-            "gh",
-            "pr",
-            "create",
-            "--repo",
-            origin,
-            "--base",
-            branch,
-            "--head",
-            UPGRADE_BRANCH,
-            "--title",
-            title,
-            "--body-file",
-            str(body),
+            temp,
+            *("gh", "pr", "create", "--repo", origin, "--base", branch, "--head", UPGRADE_BRANCH),
+            *("--title", title, "--body-file", str(body)),
         )
+
+
+def withdrawn_pr(base: Path, withdrawn: set[str]) -> tuple[str, int, str] | None:
+    """Open upgrade PR whose title names a withdrawn version. Best effort: a token that cannot list PRs only warns, so
+    projects still on an older workflow keep receiving upgrades (the PR's CI and merge lane stay the gate)."""
+    if not withdrawn:
+        return None
+    origin = repo_slug(command(base, "git", "remote", "get-url", "origin").stdout.strip())
+    query = f"repos/{origin}/pulls?state=open&head={origin.split('/')[0]}:{UPGRADE_BRANCH}"
+    listing = command(base, "gh", "api", query, check=False)
+    if listing.returncode:
+        print(f"Không đọc được PR nâng khung đang mở: {listing.stderr.strip()}", file=sys.stderr)
+        return None
+    for pr in json.loads(listing.stdout):
+        match = TITLE_VERSION.fullmatch(str(pr.get("title"))) if isinstance(pr, dict) else None
+        if match and "v" + match[1] in withdrawn:
+            return origin, int(pr["number"]), "v" + match[1]
+    return None
+
+
+def close_withdrawn(action: str, base: Path, git: Path, temp: Path) -> int | None:
+    """Close (reversibly, the branch stays) an open upgrade PR whose version was withdrawn after it was opened."""
+    stale = withdrawn_pr(base, withdrawn_tags(git))
+    if stale is None:
+        return None
+    origin, number, tag = stale
+    if action == "check":
+        print(f"PR #{number} nâng khung {tag} trỏ bản đã thu hồi; open-pr đóng PR này.")
+        return 10
+    note = f"Bản {tag} đã bị thu hồi ở nguồn ({WITHDRAWN}). Đóng PR; lần chạy sau mở PR mới khi có bản hợp lệ."
+    command(temp, "gh", "pr", "close", str(number), "--repo", origin, "--comment", note)
+    print(f"Đã đóng PR #{number}: {tag} bị thu hồi")
+    return 0
+
+
+def upgrade(core: Any, action: str, base: Path, temp: Path) -> int:
+    manifest = read_manifest(base)
+    repo = framework_repo(manifest)
+    git = clone_source(temp, repo)
+    keys = core._xt_keys(base)
+    wave = keys.get("upgrade_wave", "after-canary")
+    soak = int(keys.get("upgrade_soak_days", "3"))
+    label = (base / ".xtemplates/VERSION").read_text(encoding="utf-8")
+    newer, tags = tags_for_wave(git, label, wave, soak, int(dt.datetime.now(dt.UTC).timestamp()))
+    for tag in tags:
+        try:
+            head, archive = verified_archive(git, repo, tag, temp, promotion=True)
+        except DistributionError as exc:
+            if exc.code != 1:
+                raise
+            print(exc, file=sys.stderr)
+            continue
+        if action == "check":
+            print(tag)
+            return 10
+        # A newer valid tag replaces the tree of an open PR, including one built from a now withdrawn version.
+        publish_upgrade(base, repo, tag, head, archive, temp)
+        print(f"PR nâng khung {tag} đã sẵn sàng")
+        return 0
+    closed = close_withdrawn(action, base, git, temp)
+    if closed is not None:
+        return closed
+    print(
+        "Có bản mới nhưng chưa đủ tuổi hoặc thiếu bản chưa thu hồi có attestation hợp lệ."
+        if newer
+        else "Không có bản mới."
+    )
+    return 11 if newer else 0
 
 
 def run(core: Any, args: argparse.Namespace) -> int:
@@ -355,34 +480,7 @@ def run(core: Any, args: argparse.Namespace) -> int:
                 head, _ = verified_archive(git, repo, args.tag, temp)
                 print(f"{repo} {args.tag} {head}: attestation hợp lệ")
                 return 0
-            manifest = read_manifest(base)
-            repo = framework_repo(manifest)
-            git = clone_source(temp, repo)
-            keys = core._xt_keys(base)
-            wave = keys.get("upgrade_wave", "after-canary")
-            soak = int(keys.get("upgrade_soak_days", "3"))
-            label = (base / ".xtemplates/VERSION").read_text(encoding="utf-8")
-            newer, tags = tags_for_wave(git, label, wave, soak, int(dt.datetime.now(dt.UTC).timestamp()))
-            for tag in tags:
-                try:
-                    head, archive = verified_archive(git, repo, tag, temp, promotion=True)
-                except DistributionError as exc:
-                    if exc.code != 1:
-                        raise
-                    print(exc, file=sys.stderr)
-                    continue
-                if args.upgrade_action == "check":
-                    print(tag)
-                    return 10
-                publish_upgrade(base, repo, tag, head, archive, temp)
-                print(f"PR nâng khung {tag} đã sẵn sàng")
-                return 0
-            print(
-                "Có bản mới nhưng chưa đủ tuổi hoặc thiếu bản chưa thu hồi có attestation hợp lệ."
-                if newer
-                else "Không có bản mới."
-            )
-            return 11 if newer else 0
+            return upgrade(core, args.upgrade_action, base, temp)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print(exc, file=sys.stderr)
         return exc.code if isinstance(exc, DistributionError) else 3

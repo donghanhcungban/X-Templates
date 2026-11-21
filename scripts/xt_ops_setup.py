@@ -13,11 +13,39 @@ import os
 from pathlib import Path
 import re
 import subprocess
-from types import ModuleType
-from typing import Any
+from typing import Any, Callable, Protocol
 from urllib.parse import quote
 
+import xt_distribution
+
 Doc = dict[str, Any]
+
+
+class Core(Protocol):
+    DEFER_ID_RE: re.Pattern[str]
+    DEPLOY_ENV_NAME: re.Pattern[str]
+    DeployError: type[Exception]
+    _committed_xt_text: Callable[[Path, str], str | None]
+    _deferred: Callable[[Doc], Doc]
+    _git: Callable[..., subprocess.CompletedProcess[str]]
+    _git_head: Callable[[Path], str | None]
+    _go_git_env: Callable[[], dict[str, str]]
+    _inside: Callable[[Path, str], Path | None]
+    _release_prod_switch: Callable[..., dict[str, str]]
+    _yaml_keys: Callable[[str], dict[str, str]]
+    blueprint_status: Callable[[Path], Doc]
+    gate_noop: Callable[[str], bool]
+    github_origin_slug: Callable[[str], str]
+    grant_violations: Callable[[dict[str, dict[str, str]], str, dict[str, str]], list[str]]
+    human_must_ids: Callable[[], set[str]]
+    loop_root: Callable[[Path], Path]
+    parse_grants: Callable[[str], dict[str, dict[str, str]]]
+    project_dir: Callable[[], Path]
+    read_deploy_ledger: Callable[[Path], Doc]
+    read_state: Callable[..., Doc | None]
+    state_dir: Callable[..., Path]
+    write_atomic: Callable[..., None]
+
 
 OK, MISSING, UNKNOWN, SKIP, OPTIONAL = "đạt", "thiếu", "không đọc được", "không áp dụng", "tuỳ chọn"
 BLOCKS = (MISSING, UNKNOWN)
@@ -44,7 +72,7 @@ def field(obj: Any, key: str, default: Any = None) -> Any:
 class Origin:
     """Use only the checkout's GitHub origin. Pin config, plan and ancestry to one remote commit."""
 
-    def __init__(self, core: ModuleType, base: Path) -> None:
+    def __init__(self, core: Core, base: Path) -> None:
         self.core, self.base = core, base
         self.cache: Doc = {}
         git_env = core._go_git_env()
@@ -186,6 +214,22 @@ def deploy_secret_status(origin: Origin, cfg: dict[str, str]) -> str:
     return names_status(origin, set(names), origin.pages("actions/secrets", "secrets"))
 
 
+def about_status(origin: Origin) -> tuple[str, list[str]]:
+    """WF-DOC-021: mô tả repo (About, homepage, topics) mô tả dự án — trống hoặc nhắc khung ngoài ghi chú nguồn là việc
+    tuỳ chọn của chủ repo (installer ngoại tuyến không đặt được metadata GitHub). Repo khung và repo chưa có origin: không áp."""
+    if not origin.has_origin or (origin.base / "framework" / "00-method" / "README.md").is_file():
+        return SKIP, []
+    doc = origin.get("")
+    if not isinstance(doc, dict):
+        return UNKNOWN, []
+    topics, description = doc.get("topics"), doc.get("description")
+    words = [description, doc.get("homepage"), *(topics if isinstance(topics, list) else [])]
+    text = "\n".join(w for w in words if isinstance(w, str))
+    if isinstance(description, str) and description.strip() and not xt_distribution.stray_mentions(text):
+        return OK, []
+    return OPTIONAL, ['gh repo edit --description "<mô tả dự án>" — About/homepage/topics đang trống hoặc mô tả khung']
+
+
 def budget_valid(cfg: dict[str, str]) -> bool:
     try:
         amount = float(cfg.get("worker_budget_usd", ""))
@@ -195,7 +239,7 @@ def budget_valid(cfg: dict[str, str]) -> bool:
         return False
 
 
-def local_items(core: ModuleType, base: Path) -> list[Doc]:
+def local_items(core: Core, base: Path) -> list[Doc]:
     human, deferred = UNKNOWN, SKIP
     ids, waits = [], []
     bp = base / "BLUEPRINT.md"
@@ -256,6 +300,7 @@ def remote_items(origin: Origin) -> list[Doc]:
     missing_keys = [f"+ {k}: {v} — {why}" for k, (v, why) in KEYS.items() if cfg.get(k) != v]
     updates = field(origin.get("automated-security-fixes"), "enabled")
     launcher = origin.file(".github/workflows/worker.yml", repo_root=True)
+    about, about_changes = about_status(origin)
     return [
         row(
             "repo",
@@ -322,10 +367,18 @@ def remote_items(origin: Origin) -> list[Doc]:
             "Bật Dependabot security updates trong Settings.",
             "GET automated-security-fixes",
         ),
+        row(
+            "repo-about",
+            about,
+            "Mô tả repo trên GitHub do chủ repo đặt.",
+            "Đặt About, homepage và topics mô tả dự án.",
+            "GET repos/<owner>/<repo> (description, homepage, topics)",
+            changes=about_changes,
+        ),
     ]
 
 
-def inventory(core: ModuleType, base: Path) -> Doc:
+def inventory(core: Core, base: Path) -> Doc:
     origin = Origin(core, base)
     try:
         dev = core.read_deploy_ledger(base)["envs"].get("dev", {})
@@ -352,10 +405,10 @@ def markdown(doc: Doc) -> str:
         lines.extend(f"| {i['id']} | {i['status']} | {i['reason']} | {i['action']} | {i['verify']} |" for i in todo)
     else:
         lines.append("Không còn việc thiết lập bắt buộc.")
-    for item in doc["items"]:
-        if item["status"] == OPTIONAL:
-            lines.extend(["", "## Tuỳ chọn — quyền chủ dự án có thể bật", ""])
-            lines.extend(f"- {change}" for change in item["changes"])
+    optional = [change for item in doc["items"] if item["status"] == OPTIONAL for change in item["changes"]]
+    if optional:
+        lines.extend(["", "## Tuỳ chọn — chủ dự án quyết", ""])
+        lines.extend(f"- {change}" for change in optional)
     lines.extend(["", f"UTC {doc['at']} · HEAD {doc['head'] or '—'} · dev {dev}"])
     return "\n".join(lines) + "\n"
 
@@ -397,7 +450,7 @@ def owner_script(doc: Doc) -> str:
     return "\n".join(lines)
 
 
-def command(core: ModuleType, args: argparse.Namespace) -> int:
+def command(core: Core, args: argparse.Namespace) -> int:
     base = core.loop_root(core.project_dir())
     out = None
     if args.out:

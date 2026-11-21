@@ -64,6 +64,45 @@ class InstallTest(unittest.TestCase):
         self.assertFalse(any((root / "scripts" / name).exists() for name in helpers))
         self.assertEqual(project_file.read_text(), "product = True\n")
 
+    def test_xtemplates_readme_is_the_single_adopted_note(self):
+        """WF-DOC-021: `.xtemplates/README.md` = tiêu đề + ghi chú nguồn (phiên bản từ nhãn, repo từ `source.repo`) + một
+        câu quản lý; cài lại/nâng khung ghi đè theo nhãn mới; nhãn không SemVer → VERSION của bản khung đang cài."""
+        import xt_distribution
+
+        root = self.target / ".xtemplates"
+        root.mkdir()
+        readme = root / "README.md"
+        cases = (
+            ("3.40.1 (abc1234)", "o/fork", "v3.40.1", "o/fork"),
+            ("v4.0.0", None, "v4.0.0", xt_distribution.CANONICAL),
+            ("test", "không hợp lệ", "v" + install.source_version(), xt_distribution.CANONICAL),
+        )
+        for label, repo, version, slug in cases:
+            with self.subTest(label=label), redirect_stderr(io.StringIO()):
+                install.install_framework(root, label, repo)
+                self.assertEqual(
+                    readme.read_text(encoding="utf-8"),
+                    f"# .xtemplates/\n\nÁp dụng từ phiên bản {version} của dự án X-Templates (https://github.com/{slug}).\n\n"
+                    "Công cụ quy trình của dự án, do `install.py` và `xt.py upgrade` quản lý — không sửa tay.\n",
+                )
+        self.assertEqual(xt_distribution.stray_mentions(readme.read_text(encoding="utf-8")), [])
+
+    def test_installed_github_files_never_describe_the_framework(self):
+        """WF-DOC-021: mọi tệp `--with-github` (và gói `web-api-ts`) không nhắc X-Templates — doctor `github-text` im."""
+        import xt_distribution
+
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(self.run_install("--with-github"), 0)
+        texts = [p for p in (self.target / ".github").rglob("*") if p.is_file()]
+        self.assertGreaterEqual(len(texts), len(install.GITHUB_FILES))
+        for path in texts:
+            with self.subTest(path=path.name):
+                self.assertEqual(xt_distribution.stray_mentions(path.read_text(encoding="utf-8")), [])
+        packs = ROOT / "framework" / "templates" / "packs" / "web-api-ts"
+        for path in [*(packs / "starter").rglob("*"), *(packs / "managed").rglob("*")]:
+            if path.is_file() and path.suffix in (".yml", ".yaml", ".ts", ".json", ".md", ".mjs"):
+                self.assertEqual(xt_distribution.stray_mentions(path.read_text(encoding="utf-8")), [], path)
+
     def test_isolated_install_and_installed_cli_resolve_only_local_helpers(self):
         with tempfile.TemporaryDirectory() as target:
             base = Path(target)
@@ -1198,7 +1237,7 @@ class InstallEdgeTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(
             gi.read_text(encoding="utf-8"),
-            "node_modules/\n\n# X-Templates: trạng thái autopilot cục bộ, settings cá nhân\n.autopilot/\n"
+            "node_modules/\n\n# Công cụ quy trình: trạng thái autopilot cục bộ, settings cá nhân\n.autopilot/\n"
             ".claude/settings.local.json\n",
         )
         self.assertIn("thêm .autopilot/, .claude/settings.local.json", err)
@@ -3213,6 +3252,21 @@ class GitHooksTest(unittest.TestCase):
         self.assertIsNone(install.git_common_dir(self.target))
         with mock.patch.object(install.subprocess, "run", side_effect=OSError("không có git")):
             self.assertIsNone(install.git_common_dir(self.target))
+
+    def test_write_atomic_and_template_body_match_xt(self):
+        """AUD-ARCH-001: write_atomic và template_body ở install.py đồng bộ chữ ký và hành vi với xt.py."""
+        import inspect
+        import xt
+
+        self.assertEqual(inspect.signature(install.write_atomic), inspect.signature(xt.write_atomic))
+        nested = self.target / "sub" / "file.txt"
+        install.write_atomic(nested, "dòng 1\r\ndòng 2\n")
+        self.assertEqual(nested.read_bytes(), "dòng 1\r\ndòng 2\n".encode("utf-8"))
+        install.write_atomic(nested, "dòng 3\n", keep_mode=True)
+        self.assertEqual(nested.read_bytes(), "dòng 3\n".encode("utf-8"))
+        for tmpl in sorted((install.SRC / "framework" / "templates").glob("*.md")):
+            raw = tmpl.read_text(encoding="utf-8")
+            self.assertEqual(install.template_body(raw), xt.template_body(raw), tmpl.name)
 
 
 if __name__ == "__main__":

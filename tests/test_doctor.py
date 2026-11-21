@@ -683,6 +683,40 @@ class DoctorStateAndEnvTest(DoctorCase):
         self.assertEqual(codes.count(("legacy", "warn")), 2)
         self.assertIn(("git", "warn"), codes)
 
+    def test_github_text_mentions_outside_adopted_note(self):
+        """WF-DOC-021: README gốc/`.github/**` của dự án đích nhắc X-Templates ngoài ghi chú nguồn → MỘT cảnh báo
+        `github-text` kèm tệp:dòng (không đỏ); không README, README sạch, ghi chú hợp lệ, symlink, repo khung → im."""
+
+        def group() -> list[xt.Finding]:
+            return xt._doctor_github_text(self.base)
+
+        self.assertEqual(group(), [])  # không README, không .github
+        note = "Áp dụng từ phiên bản v3.34.0 của dự án X-Templates (https://github.com/o/X-Templates)."
+        readme = self.write("README.md", f"# app\n\nQuản lý khách sạn.\n\n---\n\n{note}\n")
+        self.assertEqual(group(), [])
+        readme.write_text("# app\n\náp dụng TỪ phiên bản 3.1.0 của dự án x-templates\n", encoding="utf-8")
+        self.assertEqual(group(), [])  # không phân biệt hoa/thường, `v` tuỳ chọn
+        readme.write_text("# app\n\nBản sao khung x-templates.\n", encoding="utf-8")
+        self.write(".github/workflows/up.yml", "name: Upgrade X-Templates\n")
+        (self.base / ".github/workflows/link.yml").symlink_to(readme)
+        (self.base / ".github/sub").mkdir()
+        (finding,) = group()
+        self.assertEqual((finding.code, finding.level), ("github-text", "warn"))
+        self.assertIn("README.md:3, .github/workflows/up.yml:1", finding.msg)
+        self.assertNotIn("link.yml", finding.msg)
+        self.assertIn(("github-text", "warn"), [(f.code, f.level) for f in self.findings()])
+        readme.write_text("X-Templates\n" * 7, encoding="utf-8")
+        self.assertIn("README.md:5 (+3)", group()[0].msg)
+        readme.unlink()
+        readme.mkdir()  # không đọc được (thư mục) → bỏ qua, không sập
+        shutil.rmtree(self.base / ".github")
+        (self.base / ".github").symlink_to(self.tmp, target_is_directory=True)
+        self.assertEqual(group(), [])
+        (self.base / ".xtemplates" / "VERSION").unlink()  # repo khung: không áp
+        readme.rmdir()
+        self.write("README.md", "X-Templates — khung\n")
+        self.assertEqual(group(), [])
+
     def test_runtime_tools_and_python(self):
         with (
             unittest.mock.patch.object(sys, "version_info", (3, 15, 2)),

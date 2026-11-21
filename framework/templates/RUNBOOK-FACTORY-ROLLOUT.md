@@ -1,7 +1,7 @@
 ---
 title: Diễn tập bàn giao và theo dõi bản phát hành
 kind: template
-updated: 2026-11-19
+updated: 2026-11-21
 ---
 
 # Từ bản dev được xác nhận đến bàn giao vận hành

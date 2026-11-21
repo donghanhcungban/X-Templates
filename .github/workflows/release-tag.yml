@@ -49,6 +49,10 @@ jobs:
           target=$(git rev-parse --verify --end-of-options "${INPUT_SHA:-$GITHUB_SHA}^{commit}")
           git merge-base --is-ancestor "$target" "$GITHUB_SHA"
           git merge-base --is-ancestor "$target" HEAD
+          if ! git cat-file -e "$target:VERSION" 2>/dev/null; then
+            echo "::notice::Không có tệp VERSION ở gốc repo: không có ứng viên phát hành."
+            exit 0
+          fi
           v=$(git show "$target:VERSION")
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           git show "$target:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md"
@@ -144,8 +148,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v$V" -m "v$V" "$TARGET"
           test "$(git cat-file -t "v$V")" = tag
-          git archive --format=tar.gz --prefix="X-Templates-v$V/" -o "$RUNNER_TEMP/X-Templates-v$V.tar.gz" "$TARGET"
-          echo "archive=$RUNNER_TEMP/X-Templates-v$V.tar.gz" >> "$GITHUB_OUTPUT"
+          # Tên tệp phát hành theo tên repo (WF-DOC-021): `<repo>-vX.Y.Z.tar.gz`.
+          name="${GITHUB_REPOSITORY#*/}-v$V"
+          git archive --format=tar.gz --prefix="$name/" -o "$RUNNER_TEMP/$name.tar.gz" "$TARGET"
+          echo "archive=$RUNNER_TEMP/$name.tar.gz" >> "$GITHUB_OUTPUT"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         if: steps.tag.outputs.archive != ''
         with:
@@ -159,7 +165,7 @@ jobs:
           V: ${{ needs.approve.outputs.version }}
         run: |
           set -euo pipefail
-          receipt="$RUNNER_TEMP/X-Templates-v$V.promotion.json"
+          receipt="$RUNNER_TEMP/${GITHUB_REPOSITORY#*/}-v$V.promotion.json"
           digest=$(sha256sum "$ARCHIVE" | cut -d' ' -f1)
           printf '{"repo":"%s","tag":"v%s","commit":"%s","sha256":"%s","promotion":"approved"}\n' \
             "${GITHUB_REPOSITORY,,}" "$V" "$TARGET" "$digest" > "$receipt"

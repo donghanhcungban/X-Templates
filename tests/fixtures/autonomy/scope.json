@@ -718,6 +718,40 @@
    "ids": [
     "AUD-SEC-994"
    ]
+  },
+  {
+   "reason": "Quyết định merge cho PR từ fork hoặc tác giả không quyền ghi (merge_identity_reason, #710): các ca pr.json chưa mang trường headRepo/authorAssociation như _pr_rest dựng. tests.test_derived.ForkIdentityTest kiểm L1–L3, fork đã xoá, tác giả quyền ghi, bot và làn derived qua merge_decision, merge-check, pr next và guard.",
+   "ids": [
+    "AUD-XFEAT-051"
+   ]
+  },
+  {
+   "reason": "Đường cài, clone, commit và đẩy git thật của xt.py upgrade open-pr (clone tạm, repo trần, hook, token, PR bản thu hồi) cần git và installer thật; adapter corpus không dựng repo. tests.test_upgrade_bot.RealInstallerTest và UpgradeTest kiểm bằng installer thật, hook giả bắt token và gh giả.",
+   "ids": [
+    "AUD-CI-038",
+    "AUD-HAR-457",
+    "AUD-XFEAT-052"
+   ]
+  },
+  {
+   "reason": "Điều kiện chạy và checkout của workflow GitHub (job lịch, dispatch, tag trùng tên nhánh mặc định, pr-steward checkout nhánh mặc định) chạy trên GitHub, không phải quyết định mô phỏng bằng corpus. ci-check cùng tests.test_ci_template.ScheduledTemplateTest và StewardCheckoutTest đánh giá biểu thức và ghim dòng.",
+   "ids": [
+    "AUD-CI-039",
+    "AUD-HAR-458"
+   ]
+  },
+  {
+   "reason": "Nội dung tài liệu khung: mục lục mẫu --with-github và câu WF-REVIEW-007 theo ADR-0079 (D-533). Không phải quyết định cho hoặc chặn; đỡ bằng validate, check-links và đọc code-review.md.",
+   "ids": [
+    "AUD-DOC-308",
+    "AUD-DOC-309"
+   ]
+  },
+  {
+   "reason": "Lệnh kiểm BASE-REPO-006 của blueprint (tag, VERSION, đồng hồ, GO-NO-GO) cần repo git thật; không phải quyết định mô phỏng bằng corpus. Đỡ bằng blueprint-status --run trong release-check.",
+   "ids": [
+    "AUD-HAR-459"
+   ]
   }
  ]
 }

@@ -24,6 +24,7 @@ import xt
 from test_ci import ci_jobs, flow_list, job_key, matrix_shards
 
 TEMPLATES = ROOT / "framework" / "templates"
+WORKFLOWS = ROOT / ".github" / "workflows"
 CI = TEMPLATES / "ci.yml"
 SCAN = TEMPLATES / "secret-scan.yml"
 PR_TITLE = TEMPLATES / "pr-title.yml"
@@ -247,7 +248,7 @@ class CiTemplateTest(unittest.TestCase):
         self.assertIn(f'mode="$({DEV_TASK} e2e-mode)"\n', e2e)  # gán riêng: lỗi dev-task → bước đỏ (set -e)
         self.assertIn("set -euo pipefail", e2e)
         self.assertLess(e2e.index("actions/setup-python@"), e2e.index("e2e-mode"))
-        for header in ("id: framework-python", "name: Runtime của khung"):
+        for header in ("id: framework-python", "name: Runtime công cụ quy trình"):
             self.assertIn(f"- {header}\n        if: steps.config.outputs.empty != 'true'\n", e2e)
         self.assertLess(e2e.index("e2e-mode"), e2e.index(SETUP))
         self.assertIn(f'run: {DEV_TASK} e2e "$SHARD" "$TOTAL"\n', e2e)
@@ -648,6 +649,70 @@ class DevTaskCiModeTest(unittest.TestCase):
         self.assertEqual(r.returncode, 126, r.stderr)
         self.assertFalse((self.tmp / "cai").exists())
         self.assertFalse((self.tmp / "d").exists())
+
+
+def job_if(expression: str, context: Dict[str, object]) -> bool:
+    """Evaluate the `a == b || c == d` form of a job `if:`; a missing context path is '' as in GitHub expressions."""
+
+    def operand(token: str) -> object:
+        if token.startswith("'"):
+            return token.strip("'")
+        value: object = context
+        for key in token.split("."):
+            value = value.get(key, "") if isinstance(value, dict) else ""
+        return value
+
+    def clause(part: str) -> bool:
+        return all(operand(a) == operand(b) for a, b in (term.split(" == ") for term in part.split(" && ")))
+
+    return any(clause(part) for part in expression.split(" || "))  # `&&` binds tighter than `||`, as in GitHub
+
+
+class ScheduledTemplateTest(unittest.TestCase):
+    """Audit delta 3.35.0: the `schedule` payload has no `repository`, so a job gated on its `default_branch` was
+    skipped on every scheduled run of `xt-upgrade.yml` and `xt-field.yml`."""
+
+    def test_scheduled_jobs_run_on_schedule_and_dispatch_only_on_default_branch(self):
+        schedule = {"github": {"event_name": "schedule", "ref_name": "trunk", "event": {"schedule": "23 6 * * *"}}}
+        repository = {"repository": {"default_branch": "trunk"}}
+        main = {
+            "github": {
+                "event_name": "workflow_dispatch",
+                "ref_type": "branch",
+                "ref_name": "trunk",
+                "event": repository,
+            }
+        }
+        feature = {
+            "github": {
+                "event_name": "workflow_dispatch",
+                "ref_type": "branch",
+                "ref_name": "feat/x",
+                "event": repository,
+            }
+        }
+        # Tag trùng tên nhánh mặc định: người có quyền ghi dispatch trên `refs/tags/trunk` chạy mã của họ với token.
+        tag = {
+            "github": {"event_name": "workflow_dispatch", "ref_type": "tag", "ref_name": "trunk", "event": repository}
+        }
+        for name, job in (("xt-upgrade.yml", "upgrade"), ("xt-field.yml", "export")):
+            with self.subTest(name=name):
+                text = (TEMPLATES / name).read_text(encoding="utf-8")
+                self.assertIn("\n  schedule:\n", text)
+                expression = job_key(ci_jobs(text)[job], "if")
+                self.assertNotRegex(expression, r"[(,]")  # only the `a == b && c == d || …` form the evaluator reads
+                cases = (schedule, main, feature, tag)
+                self.assertEqual([job_if(expression, case) for case in cases], [True, True, False, False])
+        self.assertFalse(job_if("github.ref == 'refs/heads/main'", schedule))  # the evaluator reads missing as ''
+
+
+class StewardCheckoutTest(unittest.TestCase):
+    """Audit delta 3.35.0 (review #711): `workflow_dispatch` chạy trên mọi ref, nên checkout của pr-steward luôn lấy nhánh
+    mặc định — người có quyền ghi không chạy được mã nhánh/tag của họ với `XT_STEWARD_TOKEN`."""
+
+    def test_checkout_pins_default_branch(self):
+        text = (WORKFLOWS / "pr-steward.yml").read_text(encoding="utf-8")
+        self.assertIn("ref: ${{ github.event.repository.default_branch }}", text)
 
 
 if __name__ == "__main__":

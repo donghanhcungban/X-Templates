@@ -35,7 +35,7 @@ Dùng:
   python3 scripts/install.py <thư-mục-dự-án> [--force-harness] [--no-harness] [--no-git-hooks] [--harness codex,…] [--with-github] [--preset safe|autonomous] [--stage-init] [--pack <id>] [--label v1.0.0] [--plan]
   python3 scripts/install.py <thư-mục-mới-hoặc-rỗng> --new --pack <id> --idea "<ý tưởng>" [--name <slug>] [--scale S|M|L]
   python3 scripts/install.py . --sync-codex     (chỉ ở repo khung) sinh lại .agents/skills, .codex/agents, .codex/hooks.json
-  --new: một repo main, khung + gói + PROJECT + blueprint + giai đoạn 1; commit đầu trước khi cài hook, doctor offline.
+  --new: một repo main, khung + gói + PROJECT + README + blueprint + giai đoạn 1; commit đầu trước khi cài hook, doctor offline.
   --plan: in JSON kế hoạch (quyền thêm/bớt, hook thêm/đổi matcher, file đè/giữ, git hook, adapter; gói và drift file
           managed khi có --pack), không ghi gì (REC-09)
   --no-git-hooks: không cài git hook sàn chung (`pre-commit`/`commit-msg`/`pre-push`); git hook + adapter khung đã ghi
@@ -63,6 +63,7 @@ import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from types import ModuleType
 from typing import Any, TypeGuard
 from pathlib import Path
 
@@ -223,12 +224,16 @@ MANIFEST = ".xtemplates/harness.sha256.json"
 MANIFEST_V2 = ".xtemplates/manifest.json"  # REC-09: hash file + rule do khung đặt + chính sách
 
 
-def write_atomic(path: Path, text: str) -> None:
-    """Ghi qua tệp tạm cùng thư mục rồi đổi tên — lỗi giữa chừng không để settings/manifest dở (BASE-DATA-009)."""
+def write_atomic(path: Path, text: str, keep_mode: bool = False) -> None:
+    """Ghi qua tệp tạm cùng thư mục rồi đổi tên — lỗi giữa chừng không để settings/manifest dở (BASE-DATA-009).
+    Đồng bộ với `xt.write_atomic` (AUD-ARCH-001): tạo thư mục cha, `newline=""` và `keep_mode` giữ quyền."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
+        if keep_mode and path.exists():
+            os.chmod(tmp, path.stat().st_mode & 0o7777)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
@@ -832,9 +837,28 @@ def pack_root_error(target: Path, pack: dict[str, Any] | None) -> str | None:
     )
 
 
-def install_framework(xt_dir: Path, label: str | None) -> str:
+def distribution() -> ModuleType:
+    """`xt_distribution` cạnh bộ cài đang chạy (python -I không đặt thư mục script vào sys.path)."""
+    scripts = str(Path(__file__).resolve().parent)
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    import xt_distribution
+
+    return xt_distribution
+
+
+def adopted_note(label: str, repo: object = None) -> str:
+    """WF-DOC-021: ghi chú nguồn duy nhất — phiên bản lấy từ nhãn (`3.34.0 (abc1234)`, `v1.0.0`); nhãn không có SemVer
+    (`--label test`) → `VERSION` của bản khung đang cài."""
+    found = re.search(r"\d+\.\d+\.\d+", label)
+    note: str = distribution().adopted_note(found[0] if found else source_version(), repo)
+    return note
+
+
+def install_framework(xt_dir: Path, label: str | None, repo: object = None) -> str:
     """Bước 1: framework + research + scripts + VERSION + README vào .xtemplates/ — thay thế toàn bộ (bản chỉ đọc).
-    Trả nhãn đã ghi vào VERSION."""
+    README là ghi chú nguồn duy nhất của khung ở dự án đích (WF-DOC-021; `repo` = `source.repo` của lần cài). Trả nhãn
+    đã ghi vào VERSION."""
     copy_tree_replace(SRC / "framework", xt_dir / "framework", framework_ignore)
     # research/: chỉ file module trong framework/ trỏ tới bằng đường dẫn tương đối (AUD-XFEAT-046) — nhật ký nghiên cứu
     # khác của repo khung không phải của dự án đích.
@@ -869,8 +893,8 @@ def install_framework(xt_dir: Path, label: str | None) -> str:
         drop_symlink(xt_dir / f)
     (xt_dir / "VERSION").write_text(version + "\n", encoding="utf-8")
     (xt_dir / "README.md").write_text(
-        "# .xtemplates/\n\nBản sao khung X-Templates (chỉ đọc). Cập nhật: chạy lại `install.py` từ bản khung mới.\n"
-        "Ghép blueprint: `python3 .xtemplates/scripts/xt.py compose --profile <p> --scale <S|M|L> --out BLUEPRINT.md`.\n",
+        f"# .xtemplates/\n\n{adopted_note(version, repo)}\n\n"
+        "Công cụ quy trình của dự án, do `install.py` và `xt.py upgrade` quản lý — không sửa tay.\n",
         encoding="utf-8",
     )
     log(f"✓ .xtemplates/framework + scripts (phiên bản {version})")
@@ -2215,6 +2239,7 @@ GITIGNORE_LINES = (
     ".autopilot/",
     ".claude/settings.local.json",
 )  # trạng thái autopilot; quyền/đường dẫn máy cá nhân (LOOP-HARNESS-032)
+GITIGNORE_NOTE = "# Công cụ quy trình: trạng thái autopilot cục bộ, settings cá nhân"  # WF-DOC-021: không mô tả khung
 # Dòng tương đương đã có thì không thêm (cùng tập với `AUTOPILOT_IGNORES`/`SETTINGS_LOCAL_IGNORES` của xt.py — review #381)
 GITIGNORE_EQUIV = {
     ".autopilot/": (".autopilot/", ".autopilot", "/.autopilot/", "/.autopilot"),
@@ -2303,14 +2328,11 @@ def ensure_gitignore(target: Path) -> None:
         missing = [ln for ln in GITIGNORE_LINES if not _gitignore_has(target, ln, have)]
         if missing:
             with gi.open("a", encoding="utf-8") as fh:
-                fh.write(
-                    "\n# X-Templates: trạng thái autopilot cục bộ, settings cá nhân\n"
-                    + "".join(f"{ln}\n" for ln in missing)
-                )
+                fh.write(f"\n{GITIGNORE_NOTE}\n" + "".join(f"{ln}\n" for ln in missing))
             log("  .gitignore: thêm " + ", ".join(missing))
     else:
         body = "".join(f"{ln}\n" for ln in GITIGNORE_LINES)
-        gi.write_text(f"# X-Templates: trạng thái autopilot cục bộ, settings cá nhân\n{body}", encoding="utf-8")
+        gi.write_text(f"{GITIGNORE_NOTE}\n{body}", encoding="utf-8")
         log("  .gitignore: tạo mới")
 
 
@@ -2695,16 +2717,11 @@ def install(
     migrate_legacy(target)
     inferred = infer_root_hashes(target)  # mẫu cũ trong .xtemplates/framework/ — trước khi install_framework thay
     mirrors = codex_baseline(target) if "codex" in (adapters or []) else {}  # gương Codex có sẵn — trước bước harness
-    scripts = str(Path(__file__).resolve().parent)
-    if scripts not in sys.path:  # python -I nạp từ bộ cài đang chạy
-        sys.path.insert(0, scripts)
-    import xt_distribution
-
-    source = xt_distribution.install_source(SRC)
+    source = distribution().install_source(SRC)
     previous_source = load_manifest_doc(target).get("source")
     if isinstance(previous_source, dict) and previous_source.get("verified") is True and previous_source != source:
         record_manifest_paths(target, "source", {"verified": False})
-    version = install_framework(xt_dir, label)
+    version = install_framework(xt_dir, label, source.get("repo"))
     if not no_harness:
         install_harness(target, force_harness)
         if not no_git_hooks:
@@ -2840,11 +2857,28 @@ def new_identity(target: Path, trusted: dict[str, str]) -> None:
 def new_project_document(target: Path, name: str, idea: str) -> None:
     body = template_body((SRC / "framework/templates/PROJECT.md").read_text(encoding="utf-8"))
     title, _, rest = body.replace("<Tên dự án>", name).partition("\n")
-    quoted = "\n".join("> " + line for line in idea.split("\n"))
     frame = "\n".join(f"- {label}:" for label in ("Vấn đề", "Người dùng", "Một chỉ số", "Không làm"))
     (target / "PROJECT.md").write_text(
-        f"{title}\n\n## Ý tưởng gốc\n\n{quoted}\n\n## Khung\n\n{frame}\n\n{rest.lstrip()}", encoding="utf-8"
+        f"{title}\n\n## Ý tưởng gốc\n\n{quoted_idea(idea)}\n\n## Khung\n\n{frame}\n\n{rest.lstrip()}", encoding="utf-8"
     )
+
+
+def quoted_idea(idea: str) -> str:
+    """Ý tưởng gốc là dữ liệu: trích dẫn từng dòng (`> `) để Markdown không thành tiêu đề/khối lệnh."""
+    return "\n".join("> " + line for line in idea.split("\n"))
+
+
+def new_project_readme(target: Path, name: str, idea: str) -> None:
+    """README gốc của `--new` mô tả dự án (WF-DOC-021): tên, ý tưởng (trích dẫn), liên kết tài liệu, chân trang là ghi chú
+    nguồn duy nhất. Copy-if-absent — README đã có không bị đụng."""
+    readme = target / "README.md"
+    if readme.exists() or readme.is_symlink():
+        return
+    source = load_manifest_doc(target).get("source")
+    label = installed_label(target / ".xtemplates") or source_version()
+    note = adopted_note(label, source.get("repo") if isinstance(source, dict) else None)
+    links = "Tài liệu dự án: [PROJECT.md](PROJECT.md) · tiến độ: [PROGRESS.md](PROGRESS.md)."
+    readme.write_text(f"# {name}\n\n{quoted_idea(idea)}\n\n{links}\n\n---\n\n{note}\n", encoding="utf-8")
 
 
 def new_bootstrap(
@@ -2886,6 +2920,7 @@ def new_bootstrap(
         return 1
     check()
     new_project_document(target, name, idea)
+    new_project_readme(target, name, idea)
     xt = [sys.executable, str(target / ".xtemplates/scripts/xt.py")]
     check()
     new_command(target, [*xt, "compose", "--profile", pack["profiles"][0], "--scale", scale, "--out", "BLUEPRINT.md"])

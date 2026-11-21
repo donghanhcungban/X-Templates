@@ -465,7 +465,7 @@
 ### D-507 · 2026-11-18T05:57:25+00:00 · Cổng ký lần 8 (7b1ebc84) vẫn tìm 8 🔴/🟠 ở lô fuzz và 3 🔴 + 5 🟠 ở lô hồi quy; mỗi vòng reviewer mở rộng sang họ mới (8 vòng liên tiếp). Đóng vòng thế nào để hội tụ mà không hạ tiêu chí an toàn?
 
 - Phương án: (1) Sửa nhóm lỗi có thể xảy ra do lỡ tay hoặc hồi quy/chặn oan lệnh phổ biến (rm trong .git qua glob/dotglob, mktemp -p/.. sau giá trị tính được, $(date) vào thư mục có sẵn, .git chung của worktree, push src:dst từ $(branch), pull/fetch/rebase với $(branch), [ -eq ] bị coi số học, SQL/manifest bị quét theo từ, bỏ nháy thân stdin, cờ dính -cVAL, vim/ex -c/+cmd, procsub vào công cụ đọc chương trình, ghi đè .git/HEAD bằng cp/tee/sed -i/ln/install); chấp nhận có chủ và hạn 2027-01-21 (cùng mốc xét sandbox D-331/D-332, ADR-0072) cho hai họ dựng lệnh lúc chạy cần nhiều bước hoặc xây chuỗi động: trồng lệnh vào thư mục PATH qua 3 lệnh rồi $(date), argv parallel dựng bằng nối chuỗi/biến/exec{...}; ghi rõ giới hạn ở harness-files.md; cổng ký 9 chấp nhận khi không còn 🔴/🟠 mở ngoài hai họ đã chấp nhận · (2) Tiếp tục sửa mọi ca fuzz mỗi vòng cho tới khi reviewer không tìm thêm (không có điểm dừng định trước) · (3) Dừng harden guard, ký GO với toàn bộ phát hiện chấp nhận
-- Chọn: Sửa nhóm lỗi có thể xảy ra do lỡ tay hoặc hồi quy/chặn oan lệnh phổ biến (rm trong .git qua glob/dotglob, mktemp -p/.. sau giá trị tính được, $(date) vào thư mục có sẵn, .git chung của worktree, push src:dst từ $(branch), pull/fetch/rebase với $(branch), [ -eq ] bị coi số học, SQL/manifest bị quét theo từ, bỏ nháy thân stdin, cờ dính -cVAL, vim/ex -c/+cmd, procsub vào công cụ đọc chương trình, ghi đè .git/HEAD bằng cp/tee/sed -i/ln/install); chấp nhận có chủ và hạn 2027-01-21 (cùng mốc xét sandbox D-331/D-332, ADR-0072) cho hai họ dựng lệnh lúc chạy cần nhiều bước hoặc xây chuỗi động: trồng lệnh vào thư mục PATH qua 3 lệnh rồi $(date), argv parallel dựng bằng nối chuỗi/biến/exec{...}; ghi rõ giới hạn ở harness-files.md; cổng ký 9 chấp nhận khi không còn 🔴/🟠 mở ngoài hai họ đã chấp nhận
+- Chọn: Phương án 1 (sửa nhóm lỗi do lỡ tay/chặn oan; chấp nhận hai họ dựng lệnh lúc chạy, hạn 2027-01-21)
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn trước: mọi lỗi có thể do lỡ tay hoặc làm hỏng lệnh lành phổ biến đều được sửa; chỉ hai họ cần chủ ý nhiều bước/dựng chuỗi động (không thể là tai nạn của agent) được chấp nhận, có chủ, có hạn, nêu ở tài liệu, và hàng rào thật là sandbox (ADR-0072) chứ không phải heuristic văn bản. Phương án 2 không có điểm dừng nên không hội tụ (8 vòng); phương án 3 bỏ cả lỗi lỡ tay.
 - Đường lùi: Mở lại AUD-SEC chấp nhận thành mở và sửa ở đợt sau; không đổi mã
 
@@ -556,16 +556,16 @@
 ### D-520 · 2026-11-19T17:03:58+00:00 · Review #684 lượt 3: gương Codex của dự án (.agents/skills/<tên>/SKILL.md = bản dự án tự sửa C, trùng đầu ra sinh từ .claude/ của dự án) được ghi nhận là tệp khung quản lý ở lần cài đầu (kept → ghi hash vào codex_files); lần cài sau có --force-harness thay .claude/ bằng bản khung F thì gương được cập nhật thành F, không có .xtemplates-new — trái câu tài liệu 'gương dự án tự có không bị ghi đè'. Sửa mã hay sửa tài liệu?
 
 - Phương án: (1) Sửa tài liệu và tên test (b): tệp Codex là sản phẩm SINH từ .claude/; tệp trùng đầu ra sinh được ghi nhận (như mọi tệp harness trùng bản khung) và đi theo .claude/ ở các lần cài sau, kể cả khi --force-harness thay nguồn; chỉ tệp khác bản đã ghi nhận mới được giữ kèm .xtemplates-new · (2) Sửa mã (a): khi --force-harness, bỏ qua hash codex_files cho tệp có nguồn không phải bản khung → .xtemplates-new
-- Chọn: Sửa tài liệu và tên test (b): tệp Codex là sản phẩm SINH từ .claude/; tệp trùng đầu ra sinh được ghi nhận (như mọi tệp harness trùng bản khung) và đi theo .claude/ ở các lần cài sau, kể cả khi --force-harness thay nguồn; chỉ tệp khác bản đã ghi nhận mới được giữ kèm .xtemplates-new
-- Lý do (tiêu chí chất lượng cuối): Đúng: gương là bản sao byte của nguồn; khi người dùng chủ động --force-harness thay .claude/skills/<tên> thì gương giữ bản cũ sẽ LỆCH nguồn (test gương trùng byte của dự án như dhcb đỏ) — đi theo nguồn mới là hành vi nhất quán với mô hình 'tệp trùng bản khung ghi là của khung' mà install.py dùng cho mọi tệp harness. Phương án (a) thêm một ngoại lệ nữa vào luật sở hữu, để lại gương lệch nguồn, và nội dung cũ vẫn còn trong git. Lần cài ĐẦU với --force-harness vẫn giữ gương và để .xtemplates-new (chưa có ghi nhận) — đã sửa ở lượt 2.
-- Đường lùi: Áp phương án (a) trong install.py + test cài hai lượt
+- Chọn: Phương án (1): sửa tài liệu và tên test (b)
+- Lý do (tiêu chí chất lượng cuối): Đúng: gương là bản sao byte của nguồn; khi người dùng chủ động --force-harness thay .claude/skills/<tên> thì gương giữ bản cũ sẽ LỆCH nguồn (test gương của dhcb đỏ) — đi theo nguồn mới là hành vi nhất quán với mọi tệp harness. Phương án (a) thêm ngoại lệ vào luật sở hữu và để gương lệch nguồn. Lần cài ĐẦU với --force-harness vẫn giữ gương và để .xtemplates-new.
+- Đường lùi: Áp phương án (a) trong install.py
 
 ### D-521 · 2026-11-19T23:39:27+00:00 · Điều phối một dự án từ ý tưởng qua ba giai đoạn tới vận hành bằng gì?
 
 - Phương án: (1) Dùng sổ giai đoạn, trạng thái vòng lặp và chứng cứ bản chạy hiện có; chốt phạm vi nghiệm thu ở Git; diễn tập trước chuyển giao cho CD của sản phẩm · (2) Tạo bộ điều phối riêng với sổ trạng thái, quyền duyệt và hạ tầng production mặc định
-- Chọn: Dùng sổ giai đoạn, trạng thái vòng lặp và chứng cứ bản chạy hiện có; chốt phạm vi nghiệm thu ở Git; diễn tập trước chuyển giao cho CD của sản phẩm
-- Lý do (tiêu chí chất lượng cuối): Giữ một nguồn trạng thái cho mỗi quyết định, tôn trọng duyệt đúng bản, đo thời gian và kiểm lại được trên repo sinh mới và repo có sẵn
-- Đường lùi: Các dự án có thể tiếp tục dùng những lệnh stage, loop, release-check, deploy và perf riêng; kiểm lại hợp đồng khi thay adapter đích.
+- Chọn: Phương án (1)
+- Lý do (tiêu chí chất lượng cuối): Giữ một nguồn trạng thái cho mỗi quyết định, duyệt đúng bản, đo thời gian, kiểm lại được trên repo mới và repo có sẵn
+- Đường lùi: Dự án tiếp tục dùng các lệnh stage, loop, release-check, deploy, perf riêng; kiểm lại hợp đồng khi đổi adapter.
 
 ### D-522 · 2026-11-20T01:05:30+00:00 · Trình MVP lúc nào?
 
@@ -629,3 +629,32 @@
 - Chọn: Kiểm khoá ở mọi giai đoạn, trước kiểm cây và trần
 - Lý do (tiêu chí chất lượng cuối): S-507 ghi exit 2, chỉ người; PR đổi thứ tự mà không có quyết định. Siết lại là cách hiểu chặt hơn.
 - Đường lùi: Chỉ kiểm ở giai đoạn 1 và nới assert e2e.
+
+### D-532 · 2026-11-21T05:50:11+00:00 · #707 còn 2 lách có từ trước: vá tiếp hay merge?
+
+- Phương án: (1) Vá vòng 6 · (2) Merge, ghi AUD-HAR-452/453 chấp nhận
+- Chọn: Merge, ghi AUD-HAR-452/453 chấp nhận
+- Lý do (tiêu chí chất lượng cuối): base cũng lọt, cùng họ D-332; #707 nhẹ hơn base = 0; hàng rào thật là ruleset tag v*.
+- Đường lùi: Mở lại hai mục và vá.
+
+### D-533 · 2026-11-21T08:44:47+00:00 · WF-REVIEW-007 (MUST) lệch ADR-0079: sửa câu chữ hay đổi mã?
+
+- Phương án: (1) Sửa MUST cho khớp ADR-0079 · (2) Giữ MUST, đổi mã/ADR đòi review ở optional
+- Chọn: Sửa MUST cho khớp ADR-0079
+- Lý do (tiêu chí chất lượng cuối): ADR-0079 đã quyết hành vi; dự án siết bằng required.
+- Đường lùi: Khôi phục câu MUST cũ
+
+### D-534 · 2026-11-21T10:47:17+00:00 · AUD-HAR-454, AUD-CI-036: sửa hay chấp nhận có hạn?
+
+- Phương án: (1) Sửa ngay · (2) Chấp nhận tới 2027-01-21
+- Chọn: Chấp nhận tới 2027-01-21
+- Lý do (tiêu chí chất lượng cuối): cần agent làm trái `pr next` hoặc fork đổi tên; an toàn; sửa đòi mã guard sát trần.
+- Đường lùi: Mở lại và sửa
+
+### D-535 · 2026-11-21T12:38:25+00:00 · BASE-REPO-006 chặn ký sau 15 phút kể từ VERSION: nới?
+
+- Phương án: (1) Thêm điều kiện có docs/ops/GO-NO-GO-*-<VERSION>.md (glob neo hai đầu) · (2) Giữ, chủ repo tạo tag tay
+- Chọn: Phương án (1)
+- Lý do (tiêu chí chất lượng cuối): cửa sổ 15 phút ngắn hơn CI + review nên chữ ký ở PR sau không bao giờ được duyệt; GO-NO-GO vẫn chặn phát hành (`go_no_go`, `release-sign`).
+- Đánh đổi chấp nhận: thiếu tag không còn bị BASE-REPO-006 báo khi đã có tệp GO-NO-GO (kể cả đã ký mà `release-tag.yml` hỏng); `go_no_go` và `release-check` vẫn đỏ/chờ. Có từ trước (AUD-HAR-460, chấp nhận tới 2027-01-21): BLUEPRINT.md tính là tài liệu nên đổi lệnh kiểm không sinh nợ review.
+- Đường lùi: Bỏ điều kiện `git ls-files` khỏi lệnh kiểm BASE-REPO-006
