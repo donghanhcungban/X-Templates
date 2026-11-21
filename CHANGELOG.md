@@ -77,6 +77,7 @@ một lần). Báo cáo: [`research/2026-11-21-audit-delta-3.35.0.md`](research/
 
 ### Changed
 
+- Trần byte của repo khung `docs/ops` và `docs/autopilot` cộng +1 MiB (ADR-0088, như ADR-0050); trần theo từng file nạp vào ngữ cảnh (`AGENTS.md`, `PROGRESS.md`, skill) giữ nguyên. Lệnh kiểm `BASE-REPO-006` của `BLUEPRINT.md` chấp nhận thêm ứng viên có `GO-NO-GO*<VERSION>*.md` chờ chữ ký (D-535, AUD-HAR-459) để chữ ký đến trong PR sau không bị cửa sổ 15 phút chặn.
 - Dự án đích không còn mang lời mô tả khung trên GitHub (`WF-DOC-021`): `.xtemplates/README.md` chỉ còn ghi chú nguồn
   và một câu "do `install.py`/`xt.py upgrade` quản lý"; tên workflow `xt-upgrade.yml` thành "Nâng cấp công cụ quy
   trình"; tên bước và bình luận của `ci.yml`, mẫu PR, `pr-steward.yml`, gói `web-api-ts` và dòng chú thích `.gitignore`
