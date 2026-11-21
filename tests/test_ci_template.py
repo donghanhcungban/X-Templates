@@ -24,6 +24,7 @@ import xt
 from test_ci import ci_jobs, flow_list, job_key, matrix_shards
 
 TEMPLATES = ROOT / "framework" / "templates"
+WORKFLOWS = ROOT / ".github" / "workflows"
 CI = TEMPLATES / "ci.yml"
 SCAN = TEMPLATES / "secret-scan.yml"
 PR_TITLE = TEMPLATES / "pr-title.yml"
@@ -703,6 +704,15 @@ class ScheduledTemplateTest(unittest.TestCase):
                 cases = (schedule, main, feature, tag)
                 self.assertEqual([job_if(expression, case) for case in cases], [True, True, False, False])
         self.assertFalse(job_if("github.ref == 'refs/heads/main'", schedule))  # the evaluator reads missing as ''
+
+
+class StewardCheckoutTest(unittest.TestCase):
+    """Audit delta 3.35.0 (review #711): `workflow_dispatch` chạy trên mọi ref, nên checkout của pr-steward luôn lấy nhánh
+    mặc định — người có quyền ghi không chạy được mã nhánh/tag của họ với `XT_STEWARD_TOKEN`."""
+
+    def test_checkout_pins_default_branch(self):
+        text = (WORKFLOWS / "pr-steward.yml").read_text(encoding="utf-8")
+        self.assertIn("ref: ${{ github.event.repository.default_branch }}", text)
 
 
 if __name__ == "__main__":
