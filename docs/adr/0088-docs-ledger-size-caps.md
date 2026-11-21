@@ -1,6 +1,7 @@
 # ADR-0088: Nới trần byte của sổ sách `docs/ops` và `docs/autopilot`
 
-- **Trạng thái:** Đã triển khai — `tests/test_docs_budget.py` (`DIR_CAPS`). Chủ dự án yêu cầu ngày 2026-11-21: nâng trần file lên mức thoải mái.
+- **Trạng thái:** Đã chấp nhận ngày 2026-11-21 theo yêu cầu của chủ dự án (nâng trần file lên mức thoải mái).
+- **Trạng thái triển khai:** Đã triển khai — `tests/test_docs_budget.py` (`DIR_CAPS`).
 
 ## Bối cảnh
 
@@ -11,8 +12,10 @@ số byte, tốn nhiều vòng cổng commit mà không tăng chất lượng. B
 
 ## Quyết định
 
-1. `docs/ops` và `docs/autopilot` cộng 1 MiB như ADR-0050: trần lần lượt 1 858 690 B và 1 396 921 B. Cách đo, loại trừ
-   file lưu trữ và luật "mốc ≤ 2×" của `SIZE_MARKS` giữ nguyên.
+1. `docs/ops` và `docs/autopilot` cộng 1 MiB như ADR-0050: trần lần lượt 1 858 690 B và 1 400 921 B. Cách đo, loại trừ
+   file lưu trữ và luật "mốc ≤ 2×" của `SIZE_MARKS` giữ nguyên. Trần hiệu lực là số nhỏ hơn của hai luật: mốc 2×
+   (1 543 076 B và 671 134 B) thấp hơn trần mới, nên chỗ trống thật còn khoảng 744 KB và 319 KB; muốn hơn nữa phải khai
+   mốc mới ở `SIZE_MARKS` bằng một ADR sau.
 2. Không đổi trần theo từng file (`AGENTS.md`, `PROGRESS.md`, `CLAUDE.md` mẫu, skill): các file này nạp vào ngữ cảnh mọi
    phiên, trần của chúng bảo vệ ngân sách ngữ cảnh chứ không phải dung lượng kho.
 3. Lưu trữ vẫn là cách giữ sổ đang dùng gọn: dòng `đã sửa` cũ chuyển sang `*-ARCHIVE.md`, quyết định cũ sang bản tháng.

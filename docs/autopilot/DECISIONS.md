@@ -653,7 +653,8 @@
 
 ### D-535 · 2026-11-21T12:38:25+00:00 · BASE-REPO-006 chặn ký sau 15 phút kể từ VERSION: nới?
 
-- Phương án: (1) Thêm điều kiện có GO-NO-GO*<VERSION>*.md · (2) Giữ, chủ repo tạo tag tay
+- Phương án: (1) Thêm điều kiện có docs/ops/GO-NO-GO-*-<VERSION>.md (glob neo hai đầu) · (2) Giữ, chủ repo tạo tag tay
 - Chọn: Phương án (1)
-- Lý do (tiêu chí chất lượng cuối): cửa sổ ngắn hơn CI + review; GO-NO-GO vẫn chặn phát hành.
-- Đường lùi: Bỏ điều kiện
+- Lý do (tiêu chí chất lượng cuối): cửa sổ 15 phút ngắn hơn CI + review nên chữ ký ở PR sau không bao giờ được duyệt; GO-NO-GO vẫn chặn phát hành (`go_no_go`, `release-sign`).
+- Đánh đổi chấp nhận: thiếu tag không còn bị BASE-REPO-006 báo khi đã có tệp GO-NO-GO (kể cả đã ký mà `release-tag.yml` hỏng); `go_no_go` và `release-check` vẫn đỏ/chờ. Có từ trước (AUD-HAR-460, chấp nhận tới 2027-01-21): BLUEPRINT.md tính là tài liệu nên đổi lệnh kiểm không sinh nợ review.
+- Đường lùi: Bỏ điều kiện `git ls-files` khỏi lệnh kiểm BASE-REPO-006
