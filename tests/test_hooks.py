@@ -5145,6 +5145,74 @@ class GuardDeltaAuditTest(unittest.TestCase):
         "gh api -X POST 'repos/o/r/git/refs?x=1' -f ref=refs/heads/feat -f sha=abc",
         "git push origin 'HEAD^{/fix?}:refs/heads/x'",
         "git tag 'rc*'",
+        # AUD-SEC-999 đối chứng: giá trị cờ trong nháy (bash không tách/không bung), giá trị nguyên văn
+        'gh release create nightly --notes "$NOTES"',
+        'gh release create nightly --notes "fix?"',
+        "gh release create nightly --title 'Release *'",
+        "gh release create nightly --notes-file notes.md",
+        "gh release create nightly --generate-notes",
+        'gh release create -n "${X}" nightly',
+        'gh release create nightly -t "$(git describe)"',
+        'gh release create nightly -n a"$X"b',
+        "gh release create nightly -t v1.2.\\? -n \\$X",
+        "gh release create nightly --title \"$T\" 'dist/*.zip'",
+        "gh release create nightly dist/*.zip",  # glob ở tài sản (đối số vị trí sau tag)
+        "gh release create -t {x,y} nightly",  # guard bung brace như bash: tag `y` đọc được
+        # `edit` không phát hành bản nháp/không đặt tag: giá trị cờ không nháy như base
+        'gh release edit v1.2.3 --notes "$X"',
+        "gh release edit d1 --notes $X",
+        "gh release edit d1 --draft=true --notes $X",
+        "gh release edit d1 --draft --notes $X",
+        "gh release edit d1 --draft true -n $X",
+        "gh release edit d1 --prerelease",
+        "gh release edit d1 --draft=false",
+        'gh release edit d1 --draft=false --notes "$X"',
+        "gh release edit d1 --tag nightly2 --notes-file notes.md",
+        "gh release edit d1 --tagline $X",
+    )
+    # AUD-SEC-999: giá trị cờ KHÔNG nháy của `release create|new` có glob/`$` — bash tách thành nhiều từ, từ thừa thành
+    # đối số vị trí (`-t v1.2.?` với tệp `v1.2.2`, `v1.2.3`: tag `v1.2.3`). Dạng đã chặn sẵn (tập con: `--title=$X`,
+    # backtick) giữ mã BUDGET.
+    RELEASE_SPLIT_DENY = (
+        "gh release create -t v1.2.?",
+        "gh release create -n $X",
+        "gh release create --title $(echo x v1.2.3)",
+        "gh release new -t v1.2.?",
+        "gh release create nightly -n v1.2.[3]",
+        "gh release create --target $B nightly",
+        "gh release create -n ${X} nightly",
+        "gh release create nightly --notes-file $F",
+        "gh release create -t * nightly",
+        "gh release create -p -t $X",
+        "gh release create -R o/r -t v1.2.?",
+        "gh release -R o/r new -n $X",
+        "gh -R o/r release create -n $X",
+        "command gh release create -n $X",
+        "env GH_REPO=o/r /usr/bin/gh release create -n $X",
+        "echo x; gh release create -t v1.2.? 2>&1",
+        "bash -c 'gh release create -t v1.2.?'",
+        'gh release create nightly -n "a"$X',
+        "gh release create nightly -t $(git describe)",
+        "gh release create --title=$X",
+        "gh release create -t `echo x v1.2.3`",
+        "gh release create --notes {a,v1.2.3}",
+        "gh release create -pt v1.2.?",
+        "gh release create -dn $X",
+        # `edit` phát hành bản nháp (`--draft` false theo pflag; `--draft false` chặt) hay đặt tag: tag là đối số vị trí
+        "gh release edit --notes v1.2.? d1 --draft=false",
+        "gh release edit d1 --draft=false --notes $X",
+        "gh release edit d1 -n $X --draft=false",
+        "gh release edit d1 --draft false --title v1.2.?",
+        "gh release edit d1 --draft False -n $X",
+        "gh release edit --notes v1.2.? --draft=0",
+        "gh release edit d1 --tag nightly2 -t $X",
+        "gh release edit d1 --tag=nightly2 -F $F",
+        "gh release -R o/r edit d1 --draft=false -F $F",
+        "gh release edit d1 --draft=false -t $(echo x v1.2.3)",
+        "bash -c 'gh release edit --notes v1.2.? --draft=false'",
+        "gh release edit v1.2.? --draft=false",
+        "gh release edit d1 --tag v1.2.?",
+        "gh release edit d1 --tag=$X",
     )
 
     # AUD-SEC-996a: `--follow-tags` (cả viết tắt git nhận) và `push.followTags` đẩy tag chú thích kèm nhánh — như
@@ -5310,9 +5378,33 @@ class GuardDeltaAuditTest(unittest.TestCase):
                 self.assertNotIn(self.guard.RELEASE_TAG_WHY, str(out.get("reason", "")))
                 self.assertIn(out["decision"], ("", "ask", "allow"))
 
+    def test_release_flag_value_split(self):
+        """AUD-SEC-999: giá trị cờ không nháy tách được (glob, `$`) ở `gh release create|new` → deny tag phiên bản ở mọi
+        chính sách (dạng tập con chặn trước giữ BUDGET); luật gh trên argv đã bỏ nháy không phân biệt được nháy."""
+        for cmd in self.RELEASE_SPLIT_DENY:
+            with self.subTest(cmd):
+                out = self.guard.bash_decision(cmd, str(self.root))
+                self.assertEqual(out["decision"], "deny")
+                code = self.guard.decide(out).code
+                self.assertTrue(self.guard.RELEASE_TAG_WHY in str(out["reason"]) or code == self.guard.BUDGET, out)
+                self.assertEqual(self.guard.apply_policy(out)["decision"], "deny")
+        # luật mới nêu lý do tag phiên bản (không phải BUDGET) cho dạng trước đây lọt
+        for cmd in (
+            "gh release create -n $X",
+            "gh release create nightly -n v1.2.[3]",
+            "gh release new -t v1.2.?",
+            "gh release edit --notes v1.2.? d1 --draft=false",
+            "gh release edit d1 --draft false --title v1.2.?",
+        ):
+            with self.subTest(cmd):
+                self.assertIn(self.guard.RELEASE_TAG_WHY, str(self.guard.bash_decision(cmd, str(self.root))["reason"]))
+        for cmd in ("gh release create nightly", "gh", "X=1", "echo 'x", "gh release list -L $N"):
+            with self.subTest(cmd):
+                self.assertEqual(self.guard._gh_release_split(cmd), "")
+
     def test_release_version_tag_concurrent(self):
         """Quyết định F-144 chạy đồng thời giống tuần tự (không trạng thái dùng chung giữa các lệnh)."""
-        cmds = list(self.RELEASE_TAG_DENY + self.RELEASE_TAG_OK) * 2
+        cmds = list(self.RELEASE_TAG_DENY + self.RELEASE_TAG_OK + self.RELEASE_SPLIT_DENY) * 2
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
             together = list(pool.map(self.dec, cmds))
         self.assertEqual(together, [self.dec(c) for c in cmds])

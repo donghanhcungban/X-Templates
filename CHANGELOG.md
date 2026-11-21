@@ -79,6 +79,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Fixed
 
+- Guard chặn giá trị cờ không nháy có thể tách thành nhiều từ ở `gh release create|new` (và `edit` khi đặt tag hoặc phát hành bản nháp): glob `*?[`, `$X`, `$(…)` đẩy từ thừa vào vị trí tag. Đặt giá trị trong nháy thì qua; lý do chặn hướng dẫn cách đặt (AUD-SEC-999).
 - Guard không còn để agent tạo tag phiên bản qua `git push --follow-tags`, `git fetch`/`pull` có đích `refs/tags/`, `gh release create|new` kèm cụm cờ ngắn, hay tên tag có `*?[`; `gh release new` và `gh gist new` bị chặn khi tải tệp bí mật như `create`; `gh api` xét mọi giá trị lặp của `ref`/`branch`. Lệnh `gh release create nightly --title v1.2.3` không còn bị chặn oan (AUD-SEC-996, 997, 998).
 - `audit check`, `pr debt` và `autonomy-bench` đọc đủ sổ audit lưu trữ khi có dòng trống hay ghi chú `>` chen giữa bảng Phát hiện; trước đây mọi dòng sau ghi chú đầu tiên bị bỏ (AUD-HAR-448). Dự án đích có dòng sai nằm sau ghi chú (ID trùng, dòng không `đã sửa`) sẽ thấy `audit check` báo lỗi mới khi nâng khung.
 - Test của repo khung không còn trần giây cứng: bộ dò AST trong `tests/cpu_budget.py` bắt ngưỡng `monotonic`/`perf_counter`/`process_time`, trần tốc độ đổi sang kiểm độ phức tạp hoặc hành vi, hạn chống treo phải khai lý do (AUD-TEST-125). `scope.json` của bench tự hành chỉ còn ID bắt buộc, có test giữ (AUD-TEST-127).

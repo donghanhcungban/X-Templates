@@ -12962,6 +12962,23 @@ def _pflag_eats(a: str, valued: Tuple[str, ...], shorts: FrozenSet[str]) -> Opti
     return 0
 
 
+def _gh_release_split(cmd: str) -> str:
+    """AUD-SEC-999: giá trị cờ có `$`/glob không nháy của `release create|new` (`edit`: `--tag`/`--draft` false)."""
+    for _, words in _simple_cmds(cmd) or []:
+        p = [_dequote(w) for w in words]
+        path = _gh_path(p[1:]) if p and posixpath.basename(p[0]) == "gh" else []
+        sub = [p[j + 1] for j in path][:2]
+        d = [a + "=" + b if a == "--draft" and b.lower() in ("0", "f", "false") else a for a, b in zip(p, p[1:])]
+        pub = any(a.split("=")[0] == "--tag" or a[:8] == "--draft=" and a[8:] not in PFLAG_TRUE for a in d + p[-1:])
+        pub = sub in (["release", "create"], ["release", "new"]) or sub == ["release", "edit"] and pub
+        k = path[0] + 2 if pub else len(p)
+        for _, a, _, flag in _gh_words(words[k:], list(map(_gate_skeleton, words[k:])), p[k:]):
+            v = _CodeView(a)
+            if flag and any(v.top[i] and v.kind[i] == "c" and c in "$*?[" for i, c in enumerate(a)):
+                return f"Lệnh bị khung chặn ({RELEASE_TAG_WHY}; cần nháy `{clean_text(a)[:80]}`): {cmd[:300]}"
+    return ""
+
+
 # AUD-SEC-623: `gh repo sync --force` gọi `PATCH …/git/refs/heads/<b>` `force:true` (gh 2.89 "Hard reset the branch").
 GH_SYNC_FORCE_WHY = f"{PUSH_FORCE_WHY}: `gh repo sync --force` đặt lại cứng nhánh đích (AUD-SEC-623)"
 
@@ -22120,19 +22137,14 @@ COPY_VALUE_OPTS = {
 }
 CLOUD_URL_RE = re.compile(r"(?:s3|gs|az|r2|b2)://")
 CLOUD_COPIERS = ("aws", "gsutil", "rclone", "gcloud", "azcopy")
-# ADR-0076 lát 0: tên lệnh có luật — lệnh đơn mà basename từ đầu thuộc tập này qua cổng tập con dương
-# (`_ruled_word_why`, lát 2). Gom từ bảng có sẵn: git/gh, shell, eval/source, trình bọc và mọi tên luật của
-# `_scan_command` (bắc cầu, cả phương thức lớp) rẽ nhánh; `GuardGateNamesTest` đọc mã và khẳng định các tập khớp nhau —
-# tên rẽ nhánh mà bộ đọc không thấy (biến vòng lặp/comprehension, kết quả hàm phụ) khai ở `GATE_UNREAD` của test kèm lý
-# do và lệnh mẫu. Rẽ nhánh theo tiền tố hay biểu thức chính quy (`mkfs*`, `git-<lệnh con>`, `INTERP_RE`: `python3.12`,
-# `pypy3`, `nodejs`) không nằm ở đây — tập hợp không biểu diễn được (review #526).
-# D-434: tên luật có rẽ nhánh nhưng KHÔNG kích hoạt cổng — trình thông dịch không phải shell (ADR-0076: `python3
-# scripts/xt.py …` không qua cổng) và lệnh chỉ đọc/in (bảng thụ động của D-432): không thuộc bảng ghi tệp, chạy lệnh từ
-# đối số, ra mạng hay ghi biến theo tên nào của guard (`GuardGateNamesTest.ACTIVE_TABLES`). Ngoại lệ đã biết, có từ trước
-# ADR-0076 (guard cho qua, không thuộc bảng ghi/chạy nào): `less -o FILE` ghi tệp. Công cụ đọc có cờ chạy chương
-# trình (`READER_EXEC_OPTS`: `rg --pre`, `ugrep --filter`, `bat --pager`, `less --lesskey-*`…) ở `GATE_NAMES` để cờ có mở rộng (`--pre$E`)
-# qua cổng (AUD-SEC-727). Lệnh đọc mà có dạng ghi (`sort -o`, `uniq in out`, `touch`, `tee`, trình soạn thảo, formatter) ở lại `GATE_NAMES`; `printf` cũng vậy
-# (D-439: `printf -v VAR` ghi biến như `read`/`let`).
+# ADR-0076 lát 0: tên lệnh có luật — lệnh đơn có basename từ đầu thuộc tập này qua cổng tập con dương (`_ruled_word_why`,
+# lát 2): git/gh, shell, eval/source, trình bọc và mọi tên luật rẽ nhánh của `_scan_command` (bắc cầu). `GuardGateNamesTest`
+# khẳng định các tập khớp mã; tên bộ đọc không thấy khai ở `GATE_UNREAD` của test. Rẽ nhánh theo tiền tố/regex (`mkfs*`,
+# `git-<lệnh con>`, `INTERP_RE`) không nằm ở đây (review #526).
+# D-434: tên luật rẽ nhánh nhưng KHÔNG kích hoạt cổng — trình thông dịch không phải shell, lệnh chỉ đọc/in (D-432): không
+# thuộc bảng ghi/chạy/ra mạng/ghi biến nào (`GuardGateNamesTest.ACTIVE_TABLES`); ngoại lệ có từ trước: `less -o FILE`.
+# Công cụ đọc có cờ chạy chương trình (`READER_EXEC_OPTS`, AUD-SEC-727), lệnh đọc có dạng ghi (`sort -o`, `tee`) và
+# `printf -v` (D-439) ở `GATE_NAMES`.
 GATE_PASSIVE: FrozenSet[str] = frozenset(
     "python python3 node perl ruby php cat tac head tail wc grep egrep fgrep zgrep diff cmp jq echo"
     " date true false nproc pwd ls whoami hostname uname id test [ [[ basename dirname readlink realpath stat file"
@@ -24050,6 +24062,7 @@ def _bash_decision(
         else ""
     )
     deny_reason = deny_reason or _nested_commit_deny(res, asks, commands, budget, depth)  # T-3952 F1, sau ghi công
+    deny_reason = deny_reason or (_gh_release_split(cmd) if strict else "")
     if deny_reason:
         res.update(decision="deny", reason=deny_reason)
         return res
