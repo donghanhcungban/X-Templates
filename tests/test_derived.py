@@ -518,6 +518,100 @@ def dpr(**over: Any) -> dict:
     return pr(**{"files": [{"path": PATH, "additions": 11, "deletions": 0}], "derived": DERIVED_OK, **over})
 
 
+# Trường danh tính như `_pr_rest` dựng: PR từ fork của người ngoài (không quyền ghi repo đích).
+FORK = {"repo": dv.UPSTREAM, "headRepo": HEAD_REPO, "author": "alice", "authorAssociation": "NONE"}
+SAME = {"repo": dv.UPSTREAM, "headRepo": dv.UPSTREAM, "author": "chu", "authorAssociation": "OWNER"}
+FORK_WHY = f"PR từ fork {HEAD_REPO} — người merge"
+
+
+class ForkIdentityTest(unittest.TestCase):
+    """PR từ fork / tác giả không quyền ghi ngoài làn derived hợp lệ: `merge-check`/`pr next`/guard không ra merge ở mọi
+    mức tự chủ và mọi làn (trước đây chỉ steward kiểm — `steward_untrusted`)."""
+
+    FILES = {
+        "tài liệu": [{"path": "README.md", "additions": 3, "deletions": 1}],
+        "hook guard": [{"path": ".claude/hooks/guard.py", "additions": 5, "deletions": 1}],
+        "workflow CI": [{"path": ".github/workflows/ci.yml", "additions": 2, "deletions": 2}],
+    }
+
+    def test_fork_never_merges_at_any_level(self) -> None:
+        for name, files in self.FILES.items():
+            for level in (1, 2, 3):
+                with self.subTest(name, level=level):
+                    same = xt.merge_decision(pr(files=files, **SAME), level)
+                    fork = xt.merge_decision(pr(files=files, **FORK), level)
+                    self.assertEqual(fork["verdict"], "human")
+                    self.assertEqual(fork["reasons"][0], FORK_WHY)
+                    self.assertEqual(fork["lane"], same["lane"])  # làn tính như cũ, chỉ verdict giữ người
+                    self.assertNotIn("next_rest", fork)
+                    self.assertEqual(fork["next"], "để người merge; báo cáo lý do")
+                    old = xt.merge_decision(pr(files=files), level)
+                    self.assertEqual({**same, "repo": ""}, old)  # cùng repo: như trước khi xét danh tính
+        l3 = xt.merge_decision(pr(files=self.FILES["workflow CI"], **SAME), 3)
+        self.assertEqual(l3["verdict"], "merge")  # cùng repo ở L3 vẫn tự merge làn chuẩn
+
+    def test_author_without_write_access(self) -> None:
+        same_repo = {"repo": dv.UPSTREAM, "headRepo": dv.UPSTREAM}
+        cases = {
+            "CONTRIBUTOR": ({"author": "bob", "authorAssociation": "CONTRIBUTOR"}, "human"),
+            "MEMBER không quyền ghi": ({"author": "bob", "authorAssociation": "MEMBER"}, "human"),
+            "MEMBER có quyền ghi": (
+                {"author": "bob", "authorAssociation": "MEMBER", "authorCanWrite": "true"},
+                "merge",
+            ),
+            "COLLABORATOR": ({"author": "bob", "authorAssociation": "COLLABORATOR"}, "merge"),
+            "dependabot": ({"author": "dependabot[bot]", "authorAssociation": "NONE"}, "merge"),
+            "chỉ headRepo, thiếu association": ({}, "human"),  # có danh tính mà không rõ quyền: chặt
+        }
+        for name, (who, want) in cases.items():
+            with self.subTest(name):
+                d = xt.merge_decision(pr(**same_repo, **who), 3)
+                self.assertEqual(d["verdict"], want, d["reasons"])
+                self.assertEqual(d["reasons"][0] == xt.steward_untrusted({**same_repo, **who}), want == "human")
+        # Ảnh chụp `--pr-json` dạng MERGE_FIELDS (không trường danh tính): luật cũ.
+        self.assertEqual(xt.merge_identity_reason(pr()), "")
+        self.assertEqual(xt.merge_decision(pr(), 3)["verdict"], "merge")
+
+    def test_derived_lane_and_precedence(self) -> None:
+        ok = xt.derived_steward_only(xt.merge_check_result(dpr(**FORK), 3, [], False, "harden"))
+        self.assertEqual((ok["verdict"], ok["lane"], ok["auto_merge_ok"]), ("wait", "derived", False))
+        self.assertNotIn(FORK_WHY, ok["reasons"])
+        bad = dpr(**FORK, derived={**DERIVED_OK, "ok": False, "reasons": ["description rỗng"]})
+        d = xt.derived_steward_only(xt.merge_check_result(bad, 3, [], False, "harden"))
+        self.assertEqual((d["verdict"], d["lane"], d["reasons"][0]), ("human", "nhanh", FORK_WHY))
+        self.assertIn("làn derived: không — description rỗng", d["reasons"])
+        # Ngoại lệ cứng đứng trước (guard chặn theo `hard`); miễn ngoại lệ cứng thì danh tính vẫn giữ người.
+        auth = pr(files=[{"path": "src/auth/login.py", "additions": 1, "deletions": 0}], **FORK)
+        hard = xt.merge_decision(auth, 3)
+        self.assertTrue(hard["hard"] and hard["reasons"][0].startswith("ngoại lệ cứng"), hard)
+        waived = xt.merge_decision(auth, 3, hard_auto=True)
+        self.assertEqual((waived["verdict"], waived["hard"], waived["reasons"][0]), ("human", [], FORK_WHY))
+        # Trạng thái chặn (đóng, CI đỏ) vẫn báo đúng như PR thường.
+        self.assertEqual(xt.merge_decision(pr(state="CLOSED", **FORK), 3)["verdict"], "closed")
+        red = [{"__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "FAILURE"}]
+        self.assertEqual(xt.merge_decision(pr(statusCheckRollup=red, **FORK), 3)["verdict"], "fix")
+
+    def test_cli_and_guard_read_human(self) -> None:
+        base = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(unittest.mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(base)}))
+        commit_base_xt(base, "merge_autonomy: L3\nmerge_review: optional\n")
+        p = pr(files=self.FILES["tài liệu"], **FORK)
+        rc, out, _ = run_main("merge-check", "--pr-json", "-", "--json", stdin=json.dumps(p))
+        d = json.loads(out)
+        self.assertEqual((rc, d["verdict"], d["eligible"]), (1, "human", False))
+        rc, out, _ = run_main("pr", "next", "--pr-json", "-", stdin=json.dumps(p))
+        self.assertEqual((rc, out.splitlines()[0]), (0, f"DEFER-HUMAN · PR #7 · head abc1234 — {FORK_WHY}"))
+        rc, out, _ = run_main("merge-check", "--pr-json", "-", "--json", stdin=json.dumps({**p, **SAME}))
+        self.assertEqual((rc, json.loads(out)["verdict"]), (0, "merge"))
+        sys.path.insert(0, str(ROOT / ".claude" / "hooks"))
+        import guard
+
+        with unittest.mock.patch.object(guard, "merge_check", return_value=d):
+            verdict, why = guard._merge_verdict(["7"], "abc1234def", str(base))
+        self.assertEqual(verdict, "ask")  # không còn allow như khi merge-check trả merge
+        self.assertIn(f"merge-check: human: {FORK_WHY}", why)
+
+
 class MergeLaneTest(unittest.TestCase):
     def test_derived_lane_merges_without_review(self) -> None:
         d = xt.merge_decision(dpr(), 2)
@@ -557,10 +651,13 @@ class MergeLaneTest(unittest.TestCase):
         self.assertEqual((d["verdict"], d["eligible"], d["next"]), ("wait", False, xt.DERIVED_WAIT))
         self.assertNotIn("next_rest", d)
         self.assertEqual(d["reasons"][-1], xt.DERIVED_STEWARD)
+        self.assertIs(d["auto_merge_ok"], False)  # chỉ steward merge: không phát tín hiệu auto-merge
         fast = xt.merge_decision(pr(), 3)
         self.assertIs(xt.derived_steward_only(fast), fast)
         red = xt.merge_decision(dpr(mergeable="CONFLICTING"), 3)
-        self.assertIs(xt.derived_steward_only(red), red)
+        out = xt.derived_steward_only({**red, "auto_merge_ok": True})
+        self.assertEqual({**out, "auto_merge_ok": True}, {**red, "auto_merge_ok": True})
+        self.assertEqual((out["verdict"], out["auto_merge_ok"]), ("fix", False))
 
     def test_falls_back_to_existing_rules(self) -> None:
         mismatch = dpr(derived={**DERIVED_OK, "head": "khác"})
@@ -594,6 +691,12 @@ class MergeLaneTest(unittest.TestCase):
                 notes = [r for r in d["reasons"] if r.startswith("làn derived: không — ")]
                 self.assertEqual(len(notes), 1, d["reasons"])
                 self.assertIn(want, notes[0])
+                # PR fork không qua kiểm: chờ người như PR fork thường (docs/derived/README.md), không phải merge.
+                forked = xt.merge_decision({**p, **FORK}, 3, hard_auto=True)
+                self.assertEqual((forked["verdict"], forked["lane"]), ("human", lane))
+                # ngoại lệ cứng không miễn được (danh sách bị cắt) đứng trước lý do danh tính
+                lead = "ngoại lệ cứng" if forked["hard"] else FORK_WHY
+                self.assertTrue(forked["reasons"][0].startswith(lead), forked["reasons"])
         plain = xt.merge_decision(pr(derived="x"), 2)
         self.assertFalse(any("làn derived" in r for r in plain["reasons"]))
 
@@ -687,6 +790,12 @@ class RestLaneTest(unittest.TestCase):
         self.assertFalse(p["derived"]["ok"])
         self.assertEqual(step["action"], "defer-human")
         self.assertIn("PR từ fork alice/X-Templates", step["why"])
+        with self.gh(listed).patch():
+            rc, out, _ = run_main("merge-check", "--pr", "7", "--json")
+        # Guard đọc đúng kết quả này: tiêu đề fork sai dạng chặn trước (`fix`); sửa tiêu đề thì vẫn giữ người.
+        self.assertEqual((rc, json.loads(out)["verdict"]), (1, "fix"))
+        titled = xt.merge_decision({**p, "title": "docs: thêm bản ghi"}, 3)
+        self.assertEqual((titled["verdict"], titled["reasons"][0]), ("human", FORK_WHY))
 
     def test_api_failure_never_enters_lane(self) -> None:
         with (
@@ -696,7 +805,8 @@ class RestLaneTest(unittest.TestCase):
             p = xt._pr_rest("7")
             step = xt._steward_one("7", DerivedGh.REPO, self.base, False, [])
         self.assertFalse(p["derived"]["ok"])
-        self.assertEqual(xt.merge_decision(p, 3)["lane"], "nhanh")
+        d = xt.merge_decision({**p, "title": "docs: thêm bản ghi"}, 3)
+        self.assertEqual((d["lane"], d["verdict"], d["reasons"][0]), ("nhanh", "human", FORK_WHY))
         self.assertEqual(step["action"], "defer-human")
 
     def test_other_prs_untouched_and_module_optional(self) -> None:
@@ -796,6 +906,19 @@ class CliTest(unittest.TestCase):
             rc, _, err = run_main("derived", "check", "--pr", "x")
         self.assertEqual(rc, 2)
         self.assertIn("không có PR", err)
+
+    def test_check_pr_url_targets_upstream(self) -> None:
+        """README hướng dẫn dạng URL: trong clone của fork, số PR trần có thể trỏ repo fork (`{owner}/{repo}`)."""
+        got = {"ok": True, "file": PATH, "repo": HEAD_REPO, "head": HEAD, "reasons": []}
+        url = f"https://github.com/{dv.UPSTREAM}/pull/12"
+        with (
+            unittest.mock.patch.object(xt, "_gh_one", return_value=pull()) as one,
+            unittest.mock.patch.object(dv, "evaluate", return_value=got) as ev,
+        ):
+            rc, out, _ = run_main("derived", "check", "--pr", url)
+        self.assertEqual((rc, out), (0, "✓ PR #12 · làn derived: đủ điều kiện\n"))
+        one.assert_called_once_with(f"repos/{dv.UPSTREAM}/pulls/12")
+        self.assertEqual(ev.call_args.args[1], f"repos/{dv.UPSTREAM}")
 
     def test_list(self) -> None:
         self.put()

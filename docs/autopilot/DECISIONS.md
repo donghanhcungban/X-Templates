@@ -636,3 +636,10 @@
 - Chọn: Merge, ghi AUD-HAR-452/453 chấp nhận
 - Lý do (tiêu chí chất lượng cuối): base cũng lọt, cùng họ D-332; #707 nhẹ hơn base = 0; hàng rào thật là ruleset tag v*.
 - Đường lùi: Mở lại hai mục và vá.
+
+### D-533 · 2026-11-21T08:44:47+00:00 · WF-REVIEW-007 (MUST) lệch ADR-0079: sửa câu chữ hay đổi mã?
+
+- Phương án: (1) Sửa MUST cho khớp ADR-0079 · (2) Giữ MUST, đổi mã/ADR đòi review ở optional
+- Chọn: Sửa MUST cho khớp ADR-0079
+- Lý do (tiêu chí chất lượng cuối): ADR-0079 đã quyết hành vi; dự án siết bằng required.
+- Đường lùi: Khôi phục câu MUST cũ

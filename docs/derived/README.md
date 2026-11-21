@@ -9,7 +9,9 @@ tệp của mình bằng PR. Quyết định và lý do: [ADR-0087](../adr/0087-
 2. Tạo hoặc sửa đúng tệp `docs/derived/<owner>--<repo>.json`, trong đó `<owner>/<repo>` là repo mở PR, giữ nguyên chữ
    hoa/thường. Ví dụ PR từ `alice/X-Templates` dùng tệp `alice--X-Templates.json`.
 3. Kiểm: `python3 scripts/xt.py derived check docs/derived/<owner>--<repo>.json` (exit 0 là hợp lệ).
-4. Mở PR vào `main`. Sau khi CI xanh, kiểm lại bằng `python3 scripts/xt.py derived check --pr <N>`.
+4. Mở PR vào `main`. Sau khi CI xanh, kiểm lại bằng URL đầy đủ của PR:
+   `python3 scripts/xt.py derived check --pr https://github.com/www-donghanhcungban-org/X-Templates/pull/<N>`. Trong
+   clone của fork, số PR trần (`--pr <N>`) có thể bị hiểu là PR của chính repo fork.
 
 ```json
 {
@@ -44,4 +46,5 @@ tệp của mình bằng PR. Quyết định và lý do: [ADR-0087](../adr/0087-
 - Lần đầu bạn gửi PR, người duyệt của repo cần cho phép chạy workflow. Trước đó PR chưa có CI và chưa merge được.
 - Nếu nhánh tụt sau `main`, máy chỉ tự cập nhật được khi PR bật "Allow edits by maintainers".
 - Repo không thuộc mạng fork của X-Templates không mở PR trực tiếp từ chính repo đó được. Bản ghi của nó do người duyệt.
-- PR chạm tệp khác, không qua kiểm hoặc có review yêu cầu sửa sẽ chờ người duyệt như PR thường.
+- PR chạm tệp khác, không qua kiểm hoặc có review yêu cầu sửa không vào làn `derived`. Như mọi PR từ fork, máy không
+  tự merge PR đó (`merge-check` trả `human`, `pr next` trả `defer-human`); người duyệt quyết định.
