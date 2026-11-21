@@ -6606,7 +6606,42 @@ def derived_lane(pr: Dict[str, Any]) -> bool:
     d = pr.get("derived")
     if not isinstance(d, dict) or d.get("ok") is not True or d.get("head") != pr.get("headRefOid"):
         return False
-    return not pr.get("filesTruncated") and not _risk_labels(pr)
+    files = [f for f in pr.get("files") or [] if isinstance(f, dict)]
+    one = len(files) == len(pr.get("files") or []) == 1 and _risky_paths(pr) == [d.get("file")]
+    return one and not pr.get("filesTruncated") and not _risk_labels(pr)
+
+
+def _derived_review(d: Dict[str, Any], reviews: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Review yêu cầu sửa (kể cả khi `merge_review: optional` bỏ qua `reviewDecision`) → không vào làn derived."""
+    if _review_decision(reviews, "") != "CHANGES_REQUESTED":
+        return d
+    return {**d, "ok": False, "reasons": [*d.get("reasons", []), "có review yêu cầu sửa (CHANGES_REQUESTED)"]}
+
+
+DERIVED_STEWARD = "làn derived: chỉ pr-steward merge, với subject và thân cố định (ADR-0087) — phiên agent không merge"
+DERIVED_WAIT = "chờ pr-steward merge (sau khi CI xong hoặc lượt lịch 10 phút)"
+
+
+def derived_steward_only(d: Dict[str, Any]) -> Dict[str, Any]:
+    """`merge-check` (cổng guard cho `gh pr merge`/REST/MCP của phiên agent): PR làn derived đủ điều kiện → `wait`. Lệnh
+    merge của agent không đặt được subject/thân (guard chặn `--subject`/`commit_title`), thân squash sẽ là commit của
+    fork; chỉ steward gửi `derived_commit`."""
+    if d.get("lane") != "derived" or d.get("verdict") != "merge":
+        return d
+    out = {k: v for k, v in d.items() if k != "next_rest"}
+    out.update(verdict="wait", reasons=[*d["reasons"], DERIVED_STEWARD], next=DERIVED_WAIT, eligible=False)
+    return out
+
+
+def derived_commit(pr: Dict[str, Any]) -> Tuple[str, str]:
+    """(subject, thân) squash cố định của làn derived (ADR-0087), dựng từ bản ghi đã kiểm — không lấy tiêu đề, thân hay
+    commit của PR fork (repo đặt thân squash = mọi commit). Steward gửi cả hai (`commit_title`, `commit_message`)."""
+    d = pr["derived"]
+    subject = f"docs(derived): cập nhật {Path(str(d['file'])).stem}"
+    if len(subject) > PR_TITLE_MAX:
+        subject = "docs(derived): cập nhật bản ghi dự án phái sinh"
+    body = f"Bản ghi {d['file']} của {d['repo']}, merge qua làn derived (ADR-0087)."
+    return f"{subject} (#{pr.get('number', '')})", body
 
 
 def derived_notes(pr: Dict[str, Any], derived: bool) -> List[str]:
@@ -6619,7 +6654,7 @@ def derived_notes(pr: Dict[str, Any], derived: bool) -> List[str]:
     why = (
         [str(r) for r in got]
         if isinstance(got, list) and got
-        else ["head lệch, nhãn risk:, ngoại lệ cứng hoặc thiếu tệp"]
+        else ["head lệch, PR đổi tệp khác, nhãn risk:, ngoại lệ cứng hoặc danh sách tệp bị cắt"]
     )
     return [f"làn derived: không — {'; '.join(why[:3])}"]
 
@@ -6643,7 +6678,8 @@ def merge_decision(
     waived = [r for r in hard if r not in UNWAIVABLE] if hard_auto else []
     hard = [r for r in hard if r not in waived]
     lane = "derived" if derived else "chuẩn" if lane_reasons else "nhanh"
-    blocked = _merge_blockers(pr) or _stacked_blocker(pr)
+    # Làn derived: tiêu đề PR fork không lên nhánh chính (subject cố định — `derived_commit`) nên không chặn theo nó.
+    blocked = _merge_blockers({k: v for k, v in pr.items() if k != "title"} if derived else pr) or _stacked_blocker(pr)
     if blocked:
         verdict, reasons = blocked
     elif hard:
@@ -7393,7 +7429,7 @@ def _pr_rest(pr_arg: Optional[str], local_check: bool = True) -> Dict[str, Any]:
         **({"autoMergeRequest": pr["auto_merge"]} if pr.get("auto_merge") else {}),
         # REST cắt danh sách file ở 3000: PLAN.md/xt.yaml có thể nằm ngoài phần đã thấy → luôn người merge
         **({"filesTruncated": True} if int(pr.get("changed_files") or 0) > len(files) else {}),
-        **({"derived": derived} if derived else {}),
+        **({"derived": _derived_review(derived, reviews)} if derived else {}),
         "files": [
             {
                 "path": f.get("filename", ""),
@@ -12530,7 +12566,7 @@ def cmd_merge_check(args: argparse.Namespace) -> int:
         print(f"✗ {exc}", file=sys.stderr)
         return 2
     d, notes = _merge_eval(pr, local=True)
-    d = _check_live_base(pr, d)
+    d = derived_steward_only(_check_live_base(pr, d))
     if args.json:
         print(json.dumps({**d, "notes": notes}, ensure_ascii=False))
     else:
@@ -17616,12 +17652,14 @@ def _publish_review(
 # --------------------------------------------------------------------------- pr steward (ADR-0027)
 
 
-def _steward_command(out: Dict[str, Any], repo: str, subject: str = "") -> List[List[str]]:
+def _steward_command(out: Dict[str, Any], repo: str, subject: str = "", body: str = "") -> List[List[str]]:
     """Lệnh gh cho hành động `pr next` mà steward tự làm; [] = chỉ báo (review, fix, defer-human, chờ…). Merge luôn ghim
-    head (REST `sha`) và đặt subject squash = tiêu đề PR (`squash_subject`); không bao giờ bật auto-merge (ADR-0036)."""
+    head (REST `sha`) và đặt subject squash = tiêu đề PR (`squash_subject`) — làn derived: subject + thân cố định
+    (`derived_commit`); không bao giờ bật auto-merge (ADR-0036)."""
     n, head, action = str(out["pr"]), str(out["head"]), out["action"]
     if action == "merge":
         title = ["-f", f"commit_title={subject}"] if subject else []
+        title += ["-f", f"commit_message={body}"] if body else []
         return [
             [
                 "gh",
@@ -17716,7 +17754,7 @@ def _steward_one(pr_arg: str, repo: str, base: Path, apply: bool, gh_repo: List[
             out["warn"] = f"không gắn được nhãn {STANDARD_LABEL}: {label_err} — lượt sau thử lại"
             if out["action"] != "disable-auto-merge":  # tắt auto-merge (giữ PR lại) vẫn chạy
                 return out
-    steward = _steward_command(out, repo, squash_subject(pr))
+    steward = _steward_command(out, repo, *(derived_commit(pr) if d["lane"] == "derived" else (squash_subject(pr), "")))
     cmds = [c[:3] + gh_repo + c[3:] if c[:3] == ["gh", "pr", "merge"] else c for c in steward]
     target = str(pr.get("baseRefName") or "main")
     # như trigger `push` của release-tag.yml: chỉ nhánh `main` (nhánh khác: job bị bỏ qua, bản cũ thiếu input → 422)
@@ -18201,6 +18239,8 @@ def cmd_pr(args: argparse.Namespace) -> int:
         return 2
     d, _, rec = _pr_next_state(pr, base)
     _, out = _eval_pr_next(pr, d, rec, base)
+    if out["action"] == "merge" and d.get("lane") == "derived":  # chỉ steward merge làn derived (ADR-0087)
+        out = {**out, "action": "wait", "why": DERIVED_STEWARD, "do": DERIVED_WAIT}
     if args.json:
         print(json.dumps(out, ensure_ascii=False))
         return 0

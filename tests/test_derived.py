@@ -104,6 +104,25 @@ REJECT = {
     "mô tả surrogate lẻ": ({"description": "a\ud800b"}, "điều khiển"),
     "mô tả NFD": ({"description": unicodedata.normalize("NFD", "Dự án")}, "NFC"),
     "mô tả số điện thoại": ({"description": "gọi 0912 345 678"}, "dãy số dài"),
+    "mô tả variation selector": ({"description": "a️b"}, "ký tự ẩn"),
+    "mô tả variation selector bổ sung": ({"description": "a\U000e0101b"}, "ký tự ẩn"),
+    "mô tả tag Unicode": ({"description": "a\U000e0041b"}, "ký tự ẩn"),
+    "mô tả CGJ": ({"description": "a͏b"}, "ký tự ẩn"),
+    "mô tả Hangul filler": ({"description": "aㅤb"}, "ký tự ẩn"),
+    "mô tả Hangul choseong filler": ({"description": "aᅟb"}, "ký tự ẩn"),
+    "mô tả Hangul halfwidth filler": ({"description": "aﾠb"}, "ký tự ẩn"),
+    "mô tả Braille trống": ({"description": "a⠀b"}, "ký tự ẩn"),
+    "mô tả chồng dấu": ({"description": "x́́́"}, "dấu kết hợp"),
+    "mô tả @ toàn chiều rộng": ({"description": "lien＠example"}, "@"),
+    "mô tả http toàn chiều rộng": ({"description": "ｈｔｔｐ x"}, "URL"),
+    "mô tả số toàn chiều rộng": ({"description": "gọi ０９１２３４５６７８"}, "dãy số"),
+    "mô tả số Ả Rập": ({"description": "gọi ٠٩١٢٣٤٥٦٧"}, "dãy số"),
+    "mô tả số gạch chéo": ({"description": "gọi 0912/345/678"}, "dãy số"),
+    "mô tả tên miền kèm đường dẫn": ({"description": "vào evil.com/free-money"}, "tên miền"),
+    "mô tả tên miền lạ kèm đường dẫn": ({"description": "vào a.b.example/x"}, "tên miền"),
+    "mô tả tên miền trần": ({"description": "ghé Evil.COM nhé"}, "tên miền"),
+    "mô tả tên miền .vn": ({"description": "ghé shop.vn"}, "tên miền"),
+    "mô tả tên miền .net": ({"description": "dùng ASP.NET"}, "tên miền"),  # asp.net là tên miền thật
     "homepage http": ({"homepage": "http://x.vn"}, "homepage chỉ nhận"),
     "homepage javascript": ({"homepage": "javascript:alert(1)"}, "homepage chỉ nhận"),
     "homepage userinfo": ({"homepage": "https://user@x.vn"}, "homepage chỉ nhận"),
@@ -143,6 +162,15 @@ ACCEPT = {
     "updated quá khứ": {"updated": "2026-01-01"},
     "mô tả 280 ký tự": {"description": "a" * 280},
     "tiếng Việt NFC": {"description": "Dự án quản lý khách sạn — bản dùng nội bộ (2026)."},
+    # Mọi dấu thanh trên mọi nguyên âm tiếng Việt: sau NFC không còn dấu kết hợp nên luật chặn dấu không chặn oan.
+    "tiếng Việt đủ dấu": {
+        "description": "àáảãạ ăằắẳẵặ âầấẩẫậ èéẻẽẹ êềếểễệ ìíỉĩị òóỏõọ ôồốổỗộ ơờớởỡợ ùúủũụ ưừứửữự ỳýỷỹỵ đ"
+    },
+    "tiếng Việt hoa đủ dấu": {
+        "description": "ÀÁẢÃẠ ĂẰẮẲẴẶ ÂẦẤẨẪẬ ÈÉẺẼẸ ÊỀẾỂỄỆ ÌÍỈĨỊ ÒÓỎÕỌ ÔỒỐỔỖỘ ƠỜỚỞỠỢ ÙÚỦŨỤ ƯỪỨỬỮỰ ỲÝỶỸỴ Đ"
+    },
+    "tên công nghệ có dấu chấm": {"description": "Hỗ trợ Node.js, Vue.js và Python 3.15."},
+    "số ngắn": {"description": "Phiên bản 2026.11, 12 mô-đun, 8 người."},
     "bản cũ": up("3.33.0"),
 }
 
@@ -298,6 +326,7 @@ class Api:
         self.git_rc = 0
         b64 = base64.b64encode(raw).decode()
         self.routes: dict[str, Any] = {
+            f"{API}/branches/main": {"commit": {"sha": BASE}},  # đỉnh nhánh đích đọc lúc kiểm
             f"{API}/compare/{BASE}...{HEAD}": {"files": [file(sha=BLOB)]},
             f"{API}/git/trees/{HEAD}": {"truncated": False, "tree": [{"path": "docs", "type": "tree", "sha": DOCS}]},
             f"{API}/git/trees/{DOCS}": {"truncated": False, "tree": [{"path": "derived", "type": "tree", "sha": DER}]},
@@ -327,8 +356,9 @@ class Api:
 
 def pull(**over: Any) -> dict:
     p: dict = {
-        "head": {"sha": HEAD, "repo": {"full_name": HEAD_REPO}},
-        "base": {"sha": BASE, "ref": "main", "repo": {"full_name": dv.UPSTREAM}},
+        "head": {"sha": HEAD, "repo": {"full_name": HEAD_REPO, "owner": {"login": "alice", "type": "User"}}},
+        "base": {"sha": "c" * 40, "ref": "main", "repo": {"full_name": dv.UPSTREAM}},  # base.sha cũ: không dùng
+        "user": {"login": "alice"},
         "changed_files": 1,
     }
     p.update(over)
@@ -346,7 +376,8 @@ class EvaluateTest(unittest.TestCase):
         api = Api(enc(good()))
         got = self.run_eval(api)
         self.assertEqual(got, {"ok": True, "file": PATH, "repo": HEAD_REPO, "head": HEAD, "reasons": []})
-        self.assertEqual(len(api.calls), 5)  # compare + 3 cây + blob; không API contents (đi theo symlink)
+        self.assertEqual(len(api.calls), 6)  # đỉnh nhánh + compare + 3 cây + blob; không API contents (theo symlink)
+        self.assertIn(f"{API}/compare/{BASE}...{HEAD}", api.calls)  # so với đỉnh nhánh đích, không với base.sha cũ
 
     def assert_reason(self, api: Api, want: str, p: dict | None = None) -> dict:
         got = self.run_eval(api, p)
@@ -360,11 +391,39 @@ class EvaluateTest(unittest.TestCase):
         self.assert_reason(api, "không có head repo", pull(head="x"))
         same = pull(head={"sha": HEAD, "repo": {"full_name": "WWW-donghanhcungban-org/x-templates"}})
         self.assert_reason(api, "chính repo đích", same)
+        # Fork của khung chạy steward riêng (repo đích khác): không có làn derived.
+        other = pull(base={"ref": "main", "repo": {"full_name": "bob/X-Templates"}})
+        self.assert_reason(api, "repo đích không phải www-donghanhcungban-org/X-Templates", other)
+        self.assert_reason(api, "repo đích không phải", pull(base={"ref": "main"}))
         self.assertEqual(api.calls, [])  # danh tính sai: không gọi API thêm
+
+    def test_author_must_own_personal_fork(self) -> None:
+        api = Api(enc(good()))
+        self.assert_reason(api, "không phải chủ fork cá nhân", pull(user={"login": "mallory"}))
+        self.assertTrue(self.run_eval(api, pull(user={"login": "ALICE"}))["ok"])  # login không phân biệt hoa thường
+        org = {"sha": HEAD, "repo": {"full_name": HEAD_REPO, "owner": {"login": "alice", "type": "Organization"}}}
+        self.assertTrue(self.run_eval(api, pull(head=org, user={"login": "bob"}))["ok"])  # thành viên tổ chức
+        for p in (
+            pull(user=None),
+            pull(user={"login": 5}),
+            pull(head={"sha": HEAD, "repo": {"full_name": HEAD_REPO}}),
+            pull(head={"sha": HEAD, "repo": {"full_name": HEAD_REPO, "owner": {"login": "alice", "type": "Bot"}}}),
+        ):
+            with self.subTest(p):
+                self.assert_reason(api, "không xác minh được chủ head repo hoặc tác giả PR", p)
 
     def test_file_list_pinned_to_snapshot(self) -> None:
         api = Api(enc(good()))
-        self.assert_reason(api, "danh sách tệp ở head", pull(base={"sha": "main", "ref": "main"}))
+        base = {"ref": "", "repo": {"full_name": dv.UPSTREAM}}
+        self.assert_reason(api, "API GitHub (ValueError)", pull(base=base))  # thiếu nhánh đích
+        api.routes[f"{API}/branches/main"] = {"commit": {"sha": "main"}}
+        self.assert_reason(api, "API GitHub (ValueError)")  # đỉnh nhánh không phải SHA
+        api.routes[f"{API}/branches/main"] = {"commit": None}
+        self.assert_reason(api, "API GitHub (ValueError)")
+        api.routes[f"{API}/branches/main"] = xt.PrInputError("403")
+        self.assert_reason(api, "API GitHub (PrInputError)")
+        api = Api(enc(good()))
+        self.assert_reason(api, "API GitHub (ValueError)", pull(head={**pull()["head"], "sha": "abc"}))
         api.routes[f"{API}/compare/{BASE}...{HEAD}"] = xt.PrInputError("gh lỗi")
         self.assert_reason(api, "API GitHub (PrInputError)")
         api.routes[f"{API}/compare/{BASE}...{HEAD}"] = {"files": "x"}
@@ -427,7 +486,9 @@ class EvaluateTest(unittest.TestCase):
         self.assert_reason(Api(enc(good(description="xem https://x.vn"))), "URL")
         self.assert_reason(Api(enc(good(repo="bob/X-Templates"))), "repo phải đúng head repo")
         got = self.assert_reason(
-            Api(enc(good())), "không nhận", pull(head={"sha": HEAD, "repo": {"full_name": "a--b/c"}})
+            Api(enc(good())),
+            "không nhận",
+            pull(head={"sha": HEAD, "repo": {"full_name": "a--b/c", "owner": {"login": "alice", "type": "User"}}}),
         )
         self.assertEqual((got["file"], got["repo"]), ("", ""))
 
@@ -471,12 +532,41 @@ class MergeLaneTest(unittest.TestCase):
         nxt = xt.pr_next(xt.merge_decision(dpr(), 2), False, {})
         self.assertEqual(nxt["action"], "merge")
         self.assertIn("làn derived", nxt["why"])
+        # Tiêu đề PR fork không lên nhánh chính nên không chặn làn derived; ở làn khác vẫn chặn như cũ.
+        self.assertEqual(xt.merge_decision(dpr(title="Sửa @bob http://x"), 2)["verdict"], "merge")
+        self.assertEqual(xt.merge_decision(dpr(title="Sửa", derived="x"), 2)["verdict"], "fix")
+
+    def test_fixed_commit_subject_and_body(self) -> None:
+        hostile = dpr(title="docs: xem https://evil.example @bob", number=12)
+        subject, body = xt.derived_commit(hostile)
+        self.assertEqual(subject, "docs(derived): cập nhật alice--X-Templates (#12)")
+        self.assertEqual(body, f"Bản ghi {PATH} của {HEAD_REPO}, merge qua làn derived (ADR-0087).")
+        self.assertEqual(xt.pr_title_problems(subject.removesuffix(" (#12)")), [])
+        long_name = {**DERIVED_OK, "file": f"docs/derived/{'a' * 39}--{'b' * 100}.json"}
+        subject, _ = xt.derived_commit(dpr(derived=long_name))
+        self.assertEqual(subject, "docs(derived): cập nhật bản ghi dự án phái sinh (#7)")
+        out = {"pr": 12, "head": "abc1234def", "action": "merge"}
+        cmd = xt._steward_command(out, "repos/o/r", *xt.derived_commit(hostile))[0]
+        self.assertIn("commit_title=docs(derived): cập nhật alice--X-Templates (#12)", cmd)
+        self.assertIn(f"commit_message={body}", cmd)
+        self.assertFalse(any("evil" in a or "@" in a for a in cmd), cmd)
+        self.assertNotIn("commit_message", " ".join(xt._steward_command(out, "repos/o/r", "fix: a (#12)")[0]))
+
+    def test_agent_merge_check_waits_for_steward(self) -> None:
+        d = xt.derived_steward_only({**xt.merge_decision(dpr(), 3), "eligible": True})
+        self.assertEqual((d["verdict"], d["eligible"], d["next"]), ("wait", False, xt.DERIVED_WAIT))
+        self.assertNotIn("next_rest", d)
+        self.assertEqual(d["reasons"][-1], xt.DERIVED_STEWARD)
+        fast = xt.merge_decision(pr(), 3)
+        self.assertIs(xt.derived_steward_only(fast), fast)
+        red = xt.merge_decision(dpr(mergeable="CONFLICTING"), 3)
+        self.assertIs(xt.derived_steward_only(red), red)
 
     def test_falls_back_to_existing_rules(self) -> None:
         mismatch = dpr(derived={**DERIVED_OK, "head": "khác"})
         cases = {
             "head lệch": (mismatch, "nhanh", "head lệch"),
-            "nhãn risk:": (dpr(labels=[{"name": "risk:data"}]), "chuẩn", "head lệch, nhãn risk:"),
+            "nhãn risk:": (dpr(labels=[{"name": "risk:data"}]), "chuẩn", "nhãn risk:"),
             "danh sách bị cắt": (dpr(filesTruncated=True), "chuẩn", "head lệch"),
             "ngoại lệ cứng": (
                 pr(
@@ -488,6 +578,14 @@ class MergeLaneTest(unittest.TestCase):
             ),
             "không hợp lệ": (dpr(derived={**DERIVED_OK, "ok": False, "reasons": ["PR đổi 2 tệp"]}), "nhanh", "2 tệp"),
             "reasons lạ": (dpr(derived={**DERIVED_OK, "ok": "true", "reasons": "x"}), "nhanh", "head lệch"),
+            "thêm tệp khác": (
+                dpr(files=[{"path": PATH, "additions": 1, "deletions": 0}, {"path": "README.md"}]),
+                "nhanh",
+                "PR đổi tệp khác",
+            ),
+            "tệp khác bản ghi": (dpr(files=[{"path": "docs/derived/bob--x.json"}]), "nhanh", "head lệch"),
+            "đổi tên": (dpr(files=[{"path": PATH, "previous": "docs/derived/bob--x.json"}]), "nhanh", "head lệch"),
+            "phần tử lạ": (dpr(files=[{"path": PATH}, "x"]), "nhanh", "head lệch"),
         }
         for name, (p, lane, want) in cases.items():
             with self.subTest(name):
@@ -510,9 +608,16 @@ class MergeLaneTest(unittest.TestCase):
         self.enterContext(unittest.mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(base)}))
         commit_base_xt(base, "merge_autonomy: L3\n")  # merge_review: required
         rc, out, _ = run_main("merge-check", "--pr-json", "-", stdin=json.dumps(dpr()))
-        self.assertEqual(rc, 0, out)
-        self.assertTrue(out.startswith("MERGE · PR #7 · làn derived"), out)
+        self.assertEqual(rc, 1, out)  # guard đọc verdict này: phiên agent không merge làn derived (thân = commit fork)
+        self.assertTrue(out.startswith("WAIT · PR #7 · làn derived"), out)
         self.assertIn("làn derived: docs/derived/alice--X-Templates.json hợp lệ", out)
+        self.assertIn(xt.DERIVED_STEWARD, out)
+        self.assertNotIn("match-head-commit", out)
+        rc, out, _ = run_main("pr", "next", "--pr-json", "-", stdin=json.dumps(dpr()))
+        self.assertEqual((rc, out.splitlines()[0]), (0, f"WAIT · PR #7 · head abc1234 — {xt.DERIVED_STEWARD}"))
+        self.assertEqual(out.splitlines()[1], f"→ {xt.DERIVED_WAIT}")
+        rc, out, _ = run_main("pr", "next", "--pr-json", "-", stdin=json.dumps(pr()))
+        self.assertTrue(out.startswith("MERGE · PR #7"), out)  # làn khác không đổi
 
 
 class DerivedGh(FakeGh):
@@ -529,28 +634,50 @@ class RestLaneTest(unittest.TestCase):
         self.enterContext(unittest.mock.patch.object(dv, "today", return_value=DAY))
         self.enterContext(unittest.mock.patch.object(dv, "released_versions", return_value=VERSIONS))
 
-    def gh(self, files: list | None = None) -> DerivedGh:
+    def gh(self, files: list | None = None, reviews: list | None = None) -> DerivedGh:
         api = Api(enc(good()))
         listed = files if files is not None else [file(sha=BLOB, additions=11, deletions=0)]
         raw = {k.replace(API, DerivedGh.REPO): json.dumps(v) for k, v in api.routes.items()}
         raw[f"{DerivedGh.REPO}/pulls/7/files?per_page=100"] = json.dumps(listed)
         raw[f"{DerivedGh.REPO}/compare/{BASE}...{HEAD}"] = json.dumps({"files": listed})
         base = {"sha": BASE, "ref": "main", "repo": {"full_name": dv.UPSTREAM, "default_branch": "main"}}
-        head = {"sha": HEAD, "repo": {"full_name": HEAD_REPO}}
-        p = {"head": head, "base": base, "changed_files": len(listed), "title": "docs(derived): cập nhật alice"}
-        return DerivedGh(pull={**p, "user": {"login": "alice"}, "author_association": "NONE"}, raw=raw, real_git=True)
+        head = {"sha": HEAD, "repo": {"full_name": HEAD_REPO, "owner": {"login": "alice", "type": "User"}}}
+        # Tiêu đề và thân PR do fork viết (link, @, trailer giả) — không được lên lệnh merge.
+        hostile = {"title": "Xem https://evil.example @bob", "body": "Co-authored-by: x <x@y>"}
+        p = {"head": head, "base": base, "changed_files": len(listed), **hostile}
+        user = {"user": {"login": "alice"}, "author_association": "NONE"}
+        return DerivedGh(pull={**p, **user}, raw=raw, reviews=reviews, real_git=True)
 
     def test_fork_pr_own_file_merges_by_steward(self) -> None:
         gh = self.gh()
-        with gh.patch():
+        with gh.patch(), unittest.mock.patch.object(xt, "_steward_apply", side_effect=lambda out, d, r, c, *a: c):
             p = xt._pr_rest("7")
             rc, out, _ = run_main("merge-check", "--pr", "7", "--json")
-            step = xt._steward_one("7", DerivedGh.REPO, self.base, False, [])
+            cmds = xt._steward_one("7", DerivedGh.REPO, self.base, True, [])
         self.assertEqual(p["derived"], {"ok": True, "file": PATH, "repo": HEAD_REPO, "head": HEAD, "reasons": []})
         d = json.loads(out)
-        self.assertEqual((rc, d["verdict"], d["lane"]), (0, "merge", "derived"))
-        self.assertEqual(step["action"], "merge")  # steward tự merge PR fork chỉ ở làn derived
+        self.assertEqual((rc, d["verdict"], d["lane"]), (1, "wait", "derived"))  # agent/guard: chỉ steward merge
+        self.assertEqual(len(cmds), 1)  # steward tự merge PR fork chỉ ở làn derived, ghim head
+        cmd = cmds[0]
+        self.assertEqual(cmd[:5], ["gh", "api", "-X", "PUT", f"{DerivedGh.REPO}/pulls/7/merge"])
+        self.assertIn(f"sha={HEAD}", cmd)
+        self.assertIn("commit_title=docs(derived): cập nhật alice--X-Templates (#7)", cmd)
+        self.assertIn(f"commit_message=Bản ghi {PATH} của {HEAD_REPO}, merge qua làn derived (ADR-0087).", cmd)
+        self.assertFalse(any("evil" in a or "@" in a or "Co-authored" in a for a in cmd), cmd)
         self.assertIn(f"{DerivedGh.REPO}/compare/{BASE}...{HEAD}", gh.paths())
+
+    def test_changes_requested_leaves_lane_even_when_review_optional(self) -> None:
+        commit_base_xt(self.base, "merge_autonomy: L3\nmerge_review: optional\n")
+        asked = [{"user": {"login": "carol"}, "state": "CHANGES_REQUESTED"}]
+        with self.gh(reviews=asked).patch():
+            p = xt._pr_rest("7")
+            step = xt._steward_one("7", DerivedGh.REPO, self.base, False, [])
+        self.assertFalse(p["derived"]["ok"])
+        self.assertIn("có review yêu cầu sửa (CHANGES_REQUESTED)", p["derived"]["reasons"])
+        self.assertEqual(step["action"], "defer-human")
+        approved = [*asked, {"user": {"login": "carol"}, "state": "APPROVED"}]
+        with self.gh(reviews=approved).patch():
+            self.assertTrue(xt._pr_rest("7")["derived"]["ok"])
 
     def test_fork_pr_touching_other_file_waits_for_human(self) -> None:
         listed = [file(sha=BLOB, additions=11, deletions=0), file("README.md", additions=1, deletions=0)]

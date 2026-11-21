@@ -15,6 +15,7 @@ import json
 import re
 import sys
 import unicodedata
+import urllib.parse
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -42,8 +43,24 @@ HOME_RE = re.compile(rf"https://((?:{_LABEL}\.)+[a-z]{{2,63}})(/[A-Za-z0-9._~/%-
 RESERVED_TLDS = frozenset({"localhost", "local", "internal", "test", "example", "invalid", "arpa", "onion", "lan"})
 BANNED_CHARS = frozenset("<>[]`@\\")  # HTML, link markdown, mã, email/@mention
 BANNED_WORDS = ("http", "://", "www.")  # URL và autolink của GitHub
-BAD_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})  # điều khiển, bidi/zero-width, xuống dòng
-PHONE_RE = re.compile(r"(?:[0-9][ ().-]*){9,}")
+# Điều khiển, bidi/zero-width, xuống dòng, dấu kết hợp (sau NFC tiếng Việt không còn dấu kết hợp; chặn chồng dấu).
+BAD_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp", "Mn", "Mc", "Me"})
+# Default_Ignorable_Code_Point (Unicode 16 DerivedCoreProperties) không thuộc nhóm trên, cùng ký tự trống trông như chữ:
+# Hangul filler, variation selector (cả bổ sung), Braille trống.
+HIDDEN_RANGES = (
+    (0x115F, 0x1160),
+    (0x2800, 0x2800),
+    (0x3164, 0x3164),
+    (0xFE00, 0xFE0F),
+    (0xFFA0, 0xFFA0),
+    (0xE0000, 0xE0FFF),
+)
+PHONE_RE = re.compile(r"(?:\d[\s().\-/]*){9,}")
+# Tên miền kèm đường dẫn, hoặc tên miền trần với đuôi phổ biến — sau NFKC + casefold.
+DOMAIN_RE = re.compile(
+    r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,63}/"
+    r"|\b[a-z0-9-]+\.(?:com|net|org|io|vn|co|xyz|info|biz|me|app|dev|ru|cn|top|site|link|ly|gg)\b"
+)
 SAFE_RE = re.compile(r"[A-Za-z0-9._/-]{1,200}")
 CHANGELOG_MISSING = "không đọc được bản đã phát hành (CHANGELOG.md) — không xác minh được upstream.version"
 
@@ -173,14 +190,23 @@ def _description(v: object, ctx: Ctx) -> Optional[str]:
         return "description phải là chuỗi khác rỗng, không có khoảng trắng đầu/cuối"
     if len(v) > DESC_MAX:
         return f"description {len(v)} ký tự > {DESC_MAX}"
-    if any(unicodedata.category(c) in BAD_CATEGORIES for c in v):
-        return "description có ký tự điều khiển, định dạng ẩn hoặc xuống dòng"
     if not unicodedata.is_normalized("NFC", v):
         return "description phải ở dạng Unicode NFC"
-    low = v.casefold()
-    if BANNED_CHARS & set(v) or any(w in low for w in BANNED_WORDS):
-        return "description không được có HTML, link markdown, URL, email hay @"
-    if PHONE_RE.search(v):
+    if any(_hidden(c) for c in v):
+        return "description có ký tự điều khiển, ký tự ẩn, dấu kết hợp hoặc xuống dòng"
+    return _text_problem(unicodedata.normalize("NFKC", v).casefold())
+
+
+def _hidden(c: str) -> bool:
+    code = ord(c)
+    return unicodedata.category(c) in BAD_CATEGORIES or any(a <= code <= b for a, b in HIDDEN_RANGES)
+
+
+def _text_problem(norm: str) -> Optional[str]:
+    """Luật nội dung trên dạng NFKC + casefold: `＠`, `ｈｔｔｐ`, chữ số toàn chiều rộng không lách được."""
+    if BANNED_CHARS & set(norm) or any(w in norm for w in BANNED_WORDS) or DOMAIN_RE.search(norm):
+        return "description không được có HTML, link markdown, URL, tên miền, email hay @"
+    if PHONE_RE.search(norm):
         return "description có dãy số dài (số điện thoại/PII)"
     return None
 
@@ -331,10 +357,27 @@ def _fetch(core: Any, repo: str, sha: str, head_repo: str, f: dict[str, Any]) ->
 
 
 def _identity(pull: dict[str, Any], head_repo: str) -> list[str]:
+    base_repo = _full_name(_side(pull, "base"))
+    if base_repo.casefold() != UPSTREAM.casefold():
+        return [f"repo đích không phải {UPSTREAM} — làn derived chỉ có ở repo khung"]
     if not head_repo:
         return ["PR không có head repo (fork đã xoá?)"]
-    if head_repo.casefold() == _full_name(_side(pull, "base")).casefold():
+    if head_repo.casefold() == base_repo.casefold():
         return ["PR mở từ chính repo đích — không phải dự án phái sinh"]
+    return _author(pull)
+
+
+def _author(pull: dict[str, Any]) -> list[str]:
+    """Fork của tài khoản cá nhân: tác giả PR phải là chủ fork (cộng tác viên của fork không nói thay). Fork của tổ chức:
+    không hỏi được quyền thành viên bằng token của repo khung — nhận theo head repo (ADR-0087)."""
+    repo = _side(pull, "head").get("repo")
+    owner = repo.get("owner") if isinstance(repo, dict) else None
+    user = pull.get("user")
+    login = user.get("login") if isinstance(user, dict) else None
+    if not isinstance(owner, dict) or owner.get("type") not in ("User", "Organization") or not isinstance(login, str):
+        return ["không xác minh được chủ head repo hoặc tác giả PR"]
+    if owner["type"] == "User" and str(owner.get("login")).casefold() != login.casefold():
+        return ["tác giả PR không phải chủ fork cá nhân"]
     return []
 
 
@@ -350,9 +393,15 @@ def _files(core: Any, repo: str, pull: dict[str, Any], head_repo: str) -> tuple[
 
 
 def pinned_files(core: Any, repo: str, pull: dict[str, Any]) -> list[Any]:
-    """Tệp đổi của đúng cặp SHA trong ảnh chụp `pull` (REST compare ba chấm) — danh sách `pulls/N/files` đọc ở lượt gọi
-    khác có thể thuộc head mới hơn (push chen giữa); lỗi/thiếu → ValueError hoặc PrInputError."""
-    base, head = str(_side(pull, "base").get("sha")), str(_side(pull, "head").get("sha"))
+    """Tệp đổi giữa đỉnh nhánh đích đọc lúc kiểm và head trong ảnh chụp `pull` (REST compare ba chấm, như squash merge
+    áp lên đỉnh đó) — danh sách `pulls/N/files` đọc ở lượt gọi khác có thể thuộc head mới hơn (push chen giữa), còn
+    `base.sha` của PR có thể cũ; lỗi/thiếu → ValueError hoặc PrInputError."""
+    ref = _side(pull, "base").get("ref")
+    if not isinstance(ref, str) or not ref:
+        raise ValueError("PR thiếu nhánh đích")
+    tip = core._gh_one(f"{repo}/branches/{urllib.parse.quote(ref, safe='')}").get("commit")
+    base = str(tip.get("sha")) if isinstance(tip, dict) else ""
+    head = str(_side(pull, "head").get("sha"))
     if not (SHA_RE.fullmatch(base) and SHA_RE.fullmatch(head)):
         raise ValueError("SHA của PR không hợp lệ")
     files = core._gh_one(f"{repo}/compare/{base}...{head}").get("files")
