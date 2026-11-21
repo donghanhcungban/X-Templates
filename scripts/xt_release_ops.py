@@ -9,13 +9,32 @@ import json
 import math
 import re
 from pathlib import Path
-from types import ModuleType
-from typing import Any, cast
+from typing import Any, Callable, Iterator, Protocol, cast
 from urllib.parse import urlsplit
 
 import xt_ops_setup as ops_setup
 
 Doc = dict[str, Any]
+
+
+class Core(ops_setup.Core, Protocol):
+    COMMIT_SHA_RE: re.Pattern[str]
+    GO_NO_GO_DIRS: tuple[str, ...]
+    RELEASE_AGENT_NAME: str
+    RELEASE_SIGN_BLUEPRINT: str
+    RELEASE_SIGN_STATUS: str
+    _approval_problem: Callable[[Path, str, str, Doc], str]
+    _deploy_sha256: Callable[[Any], bool]
+    _deploy_utc: Callable[[Any], dt.datetime | None]
+    _go_no_go_docs: Callable[[Path, str], Iterator[tuple[str, str]]]
+    _go_no_go_signed: Callable[[str], bool]
+    _go_signers: Callable[[str], list[str]]
+    _release_artifacts: Callable[[Path], tuple[dict[str, str] | None, list[Doc]]]
+    _release_subject: Callable[..., tuple[Doc, str]]
+    _release_tree: Callable[[Path], tuple[dict[str, str], str | None, bool]]
+    _signed_go_no_go: Callable[[Path], list[tuple[str, str]]]
+    _xt_keys: Callable[[Path], dict[str, str]]
+    release_check: Callable[..., Doc]
 
 
 def report(doc: Doc, as_json: bool) -> None:
@@ -39,7 +58,7 @@ def evidence_file(path: str) -> Doc:
     return doc
 
 
-def current(core: ModuleType, base: Path, env: str) -> Doc | None:
+def current(core: Core, base: Path, env: str) -> Doc | None:
     state = core.read_deploy_ledger(base)["envs"].get(env, {})
     return cast("Doc | None", state.get("current")) if state.get("unknown") is False else None
 
@@ -74,7 +93,7 @@ def matches(candidate: Doc, other: Any) -> bool:
     return isinstance(other, dict) and all(candidate.get(k) == other.get(k) for k in ("content", "digest"))
 
 
-def approved_for_tag(core: ModuleType, base: Path, main: Path, target: str) -> bool:
+def approved_for_tag(core: Core, base: Path, main: Path, target: str) -> bool:
     """Verify a merged source release in a read-only job. An unsigned version bump waits for its signoff PR."""
     for name in ("VERSION", "xt.yaml"):
         if (base / name).read_bytes() != (main / name).read_bytes():
@@ -117,7 +136,7 @@ def release_report(base: Path, path: str | None, candidate: Doc) -> bool:
     )
 
 
-def signature_inventory(core: ModuleType, base: Path, origin: ops_setup.Origin, head: str) -> bool:
+def signature_inventory(core: Core, base: Path, origin: ops_setup.Origin, head: str) -> bool:
     if head == origin.sha:
         return True
     if not isinstance(origin.tree_sha, str) or not core.COMMIT_SHA_RE.fullmatch(origin.tree_sha):
@@ -149,7 +168,7 @@ def signature_inventory(core: ModuleType, base: Path, origin: ops_setup.Origin, 
     return local == upstream
 
 
-def protected_signoff(core: ModuleType, base: Path, origin: ops_setup.Origin, candidate: Doc) -> bool:
+def protected_signoff(core: Core, base: Path, origin: ops_setup.Origin, candidate: Doc) -> bool:
     """Re-read the current signature artifact from the remote default branch instead of trusting an exported JSON verdict."""
     docs = core._signed_go_no_go(base)
     if not docs or not origin.sha or not signature_inventory(core, base, origin, candidate["head"]):
@@ -166,7 +185,7 @@ def protected_signoff(core: ModuleType, base: Path, origin: ops_setup.Origin, ca
     return True
 
 
-def rehearsal(core: ModuleType, base: Path, args: argparse.Namespace) -> Doc:
+def rehearsal(core: Core, base: Path, args: argparse.Namespace) -> Doc:
     row, artifacts = core._release_artifacts(base)
     if not row or row["result"] != "PASS" or not artifacts:
         raise ValueError("release_artifacts chưa được build và kiểm")
@@ -209,7 +228,7 @@ def rehearsal(core: ModuleType, base: Path, args: argparse.Namespace) -> Doc:
     }
 
 
-def rollout(core: ModuleType, args: argparse.Namespace) -> int:
+def rollout(core: Core, args: argparse.Namespace) -> int:
     if not core.DEPLOY_ENV_NAME.fullmatch(args.env) or args.env == "dev":
         return 2
     base = core.loop_root(core.project_dir())
@@ -247,7 +266,7 @@ def field_metrics(data: Doc) -> Doc:
     return {"requests": requests, "errors": errors, "error_pct": 100 * (errors / requests), "p95_ms": p95}
 
 
-def confirmed_after(core: ModuleType, base: Path, env: str, digest: str) -> dt.datetime:
+def confirmed_after(core: Core, base: Path, env: str, digest: str) -> dt.datetime:
     ledger = core.read_deploy_ledger(base)
     slot = ledger["envs"].get(env, {})
     if slot.get("unknown") is not False or (slot.get("current") or {}).get("served_digest") != digest:
@@ -256,10 +275,10 @@ def confirmed_after(core: ModuleType, base: Path, env: str, digest: str) -> dt.d
     when = core._deploy_utc(event.get("finished"))
     if event.get("result") not in {"deployed", "rolled_back"} or event.get("served_digest") != digest or not when:
         raise ValueError
-    return cast(dt.datetime, when)
+    return when
 
 
-def field_window(core: ModuleType, data: Doc, deployed: dt.datetime, max_age: float | None) -> Doc:
+def field_window(core: Core, data: Doc, deployed: dt.datetime, max_age: float | None) -> Doc:
     start, end, exported = (core._deploy_utc(data.get(key)) for key in ("started", "finished", "exported_at"))
     now = dt.datetime.now(dt.timezone.utc)
     if not start or not end or not exported or not (deployed <= start < end <= exported <= now):
@@ -269,7 +288,7 @@ def field_window(core: ModuleType, data: Doc, deployed: dt.datetime, max_age: fl
     return {"started": start.isoformat(), "finished": end.isoformat(), "exported_at": exported.isoformat()}
 
 
-def field_check(core: ModuleType, args: argparse.Namespace) -> int:
+def field_check(core: Core, args: argparse.Namespace) -> int:
     if not core.DEPLOY_ENV_NAME.fullmatch(args.env) or not finite(args.max_p95_ms) or not finite(args.max_error_pct):
         return 2
     if (

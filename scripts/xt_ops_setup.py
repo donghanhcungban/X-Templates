@@ -13,13 +13,39 @@ import os
 from pathlib import Path
 import re
 import subprocess
-from types import ModuleType
-from typing import Any
+from typing import Any, Callable, Protocol
 from urllib.parse import quote
 
 import xt_distribution
 
 Doc = dict[str, Any]
+
+
+class Core(Protocol):
+    DEFER_ID_RE: re.Pattern[str]
+    DEPLOY_ENV_NAME: re.Pattern[str]
+    DeployError: type[Exception]
+    _committed_xt_text: Callable[[Path, str], str | None]
+    _deferred: Callable[[Doc], Doc]
+    _git: Callable[..., subprocess.CompletedProcess[str]]
+    _git_head: Callable[[Path], str | None]
+    _go_git_env: Callable[[], dict[str, str]]
+    _inside: Callable[[Path, str], Path | None]
+    _release_prod_switch: Callable[..., dict[str, str]]
+    _yaml_keys: Callable[[str], dict[str, str]]
+    blueprint_status: Callable[[Path], Doc]
+    gate_noop: Callable[[str], bool]
+    github_origin_slug: Callable[[str], str]
+    grant_violations: Callable[[dict[str, dict[str, str]], str, dict[str, str]], list[str]]
+    human_must_ids: Callable[[], set[str]]
+    loop_root: Callable[[Path], Path]
+    parse_grants: Callable[[str], dict[str, dict[str, str]]]
+    project_dir: Callable[[], Path]
+    read_deploy_ledger: Callable[[Path], Doc]
+    read_state: Callable[..., Doc | None]
+    state_dir: Callable[..., Path]
+    write_atomic: Callable[..., None]
+
 
 OK, MISSING, UNKNOWN, SKIP, OPTIONAL = "đạt", "thiếu", "không đọc được", "không áp dụng", "tuỳ chọn"
 BLOCKS = (MISSING, UNKNOWN)
@@ -46,7 +72,7 @@ def field(obj: Any, key: str, default: Any = None) -> Any:
 class Origin:
     """Use only the checkout's GitHub origin. Pin config, plan and ancestry to one remote commit."""
 
-    def __init__(self, core: ModuleType, base: Path) -> None:
+    def __init__(self, core: Core, base: Path) -> None:
         self.core, self.base = core, base
         self.cache: Doc = {}
         git_env = core._go_git_env()
@@ -213,7 +239,7 @@ def budget_valid(cfg: dict[str, str]) -> bool:
         return False
 
 
-def local_items(core: ModuleType, base: Path) -> list[Doc]:
+def local_items(core: Core, base: Path) -> list[Doc]:
     human, deferred = UNKNOWN, SKIP
     ids, waits = [], []
     bp = base / "BLUEPRINT.md"
@@ -352,7 +378,7 @@ def remote_items(origin: Origin) -> list[Doc]:
     ]
 
 
-def inventory(core: ModuleType, base: Path) -> Doc:
+def inventory(core: Core, base: Path) -> Doc:
     origin = Origin(core, base)
     try:
         dev = core.read_deploy_ledger(base)["envs"].get("dev", {})
@@ -424,7 +450,7 @@ def owner_script(doc: Doc) -> str:
     return "\n".join(lines)
 
 
-def command(core: ModuleType, args: argparse.Namespace) -> int:
+def command(core: Core, args: argparse.Namespace) -> int:
     base = core.loop_root(core.project_dir())
     out = None
     if args.out:

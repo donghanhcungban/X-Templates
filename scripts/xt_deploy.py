@@ -7,14 +7,19 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
-from types import ModuleType
-from typing import Any
+from typing import Any, Callable, Protocol
 from urllib.parse import urlsplit
 
 import xt_ops_setup
 import xt_release_ops
 
 Doc = dict[str, Any]
+
+
+class Core(xt_release_ops.Core, Protocol):
+    DEPLOY_LEDGER: str
+    _go_git: Callable[..., str]
+    _validate_deploy_ledger: Callable[[Any], Doc]
 
 
 def receipt_url(value: str) -> str | None:
@@ -84,7 +89,7 @@ def retain_artifacts(base: Path, state: Path, digest: str, arts: list[Doc]) -> N
     verify_artifacts(final, digest, arts)
 
 
-def clean_adapter_checkout(core: ModuleType, base: Path, destination: Path, head: str) -> Path:
+def clean_adapter_checkout(core: Core, base: Path, destination: Path, head: str) -> Path:
     """Run promoted commands from the reviewed Git tree. Ignored files in the build checkout are not executable inputs."""
     tree = destination / "source"
     core._go_git(
@@ -112,16 +117,14 @@ def materialize_artifacts(saved: Path, checkout: Path, paths: tuple[str, ...]) -
         shutil.copyfile(artifact_file(saved, name), dest)
 
 
-def production_authority(core: ModuleType, base: Path, env: str, head: str, ledger: Doc) -> xt_ops_setup.Origin:
+def production_authority(core: Core, base: Path, env: str, head: str, ledger: Doc) -> xt_ops_setup.Origin:
     clean, actual, readable = core._release_tree(base)
     if not readable or clean["result"] != "PASS" or actual != head:
         raise ValueError("production cần checkout sạch, đúng HEAD")
     return remote_authority(core, base, env, head, ledger["envs"], (base / "xt.yaml").read_text(encoding="utf-8"))
 
 
-def remote_authority(
-    core: ModuleType, base: Path, env: str, head: str, envs: Doc, config_text: str
-) -> xt_ops_setup.Origin:
+def remote_authority(core: Core, base: Path, env: str, head: str, envs: Doc, config_text: str) -> xt_ops_setup.Origin:
     origin = xt_ops_setup.Origin(core, base)
     target = xt_ops_setup.target(origin, env)
     if not target["remote_grant"]:
@@ -137,7 +140,7 @@ def remote_authority(
     return origin
 
 
-def approve_candidate(core: ModuleType, base: Path, env: str, subject: Doc, ledger: Doc) -> None:
+def approve_candidate(core: Core, base: Path, env: str, subject: Doc, ledger: Doc) -> None:
     dev = ledger["envs"].get("dev", {}).get("current")
     if not dev or dev["result"] != "deployed" or not xt_release_ops.matches(subject, dev["subject"]):
         raise ValueError("dev.current chưa xác nhận đúng content và digest của ứng viên")
