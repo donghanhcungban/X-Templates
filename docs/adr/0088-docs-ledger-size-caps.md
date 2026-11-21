@@ -1,6 +1,6 @@
 # ADR-0088: Nới trần byte của sổ sách `docs/ops` và `docs/autopilot`
 
-- **Trạng thái:** Đã chấp nhận ngày 2026-11-21 theo yêu cầu của chủ dự án (nâng trần file lên mức thoải mái).
+- **Trạng thái:** Đã chấp nhận ngày 2026-11-21 theo yêu cầu của chủ dự án (nâng trần file lên mức thoải mái); số trần tiếp tục nâng 5× bởi [ADR-0089](0089-raise-file-and-dir-caps-5x.md).
 - **Trạng thái triển khai:** Đã triển khai — `tests/test_docs_budget.py` (`DIR_CAPS`).
 
 ## Bối cảnh
