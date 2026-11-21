@@ -6660,11 +6660,13 @@ DERIVED_WAIT = "chờ pr-steward merge (sau khi CI xong hoặc lượt lịch 10
 def derived_steward_only(d: Dict[str, Any]) -> Dict[str, Any]:
     """`merge-check` (đọc bởi `pr next`/guard): PR làn derived đủ điều kiện → `wait`. Lệnh merge của agent không đặt
     được subject (guard chặn `--subject`/`commit_title`) và thân squash sẽ là commit của fork; chỉ steward gửi
-    `derived_commit`. Guard chỉ hỏi chứ không chặn hẳn (AUD-HAR-454)."""
-    if d.get("lane") != "derived" or d.get("verdict") != "merge":
+    `derived_commit`. Guard chỉ hỏi chứ không chặn hẳn (AUD-HAR-454). Làn derived ở mọi verdict: `auto_merge_ok` false."""
+    if d.get("lane") != "derived":
         return d
     out = {k: v for k, v in d.items() if k != "next_rest"}
-    out.update(verdict="wait", reasons=[*d["reasons"], DERIVED_STEWARD], next=DERIVED_WAIT, eligible=False)
+    out["auto_merge_ok"] = False
+    if d.get("verdict") == "merge":
+        out.update(verdict="wait", reasons=[*d["reasons"], DERIVED_STEWARD], next=DERIVED_WAIT, eligible=False)
     return out
 
 
@@ -6694,6 +6696,13 @@ def derived_notes(pr: Dict[str, Any], derived: bool) -> List[str]:
     return [f"làn derived: không — {'; '.join(why[:3])}"]
 
 
+def merge_identity_reason(pr: Dict[str, Any]) -> str:
+    """Lý do người merge vì danh tính, cùng luật với steward (`steward_untrusted`): PR từ fork hoặc tác giả không có quyền
+    ghi — `merge-check`/`pr next`/guard không cho máy merge PR mà steward không tự xử lý. Chỉ xét khi PR mang trường
+    danh tính (`_pr_rest` luôn có `authorAssociation`); ảnh chụp `--pr-json` dạng `MERGE_FIELDS` không có → ''."""
+    return steward_untrusted(pr) if {"headRepo", "authorAssociation"} & pr.keys() else ""
+
+
 def merge_decision(
     pr: Dict[str, Any], autonomy: int = 1, risk_paths: Optional[List[str]] = None, hard_auto: bool = False
 ) -> Dict[str, Any]:
@@ -6702,10 +6711,12 @@ def merge_decision(
     `merge` chỉ khi làn nhanh + CI xanh + mức tự chủ ≥ L2 (L3: mọi làn trừ ngoại lệ cứng `LOOP-STOP-005` — ADR-0015,
     ADR-0016); lệnh merge ghim `--match-head-commit` (có commit mới → lệch). `hard` = lý do ngoại lệ cứng, tính cả khi
     PR còn chờ CI để máy không merge và tắt auto-merge người bật (ADR-0036). `hard_auto` (`merge_hard_exceptions: auto`,
-    ADR-0020): ngoại lệ cứng không giữ người — lý do chuyển sang `hard_waived`, `hard` rỗng."""
+    ADR-0020): ngoại lệ cứng không giữ người — lý do chuyển sang `hard_waived`, `hard` rỗng. PR từ fork/tác giả không có
+    quyền ghi ngoài làn derived hợp lệ → `human` ở mọi mức tự chủ (`merge_identity_reason`)."""
     n = pr.get("number", "")
     hard = merge_hard_reasons(pr, risk_paths or [])
     derived = derived_lane(pr) and not hard
+    untrusted = "" if derived else merge_identity_reason(pr)
     lane_reasons = [] if derived else merge_lane_reasons(pr, risk_paths or [])
     # Rủi ro cao (ADR-0062): ngoại lệ cứng (kể cả đã miễn) hoặc schema/migration — review độc lập bắt buộc, kể cả pha build.
     high = bool(hard) or any(rx.search(p) for tag, rx in RISK_PATH_RES if tag == "schema" for p in _risky_paths(pr))
@@ -6719,6 +6730,8 @@ def merge_decision(
         verdict, reasons = blocked
     elif hard:
         verdict, reasons = "human", [f"ngoại lệ cứng (LOOP-STOP-005): {'; '.join(hard)}", *lane_reasons[len(hard) :]]
+    elif untrusted:
+        verdict, reasons = "human", [untrusted, *lane_reasons]
     elif lane_reasons and autonomy < 3:
         verdict, reasons = "human", lane_reasons
     elif autonomy < 2:
@@ -7428,7 +7441,11 @@ def _pr_rest(pr_arg: Optional[str], local_check: bool = True) -> Dict[str, Any]:
             ("author", user.get("login")),
             ("authorAssociation", pr.get("author_association")),
             ("authorCanWrite", _member_can_write(repo, pr.get("author_association"), user.get("login"))),
-            ("headRepo", head_repo.get("full_name")),
+            # fork bị xoá (API trả `repo: null`): không rõ nguồn → coi là fork, không phải PR nội bộ
+            (
+                "headRepo",
+                head_repo.get("full_name") or ("(đã xoá)" if "repo" in head and raw_head_repo is None else ""),
+            ),
             ("repo", base_repo.get("full_name")),
             ("baseRefName", base.get("ref")),
             ("defaultBranch", base_repo.get("default_branch")),
