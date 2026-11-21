@@ -5168,7 +5168,6 @@ class GuardDeltaAuditTest(unittest.TestCase):
         "gh release edit d1 --draft=false",
         'gh release edit d1 --draft=false --notes "$X"',
         "gh release edit d1 --tag nightly2 --notes-file notes.md",
-        "gh release edit d1 --tagline $X",  # cờ lạ (pflag lỗi), `$X` không ở vị trí giá trị
         # vùng cờ trước lệnh có nháy/nguyên văn; lệnh khác của `release` (tài sản/mẫu sau lệnh con không xét)
         'gh -R "$GITHUB_REPOSITORY" release create nightly',
         'gh release -R "$R" create nightly',
@@ -5285,6 +5284,17 @@ class GuardDeltaAuditTest(unittest.TestCase):
         "gh -R o$X pr list",
         "gh --repo=$OWNER/repo pr list",
         "gh -R * pr list",
+        # review f6158e25 🔴1: cờ lạ/bool của `release create` đứng trước tên lệnh — cobra coi là nuốt từ kế, nên
+        # `X=' release create v1.2.3 -n'` đổi lệnh thật thành `release create v1.2.3`; vùng trước tên lệnh xét mọi từ
+        "gh --notes-start-tag o$X status",
+        "gh -p v1$X status",
+        "gh --latest v1$X pr list",
+        "gh release --latest v1$X view",
+        # 🔴2: `edit` không có tài sản — mọi từ tách được, kể cả sau cờ bool (`X='--tag v1.2.3'`)
+        "gh release edit nightly --latest $X",
+        "gh release edit nightly --verify-tag $X",
+        "gh release edit d1 --tagline $X",
+        "gh release create -- $X",  # sau `--` chưa có tag: từ đầu là tag
     )
 
     # AUD-SEC-996a: `--follow-tags` (cả viết tắt git nhận) và `push.followTags` đẩy tag chú thích kèm nhánh — như

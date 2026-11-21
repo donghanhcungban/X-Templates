@@ -2368,8 +2368,8 @@ def _dyn_text_why(v: _CodeView, live: str, bare: str) -> str:
 # OR với mọi luật cũ; không suy cấu trúc (hàm, vòng `for`, vùng số học…) để miễn:
 # (A) từ lệnh — sau gán đầu lệnh, từ khoá, lệnh bọc guard biết — có `$`/backtick, kể cả trong nháy → chặn (AUD-SEC-391);
 # (B) chữ thô nhắc `IFS` (mọi dạng chỉ-chữ-số) hay có gán tên-đích-động (tên đích không nguyên văn, nameref, `${!x}`,
-#     đổi hoa từ dữ liệu, biểu thức số học nhắc tên/mở rộng — bash đánh giá ĐỆ QUY giá trị biến nên `(( a ))` với `a`
-#     đọc từ tệp trong `eval` gán được `IFS`, mã cùng shell guard không đọc) → mọi `$` KHÔNG nằm trực tiếp trong nháy kép
+#     đổi hoa từ dữ liệu, biểu thức số học nhắc tên/mở rộng — bash đánh giá ĐỆ QUY, lý do ở ADR) → mọi `$` KHÔNG nằm
+#     trực tiếp trong nháy kép
 #     (không nháy, nháy đơn — thân eval/trap/sh -c —, trong `${…}`/`$(…)`, `\\$` kể cả trong nháy kép — chữ mà
 #     `mapfile -C`/`${x@P}` đọc lại, review adr-guard) → chặn (AUD-SEC-388); giá trị cờ không nháy của
 #     read/mapfile/printf/wait/unset (bash tách thành thêm cờ/tên đích) và thân heredoc không nháy cũng bật (B). Chỉ miễn
@@ -12895,7 +12895,7 @@ def _gh_merge_rule(args: List[str], root: str) -> Optional[Tuple[str, str]]:
     return None if rest is None else _pr_flag_merge_rule(args, rest, root)
 
 
-# F-144: `gh release edit` (gh 2.89 `--help`) — cờ ăn giá trị, để đọc đúng tag của release (đối số vị trí đầu).
+# F-144: cờ ăn giá trị của `gh release edit` (gh 2.89 `--help`).
 GH_RELEASE_EDIT_VALUE_OPTS = (
     *("-t", "--title", "-n", "--notes", "-F", "--notes-file", "--target", "--discussion-category", "--tag"),
     *("-R", "--repo", "--hostname"),
@@ -12904,9 +12904,8 @@ PFLAG_TRUE = frozenset({"1", "t", "T", "TRUE", "true", "True"})  # strconv.Parse
 
 
 def _gh_release_cli_tag(args: List[str]) -> bool:
-    """F-144: `gh release create|new` (`new` là tên gọi khác của `create`) có từ là tag phiên bản hoặc tag (đối số vị
-    trí đầu) không đọc được; `gh release edit` đổi tag (`--tag`) sang tag phiên bản/không đọc được, hay phát hành bản
-    nháp (`--draft=false` — GitHub tạo tag lúc phát hành) mà tag của release là tag phiên bản/không đọc được."""
+    """F-144: `release create|new` có từ là tag phiên bản hay tag (đối số vị trí đầu) không đọc được; `edit` đổi tag
+    (`--tag`) hay phát hành bản nháp (`--draft=false`: GitHub tạo tag) với tag phiên bản/không đọc được."""
     if args[:1] != ["release"] or args[1:2] not in (["create"], ["new"], ["edit"]):
         return False
     rest = args[2:]
@@ -12925,8 +12924,8 @@ GH_RELEASE_CREATE_SHORT_BOOL = frozenset("dp")  # gh 2.95 `release create --help
 
 
 def _gh_release_create_words(rest: List[str], valued: Tuple[str, ...]) -> Tuple[List[str], List[str]]:
-    """(từ trừ giá trị cờ, đối số vị trí) đọc như pflag (AUD-SEC-998): cờ ăn giá trị nuốt từ kế kể cả `-…` (`-pn
-    --title v1.2.3`: tag `v1.2.3`); chữ lạ trong cụm → (`rest`, []) — xét mọi từ."""
+    """(từ trừ giá trị cờ, đối số vị trí) như pflag (AUD-SEC-998: `-pn --title v1.2.3` — tag `v1.2.3`); chữ lạ trong
+    cụm → (`rest`, [])."""
     shorts = frozenset(o[1] for o in valued if len(o) == 2)
     words: List[str] = []
     pos: List[str] = []
@@ -12962,27 +12961,36 @@ def _pflag_eats(a: str, valued: Tuple[str, ...], shorts: FrozenSet[str]) -> Opti
 
 
 def _gh_release_split(cmd: str) -> str:
-    """AUD-SEC-999: cờ/giá trị cờ (pflag; chữ lạ trong cụm → mọi từ sau) có `$`/glob không nháy — `gh` chưa rõ lệnh,
-    `release create|new|edit`, vùng cờ trước lệnh (con của `release`; lệnh khác: cổng BUDGET không bắt)."""
+    """AUD-SEC-999: từ `$`/glob không nháy (bash tách ra cờ, lệnh) của `gh` trước tên lệnh (lệnh khác `release`: cổng
+    BUDGET không bắt; tên động: AUD-SEC-587); cả lệnh nếu chưa rõ lệnh, `release` trần, `edit`; `create|new` trừ tài sản."""
     for _, words in _simple_cmds(cmd) or []:
         p = [_dequote(w) for w in words]
         gh = p[:1] != [] and posixpath.basename(p[0]) == "gh"
         path = [j + 1 for j in _gh_path(p[1:])] if gh else []
-        sub = [p[j] for j in path][:2]
-        rel = sub[:1] == ["release"]
-        whole = gh and (not path or rel and sub[1:] in ([], ["create"], ["new"], ["edit"]))
-        stop = len(p) if whole else path[-1] if rel else path[0] if gh and not _gate_bad_word(words) else 0
-        val = GH_UPLOADS.get(tuple(sub), GH_RELEASE_EDIT_VALUE_OPTS) + GH_GLOBAL_VALUE_OPTS
-        i = 1
-        while i < stop and p[i] != "--":
-            e = _pflag_eats(p[i], val, frozenset(o[1] for o in val if len(o) == 2))
-            end = len(p) if e is None else i + 1 + e if p[i][:1] == "-" else i
-            for a in words[i:end]:
-                v = _CodeView(a)
-                if any(v.top[j] and v.kind[j] == "c" and c in "$*?[" for j, c in enumerate(a)):
-                    return f"Lệnh bị khung chặn ({RELEASE_TAG_WHY}; cần nháy `{clean_text(a)[:80]}`): {cmd[:300]}"
-            i = max(end, i + 1)
+        rel = [p[j] for j in path[:1]] == ["release"]
+        path, sub = (path, [p[j] for j in path][1:2]) if rel else (path[:1], [])
+        end = path[-1] if path else len(p)
+        hits = words[1:end] if gh and (rel or not _gate_bad_word(words)) else []
+        hits += words[end + 1 :] if rel and sub in ([], ["edit"]) else []
+        hits += _gh_create_hits(words, p, end + 1) if sub in (["create"], ["new"]) else []
+        for a in hits:
+            v = _CodeView(a)
+            if any(v.top[j] and v.kind[j] == "c" and c in "$*?[" for j, c in enumerate(a)):
+                return f"Lệnh bị khung chặn ({RELEASE_TAG_WHY}; cần nháy `{clean_text(a)[:80]}`): {cmd[:300]}"
     return ""
+
+
+def _gh_create_hits(words: List[str], p: List[str], i: int) -> List[str]:
+    """Sau lệnh con (pflag): cờ, giá trị cờ, tag; chữ lạ trong cụm → mọi từ."""
+    tag, out = False, list[str]()
+    while i < len(p) and p[i] != "--":
+        e = _pflag_eats(p[i], (*GH_UPLOADS[("release", "new")], *GH_GLOBAL_VALUE_OPTS), frozenset("tnFR"))
+        if e is None:
+            return out + words[i:]
+        pos = p[i][:1] != "-" or p[i] == "-"
+        out += [] if pos and tag else words[i : i + 1 + e]
+        tag, i = tag or pos, i + 1 + e
+    return out + ([] if tag else words[i + 1 : i + 2])
 
 
 # AUD-SEC-623: `gh repo sync --force` gọi `PATCH …/git/refs/heads/<b>` `force:true` (gh 2.89 "Hard reset the branch").
