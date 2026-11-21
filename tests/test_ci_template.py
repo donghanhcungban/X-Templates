@@ -650,5 +650,38 @@ class DevTaskCiModeTest(unittest.TestCase):
         self.assertFalse((self.tmp / "d").exists())
 
 
+def job_if(expression: str, context: Dict[str, object]) -> bool:
+    """Evaluate the `a == b || c == d` form of a job `if:`; a missing context path is '' as in GitHub expressions."""
+
+    def operand(token: str) -> object:
+        if token.startswith("'"):
+            return token.strip("'")
+        value: object = context
+        for key in token.split("."):
+            value = value.get(key, "") if isinstance(value, dict) else ""
+        return value
+
+    return any(operand(a) == operand(b) for a, b in (part.split(" == ") for part in expression.split(" || ")))
+
+
+class ScheduledTemplateTest(unittest.TestCase):
+    """Audit delta 3.35.0: the `schedule` payload has no `repository`, so a job gated on its `default_branch` was
+    skipped on every scheduled run of `xt-upgrade.yml` and `xt-field.yml`."""
+
+    def test_scheduled_jobs_run_on_schedule_and_dispatch_only_on_default_branch(self):
+        schedule = {"github": {"event_name": "schedule", "ref_name": "trunk", "event": {"schedule": "23 6 * * *"}}}
+        repository = {"repository": {"default_branch": "trunk"}}
+        main = {"github": {"event_name": "workflow_dispatch", "ref_name": "trunk", "event": repository}}
+        feature = {"github": {"event_name": "workflow_dispatch", "ref_name": "feat/x", "event": repository}}
+        for name, job in (("xt-upgrade.yml", "upgrade"), ("xt-field.yml", "export")):
+            with self.subTest(name=name):
+                text = (TEMPLATES / name).read_text(encoding="utf-8")
+                self.assertIn("\n  schedule:\n", text)
+                expression = job_key(ci_jobs(text)[job], "if")
+                self.assertNotRegex(expression, r"[(,]")  # only the `a == b || c == d` form the evaluator reads
+                self.assertEqual([job_if(expression, case) for case in (schedule, main, feature)], [True, True, False])
+        self.assertFalse(job_if("github.ref == 'refs/heads/main'", schedule))  # the evaluator reads missing as ''
+
+
 if __name__ == "__main__":
     unittest.main()

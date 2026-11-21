@@ -52,6 +52,7 @@ class ReleaseFixture(unittest.TestCase):
         self.gh = []
         self.origin = None
         self.prs = []
+        self.api_rc = 0
         self.enterContext(mock.patch.object(dist, "command", self.dispatch))
 
     def git(self, cwd, *argv):
@@ -89,13 +90,15 @@ class ReleaseFixture(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0 if good else 1, "", "" if good else "no attestations found")
         if argv[0] == "gh":
             self.gh.append(argv)
-            return subprocess.CompletedProcess(argv, 0, json.dumps(self.prs) if argv[1] == "api" else "", "")
-        if argv[:2] == ("git", "clone"):
+            if argv[1] == "api":
+                return subprocess.CompletedProcess(argv, self.api_rc, json.dumps(self.prs), "HTTP 403" * self.api_rc)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if argv[0] == "git":  # clone and the authenticated push of the upgrade branch reach local fixture repositories
             repos = {
                 "https://github.com/test/framework.git": self.up,
                 "https://github.com/test/project.git": self.origin,
             }
-            argv = (*argv[:-2], str(repos[argv[-2]]), argv[-1])
+            argv = tuple(str(repos[arg]) if arg in repos else arg for arg in argv)
         return self.real(cwd, *argv, check=check, env=env)
 
 

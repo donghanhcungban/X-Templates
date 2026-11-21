@@ -6,15 +6,17 @@ import contextlib
 import datetime as dt
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_promotion_gate import ReleaseFixture, dist, xt
+from test_promotion_gate import ROOT, ReleaseFixture, dist, xt
+import install
 
 
-class UpgradeTest(ReleaseFixture):
+class ProjectFixture(ReleaseFixture):
     def setUp(self):
         super().setUp()
         self.project = self.temp / "product"
@@ -31,9 +33,18 @@ class UpgradeTest(ReleaseFixture):
         self.git(self.temp, "clone", "--bare", str(self.project), str(self.origin))
         self.enterContext(contextlib.chdir(self.project))
 
-    def release(self, version, days=0):
-        day = dt.datetime.now(dt.UTC) - dt.timedelta(days=days, minutes=2)
+    def tag_release(self, version, days):
         (self.up / "VERSION").write_text(version + "\n")
+        day = dt.datetime.now(dt.UTC) - dt.timedelta(days=days, minutes=2)
+        self.git(self.up, "add", ".")
+        with mock.patch.dict(os.environ, {"GIT_COMMITTER_DATE": day.isoformat()}):
+            self.git(self.up, "commit", "-qm", version)
+            self.git(self.up, "tag", "-am", version, "v" + version)
+        self.sign("v" + version)
+
+
+class UpgradeTest(ProjectFixture):
+    def release(self, version, days=0):
         (self.up / "CHANGELOG.md").write_text(f"## [{version}] - 2026-11-20\n\n- Framework update\n")
         scripts = self.up / "scripts"
         scripts.mkdir(exist_ok=True)
@@ -44,11 +55,7 @@ class UpgradeTest(ReleaseFixture):
             "(Path('.xtemplates')/'VERSION').write_text(Path(__file__).parents[1].joinpath('VERSION').read_text())\n"
             "Path('BLUEPRINT.md').write_text('verified release fixture')\n"
         )
-        self.git(self.up, "add", ".")
-        with mock.patch.dict(os.environ, {"GIT_COMMITTER_DATE": day.isoformat()}):
-            self.git(self.up, "commit", "-qm", version)
-            self.git(self.up, "tag", "-am", version, "v" + version)
-        self.sign("v" + version)
+        self.tag_release(version, days)
 
     def test_select_newest_aged_and_skip_withdrawn(self):
         self.assertEqual(xt.main(["upgrade", "check"]), 0)
@@ -131,3 +138,158 @@ class UpgradeTest(ReleaseFixture):
         self.assertEqual(self.git(self.origin, "merge-base", ref, old), old)
         self.assertEqual(sum(a[:3] == ("gh", "pr", "create") for a in self.gh), 1)
         self.assertEqual(sum(a[:3] == ("gh", "pr", "edit") for a in self.gh), 2)
+
+    def test_branch_moved_by_a_concurrent_run_is_never_overwritten(self):
+        self.release("1.1.0")
+        self.assertEqual(xt.main(["upgrade", "open-pr"]), 0)
+        self.release("1.2.0")
+        ref = "refs/heads/" + dist.UPGRADE_BRANCH
+        raced = self.git(self.origin, "commit-tree", "main^{tree}", "-m", "another run")
+        forward = dist.command
+        calls = len(self.gh)
+
+        def race(cwd, *argv, check=True, env=None):
+            if argv[1:3] == ("init", "--quiet"):  # the other run publishes between this run's clone and its push
+                self.git(self.origin, "update-ref", ref, raced)
+            return forward(cwd, *argv, check=check, env=env)
+
+        with mock.patch.object(dist, "command", race):
+            self.assertEqual(xt.main(["upgrade", "open-pr"]), 3)
+        self.assertEqual(self.git(self.origin, "rev-parse", ref), raced)
+        self.assertFalse([a for a in self.gh[calls:] if a[:2] == ("gh", "pr")])
+
+    def closed(self):
+        return [a[3:] for a in self.gh if a[:3] == ("gh", "pr", "close")]
+
+    def test_version_withdrawn_after_its_pr_opened_closes_that_pr(self):
+        """Audit delta 3.35.0: a withdrawal after the PR opened left it open; check/open-pr only answered 11."""
+        self.release("1.1.0")
+        self.assertEqual(xt.main(["upgrade", "open-pr"]), 0)
+        title = dist.TITLE.format("1.1.0")
+        self.assertIn(title, self.gh[-1])
+        self.prs = ["unexpected", {"number": 9, "title": "feat: other"}, {"number": 17, "title": title}]
+        withdrawn = self.up / dist.WITHDRAWN
+        withdrawn.parent.mkdir(parents=True)
+        withdrawn.write_text("1.1.0 — broken\n")
+        self.git(self.up, "add", ".")
+        self.git(self.up, "commit", "-qm", "withdraw 1.1.0")
+        self.assertEqual(xt.main(["upgrade", "check"]), 10)  # the workflow then runs open-pr with the project's token
+        self.assertEqual(self.closed(), [])
+        self.assertEqual(xt.main(["upgrade", "open-pr"]), 0)
+        self.assertEqual([c[:3] for c in self.closed()], [("17", "--repo", "test/project")])
+        self.assertIn("v1.1.0", self.closed()[0][-1])
+        ref = f"refs/heads/{dist.UPGRADE_BRANCH}"
+        self.assertEqual(self.git(self.origin, "show", f"{ref}:.xtemplates/VERSION"), "1.1.0")  # reopenable
+        self.prs = [{"number": 18, "title": dist.TITLE.format("1.0.5")}]
+        self.assertEqual(xt.main(["upgrade", "open-pr"]), 11)
+        self.api_rc = 1  # a token that cannot list PRs only warns: upgrades keep flowing
+        self.assertEqual(xt.main(["upgrade", "check"]), 11)
+        self.assertEqual(len(self.closed()), 1)
+        self.api_rc = 0
+        self.prs = [{"number": 17, "title": title}]
+        self.release("1.2.0")  # a newer valid release replaces the withdrawn tree in the same PR
+        self.assertEqual(xt.main(["upgrade", "open-pr"]), 0)
+        self.assertEqual(self.git(self.origin, "show", f"{ref}:.xtemplates/VERSION"), "1.2.0")
+        self.assertEqual((len(self.closed()), self.gh[-1][:4]), (1, ("gh", "pr", "edit", "17")))
+
+    def test_reinstall_keeps_recorded_adapters_and_harness_choice(self):
+        base = ["--with-github", "--no-git-hooks"]
+        cases = [
+            ({}, base),
+            ({"adapters": "broken", "files": []}, base),
+            ({"adapters": [".cursor/hooks.json", 5, ".codex/hooks.json", "x"]}, [*base, "--harness", "codex,cursor"]),
+            ({"codex_files": {".agents/skills/a/SKILL.md": "sha256:0"}}, [*base, "--harness", "codex"]),
+            ({"files": {".claude/settings.json": "sha256:0", "AGENTS.md": "sha256:0"}}, base),
+            ({"files": {"AGENTS.md": "sha256:0"}}, [*base, "--no-harness"]),
+        ]
+        for manifest, options in cases:
+            with self.subTest(manifest=manifest):
+                self.assertEqual(dist.install_options(manifest), options)
+        self.assertEqual(dist.ADAPTER_HOSTS, {dst: host for host, (_src, dst) in install.ADAPTERS.items()})
+
+
+class RealInstallerTest(ProjectFixture):
+    """Audit delta 3.35.0, reproduced with the framework's own install.py: the bot clone got the framework git hooks, so
+    the commit ran the product commit gate on a runner without dependencies (exit 3, no PR); a project without
+    BLUEPRINT.md failed `blueprint-status --run`; and the push ran hooks registered in the clone with the bot's token."""
+
+    def setUp(self):
+        super().setUp()
+        self.enterContext(mock.patch.dict(os.environ))
+        os.environ.pop("CLAUDECODE", None)  # the framework git hook skips itself inside an agent session
+        (self.project / "xt.yaml").write_text("upgrade_wave: canary\ncommit_gate: fast\nlint: exit 1\ntest: exit 1\n")
+        self.git(self.project, "commit", "-qam", "commit gate that is red without dependencies")
+        self.git(self.project, "push", "-q", str(self.origin), "HEAD:main")
+        self.seen = self.temp / "seen"
+        self.seen.mkdir()
+        self.calls = []
+        self.plant = False
+        forward = dist.command
+
+        def record(cwd, *argv, check=True, env=None):
+            self.calls.append((Path(cwd), argv, env))
+            if self.plant and argv[-2:] == ("add", "--all"):
+                self.plant_hooks(Path(cwd))
+            return forward(cwd, *argv, check=check, env=env)
+
+        self.enterContext(mock.patch.object(dist, "command", record))
+
+    def plant_hooks(self, clone):
+        """Stand-in for product code that ran in the clone: every hook it can register records the token it sees."""
+        script = f'#!/bin/sh\nprintf %s "${{GH_TOKEN-none}}" > "{self.seen}/$(basename "$0")"\n'
+        for hooks in (clone / ".git/hooks", clone / ".git/husky"):
+            hooks.mkdir(exist_ok=True)
+            for name in ("pre-commit", "commit-msg", "post-commit", "pre-push", "reference-transaction"):
+                (hooks / name).write_text(script)
+                (hooks / name).chmod(0o755)
+        self.git(clone, "config", "core.hooksPath", ".git/husky")
+
+    def release(self, version, days=0):
+        """Tag the framework's tracked files (working-tree bytes) at `version`."""
+        if not (self.up / "scripts/install.py").exists():
+            for rel in self.real(ROOT, "git", "ls-files", "-z").stdout.split("\0"):
+                src, dst = ROOT / rel, self.up / rel
+                if rel and not rel.startswith("tests/") and os.path.lexists(src):
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst, follow_symlinks=False)
+        self.tag_release(version, days)
+
+    def test_real_installer_opens_pr_without_hooks_product_checks_or_token(self):
+        self.release("1.1.0")
+        self.assertEqual(xt.main(["upgrade", "open-pr"]), 0)
+        ref = "refs/heads/" + dist.UPGRADE_BRANCH
+        files = self.git(self.origin, "ls-tree", "-r", "--name-only", ref).splitlines()
+        for path in (".claude/settings.json", ".github/workflows/xt-upgrade.yml", ".xtemplates/scripts/xt.py"):
+            self.assertIn(path, files)
+        self.assertNotIn("BLUEPRINT.md", files)
+        self.assertEqual(self.git(self.origin, "show", f"{ref}:.xtemplates/VERSION").split()[0], "1.1.0")
+        installs = [argv for _, argv, _ in self.calls if argv[1:2] and argv[1].endswith("scripts/install.py")]
+        self.assertEqual([a[2:] for a in installs], [(".", "--with-github", "--no-git-hooks")])
+        first = self.git(self.origin, "rev-parse", ref)
+        # Product code later registers hooks in the clone; a blueprint check command is product code too.
+        self.plant = True
+        (self.project / "BLUEPRINT.md").write_text(f"- [x] `BASE-X-001` **MUST** a — Kiểm: `touch {self.seen}/kiem`\n")
+        self.git(self.project, "add", "BLUEPRINT.md")
+        self.git(self.project, "commit", "-qm", "blueprint")
+        self.git(self.project, "push", "-q", str(self.origin), "HEAD:main")
+        self.release("1.2.0")
+        self.assertEqual(xt.main(["upgrade", "open-pr"]), 0)
+        self.assertEqual(sorted(path.name for path in self.seen.iterdir()), [])  # no hook, no `— Kiểm:` command ran
+        self.assertEqual(self.git(self.origin, "show", f"{ref}:.xtemplates/VERSION").split()[0], "1.2.0")
+        self.assertEqual(self.git(self.origin, "merge-base", ref, first), first)
+        blueprint = [argv for _, argv, _ in self.calls if "blueprint-status" in argv]
+        self.assertEqual([a[2:] for a in blueprint], [("blueprint-status", "BLUEPRINT.md")])
+        for (
+            cwd,
+            argv,
+            env,
+        ) in self.calls:  # allowed: only the authenticated push holds the token, nothing else in clones
+            if cwd.name == "project":
+                self.assertNotIn("GH_TOKEN", env, argv)
+        pushes = [(cwd, argv, env) for cwd, argv, env in self.calls if "https://github.com/test/project.git" in argv]
+        pushes = [p for p in pushes if "push" in p[1]]
+        self.assertEqual(len(pushes), 2)
+        for cwd, argv, env in pushes:
+            self.assertEqual((cwd.name, env["GH_TOKEN"]), ("publish.git", "fixture"))
+            self.assertLessEqual(set(env), dist.PUSH_ENV | {"GIT_TERMINAL_PROMPT"})
+            self.assertTrue(any(arg.startswith("core.hooksPath=") for arg in argv))

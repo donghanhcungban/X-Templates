@@ -11,7 +11,8 @@ concurrency:
 jobs:
   export:
     environment: xt-field-read
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # lịch luôn chạy trên nhánh mặc định, payload của schedule không có `repository`
+    if: github.event_name == 'schedule' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -48,8 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read # đẩy nhánh và mở PR bằng XT_STEWARD_TOKEN: PR của github.token không kích CI
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,10 +80,11 @@ jobs:
       - if: steps.prepare.outputs.stamp != ''
         name: Publish report for review
         env:
-          GH_TOKEN: ${{ github.token }}
-          BASE: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ secrets.XT_STEWARD_TOKEN }}
+          BASE: ${{ github.ref_name }} # job export chỉ chạy trên nhánh mặc định
           STAMP: ${{ steps.prepare.outputs.stamp }}
         run: |
+          test -n "$GH_TOKEN" || { echo "::error::Cần XT_STEWARD_TOKEN của dự án để mở PR số field và để CI chạy cho PR đó."; exit 1; }
           branch="xt-field/$STAMP"
           gh auth setup-git
           if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
