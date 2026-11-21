@@ -2364,9 +2364,8 @@ def _dyn_text_why(v: _CodeView, live: str, bare: str) -> str:
     return "biến bash tự chạy cùng ngữ cảnh kích hoạt (AUD-SEC-287/291/299/300)" if hit else ""
 
 
-# ADR-0065 (D-322): lớp mở rộng động theo DANH SÁCH TRẮNG. Ba lượt vá AUD-SEC-388 theo cấu trúc lệnh đều lọt dạng mới
-# (#372, review #422: hàm `function`, `((` giả trong nháy, từ lệnh có nháy, `read` định nghĩa trong `eval`, `exec read`).
-# OR với mọi luật cũ (bài học #352/#372); không suy cấu trúc (hàm, vòng `for`, vùng số học…) để miễn:
+# ADR-0065 (D-322): lớp mở rộng động theo DANH SÁCH TRẮNG (vá theo cấu trúc lệnh từng lọt: AUD-SEC-388).
+# OR với mọi luật cũ; không suy cấu trúc (hàm, vòng `for`, vùng số học…) để miễn:
 # (A) từ lệnh — sau gán đầu lệnh, từ khoá, lệnh bọc guard biết — có `$`/backtick, kể cả trong nháy → chặn (AUD-SEC-391);
 # (B) chữ thô nhắc `IFS` (mọi dạng chỉ-chữ-số) hay có gán tên-đích-động (tên đích không nguyên văn, nameref, `${!x}`,
 #     đổi hoa từ dữ liệu, biểu thức số học nhắc tên/mở rộng — bash đánh giá ĐỆ QUY giá trị biến nên `(( a ))` với `a`
@@ -12963,7 +12962,8 @@ def _pflag_eats(a: str, valued: Tuple[str, ...], shorts: FrozenSet[str]) -> Opti
 
 
 def _gh_release_split(cmd: str) -> str:
-    """AUD-SEC-999: giá trị cờ có `$`/glob không nháy của `release create|new` (`edit`: `--tag`/`--draft` false)."""
+    """AUD-SEC-999: cờ/giá trị cờ (pflag; chữ lạ trong cụm → mọi từ sau) có `$`/glob không nháy của `release
+    create|new` (`edit`: `--tag`/`--draft` false)."""
     for _, words in _simple_cmds(cmd) or []:
         p = [_dequote(w) for w in words]
         path = _gh_path(p[1:]) if p and posixpath.basename(p[0]) == "gh" else []
@@ -12971,11 +12971,16 @@ def _gh_release_split(cmd: str) -> str:
         d = [a + "=" + b if a == "--draft" and b.lower() in ("0", "f", "false") else a for a, b in zip(p, p[1:])]
         pub = any(a.split("=")[0] == "--tag" or a[:8] == "--draft=" and a[8:] not in PFLAG_TRUE for a in d + p[-1:])
         pub = sub in (["release", "create"], ["release", "new"]) or sub == ["release", "edit"] and pub
-        k = path[0] + 2 if pub else len(p)
-        for _, a, _, flag in _gh_words(words[k:], list(map(_gate_skeleton, words[k:])), p[k:]):
-            v = _CodeView(a)
-            if flag and any(v.top[i] and v.kind[i] == "c" and c in "$*?[" for i, c in enumerate(a)):
-                return f"Lệnh bị khung chặn ({RELEASE_TAG_WHY}; cần nháy `{clean_text(a)[:80]}`): {cmd[:300]}"
+        val = GH_UPLOADS.get(tuple(sub), GH_RELEASE_EDIT_VALUE_OPTS) + GH_GLOBAL_VALUE_OPTS
+        i = path[0] + 2 if pub else len(p)
+        while i < len(p) and p[i] != "--":
+            e = _pflag_eats(p[i], val, frozenset(o[1] for o in val if len(o) == 2))
+            end = len(p) if e is None else i + 1 + e if p[i][:1] == "-" else i
+            for a in words[i:end]:
+                v = _CodeView(a)
+                if any(v.top[j] and v.kind[j] == "c" and c in "$*?[" for j, c in enumerate(a)):
+                    return f"Lệnh bị khung chặn ({RELEASE_TAG_WHY}; cần nháy `{clean_text(a)[:80]}`): {cmd[:300]}"
+            i = max(end, i + 1)
     return ""
 
 

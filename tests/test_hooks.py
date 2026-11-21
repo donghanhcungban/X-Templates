@@ -5169,6 +5169,22 @@ class GuardDeltaAuditTest(unittest.TestCase):
         'gh release edit d1 --draft=false --notes "$X"',
         "gh release edit d1 --tag nightly2 --notes-file notes.md",
         "gh release edit d1 --tagline $X",
+        # review #707 🟠: cờ bool (gh 2.95 `release create --help`) không ăn từ kế — tài sản glob/`$VAR` như base
+        "gh release create preview --draft --generate-notes build/*.whl",
+        'gh release create nightly --title "Nightly $(date +%F)" --prerelease ./out/*.tar.gz',
+        "gh release create nightly -p dist/*",
+        "gh release create nightly --draft $ASSETS",
+        "gh release create nightly --verify-tag dist/*.tgz",
+        "gh release create nightly --latest dist/*.zip",
+        "gh release create nightly --notes-from-tag dist/*.zip",
+        "gh release create nightly --fail-on-no-commits dist/*.zip",
+        "gh release create nightly -dp dist/*",
+        "gh release new nightly --prerelease $ASSETS",
+        "gh release create nightly -n -t v1.2.?",  # `-n` nuốt `-t`: `v1.2.?` là tài sản
+        "gh release create nightly -- -t v1.2.?",  # sau `--`: đối số vị trí (luật vị trí)
+        # 🟢: `$`/glob nằm trong `"$(…)"` — một từ
+        'gh release create nightly --notes "$(git log --oneline $PREV..HEAD)"',
+        'gh release create nightly --notes "$(cat notes/*.md)"',
     )
     # AUD-SEC-999: giá trị cờ KHÔNG nháy của `release create|new` có glob/`$` — bash tách thành nhiều từ, từ thừa thành
     # đối số vị trí (`-t v1.2.?` với tệp `v1.2.2`, `v1.2.3`: tag `v1.2.3`). Dạng đã chặn sẵn (tập con: `--title=$X`,
@@ -5213,6 +5229,22 @@ class GuardDeltaAuditTest(unittest.TestCase):
         "gh release edit v1.2.? --draft=false",
         "gh release edit d1 --tag v1.2.?",
         "gh release edit d1 --tag=$X",
+        # review #707 🔴: cờ ăn giá trị nuốt cả `--`/`--end-of-options` (pflag) — từ sau đó vẫn là cờ/giá trị cờ
+        "gh release create -n -- --title $(echo x v1.2.3)",
+        "gh release create -n --end-of-options --title $(echo x v1.2.3)",
+        "gh release create -n -- -t v1.2.?",
+        "gh release create -t -- -n v1.2.?",
+        "gh release create -F -- -n v1.2.?",
+        "gh release create --notes-file -- -t $X",
+        "gh release create -p -n -- -t v1.2.?",
+        "gh release create -n -- -t v1.2.[3]",
+        "gh release create -n -- -t *",
+        "gh release create -n -- --title=$X",
+        "gh release new -n -- -t v1.2.?",
+        "bash -c 'gh release create -n -- -t v1.2.?'",
+        "gh release create nightly -pt$X",  # giá trị dính liền trong cụm
+        "gh release create nightly -ph $X",  # chữ lạ trong cụm: xét mọi từ còn lại
+        "gh release edit d1 --draft=false -n -- -t $X",
     )
 
     # AUD-SEC-996a: `--follow-tags` (cả viết tắt git nhận) và `push.followTags` đẩy tag chú thích kèm nhánh — như
