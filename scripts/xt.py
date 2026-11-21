@@ -6597,6 +6597,33 @@ def _waived_notes(waived: List[str]) -> List[str]:
     return [f"ngoại lệ cứng không giữ người ({HARD_KEY}: auto, ADR-0020): {'; '.join(waived)}"] if waived else []
 
 
+DERIVED_MODULE = SCRIPT_DIR / "xt_derived.py"
+
+
+def derived_lane(pr: Dict[str, Any]) -> bool:
+    """Làn derived (ADR-0087): `_pr_rest` đã xác minh qua API đúng một tệp `docs/derived/<head>.json` hợp lệ — không cần
+    review, ghim đúng head; nhãn `risk:` (phanh tay) hay danh sách file bị cắt → luật thường."""
+    d = pr.get("derived")
+    if not isinstance(d, dict) or d.get("ok") is not True or d.get("head") != pr.get("headRefOid"):
+        return False
+    return not pr.get("filesTruncated") and not _risk_labels(pr)
+
+
+def derived_notes(pr: Dict[str, Any], derived: bool) -> List[str]:
+    d = pr.get("derived")
+    if not isinstance(d, dict):
+        return []
+    if derived:
+        return [f"làn derived: {d.get('file')} hợp lệ (schema v1) từ {d.get('repo')}, không cần review (ADR-0087)"]
+    got = d.get("reasons")
+    why = (
+        [str(r) for r in got]
+        if isinstance(got, list) and got
+        else ["head lệch, nhãn risk:, ngoại lệ cứng hoặc thiếu tệp"]
+    )
+    return [f"làn derived: không — {'; '.join(why[:3])}"]
+
+
 def merge_decision(
     pr: Dict[str, Any], autonomy: int = 1, risk_paths: Optional[List[str]] = None, hard_auto: bool = False
 ) -> Dict[str, Any]:
@@ -6607,14 +6634,15 @@ def merge_decision(
     PR còn chờ CI để máy không merge và tắt auto-merge người bật (ADR-0036). `hard_auto` (`merge_hard_exceptions: auto`,
     ADR-0020): ngoại lệ cứng không giữ người — lý do chuyển sang `hard_waived`, `hard` rỗng."""
     n = pr.get("number", "")
-    lane_reasons = merge_lane_reasons(pr, risk_paths or [])
     hard = merge_hard_reasons(pr, risk_paths or [])
+    derived = derived_lane(pr) and not hard
+    lane_reasons = [] if derived else merge_lane_reasons(pr, risk_paths or [])
     # Rủi ro cao (ADR-0062): ngoại lệ cứng (kể cả đã miễn) hoặc schema/migration — review độc lập bắt buộc, kể cả pha build.
     high = bool(hard) or any(rx.search(p) for tag, rx in RISK_PATH_RES if tag == "schema" for p in _risky_paths(pr))
     # Khoá tự miễn cho chính PR đổi nó thì chốt vô nghĩa — lý do này không miễn được.
     waived = [r for r in hard if r not in UNWAIVABLE] if hard_auto else []
     hard = [r for r in hard if r not in waived]
-    lane = "chuẩn" if lane_reasons else "nhanh"
+    lane = "derived" if derived else "chuẩn" if lane_reasons else "nhanh"
     blocked = _merge_blockers(pr) or _stacked_blocker(pr)
     if blocked:
         verdict, reasons = blocked
@@ -6632,8 +6660,8 @@ def merge_decision(
     elif lane_reasons:  # L3 (ADR-0015): làn chuẩn tự merge — ghi đúng làn (AUD-CODE-010)
         verdict, reasons = "merge", [f"L3 (ADR-0015): làn chuẩn, CI xanh, không xung đột — {'; '.join(lane_reasons)}"]
     else:
-        verdict, reasons = "merge", ["làn nhanh, CI xanh, không xung đột"]
-    reasons.extend(_waived_notes(waived))
+        verdict, reasons = "merge", [f"{'làn derived' if derived else 'làn nhanh'}, CI xanh, không xung đột"]
+    reasons.extend([*_waived_notes(waived), *derived_notes(pr, derived)])
     base, head = pr.get("baseRefName") or "main", pr.get("headRefOid", "")
     nxt = {
         "merge": f"gh pr merge {n} --squash --match-head-commit {head}",
@@ -7297,6 +7325,8 @@ def _pr_rest(pr_arg: Optional[str], local_check: bool = True) -> Dict[str, Any]:
     ]
     rollup = rest_rollup(runs, statuses)
     files = _gh_items(f"{repo}/pulls/{n}/files?per_page=100")
+    # Làn derived (ADR-0087): chỉ PR chạm docs/derived/ mới hỏi thêm API; nội dung đọc như dữ liệu, không chạy mã PR.
+    derived = _derived().lane(sys.modules[__name__], repo, pr, files) if DERIVED_MODULE.is_file() else None
     cfg = review_config(project_dir(), f"origin/{(pr.get('base') or {}).get('ref') or 'main'}")
     marks = _published_marks(repo, n, cfg.get("review_identity", ""))
     mergeable = pr.get("mergeable")  # REST: true · false · null (GitHub đang tính)
@@ -7363,6 +7393,7 @@ def _pr_rest(pr_arg: Optional[str], local_check: bool = True) -> Dict[str, Any]:
         **({"autoMergeRequest": pr["auto_merge"]} if pr.get("auto_merge") else {}),
         # REST cắt danh sách file ở 3000: PLAN.md/xt.yaml có thể nằm ngoài phần đã thấy → luôn người merge
         **({"filesTruncated": True} if int(pr.get("changed_files") or 0) > len(files) else {}),
+        **({"derived": derived} if derived else {}),
         "files": [
             {
                 "path": f.get("filename", ""),
@@ -16937,7 +16968,9 @@ def pr_next(
             )
     if early is not None:
         return early
-    label = f"làn {d.get('lane')}" if deferred else "review sạch ở head" if strict else "làn nhanh"
+    label = (
+        f"làn {d.get('lane')}" if deferred else "review sạch ở head" if strict else f"làn {d.get('lane') or 'nhanh'}"
+    )
     out = _pr_next_final(d, auto_merge, label, act, disable)
     return {**out, "why": f"{PHASE_DEFER_NOTE} — {out['why']}"} if deferred else out
 
@@ -17667,7 +17700,9 @@ def _steward_one(pr_arg: str, repo: str, base: Path, apply: bool, gh_repo: List[
     )
     if _standard_seen(pr):  # từng vào làn chuẩn (nhãn bền): push sau đó không hạ PR về làn nhanh
         rec = {**rec, "standard_seen": True}
-    why_not = steward_untrusted(pr)
+    # Làn derived (ADR-0087): danh tính là head repo do GitHub báo và PR chỉ đổi đúng tệp dữ liệu của nó — steward tự merge
+    # PR từ fork/người ngoài chỉ ở làn này.
+    why_not = "" if d["lane"] == "derived" else steward_untrusted(pr)
     d, next_step = _eval_pr_next(pr, d, rec, base, check_base=not why_not)
     out = {**next_step, "applied": False}
     if why_not and out["action"] not in ("done", "closed", "disable-auto-merge"):
@@ -22007,6 +22042,16 @@ def _sibling_imports() -> None:
         sys.path.insert(0, str(SCRIPT_DIR))
 
 
+def _derived() -> Any:
+    """`xt_derived` (ADR-0087) nạp một lần theo đường tệp cạnh xt.py — không đổi `sys.path` lúc dựng parser."""
+    module = sys.modules.get("xt_derived")
+    if module is None:
+        module = types.ModuleType("xt_derived")
+        sys.modules["xt_derived"] = module  # dataclass tra module theo tên lúc tạo lớp
+        _exec_source(DERIVED_MODULE, module)
+    return module
+
+
 def cmd_distribution(args: argparse.Namespace) -> int:
     _sibling_imports()
     import xt_distribution
@@ -22102,6 +22147,8 @@ def build_parser() -> argparse.ArgumentParser:
         upgrade = sub.add_parser("upgrade", help="kéo bản khung đã ký vào PR của chính dự án")
         upgrade.add_argument("upgrade_action", choices=("check", "open-pr"))
         upgrade.set_defaults(fn=cmd_distribution)
+    if DERIVED_MODULE.is_file():  # chỉ repo khung (ADR-0087), không cài vào dự án đích
+        _derived().register(sub, sys.modules[__name__])
     pv = sub.add_parser("validate")
     pv.add_argument(
         "--stale", type=int, metavar="N", help="cảnh báo mọi 'xác minh YYYY-MM-DD' cũ hơn N ngày (AUD-DOC-177)"
