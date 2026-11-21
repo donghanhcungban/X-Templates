@@ -6,6 +6,10 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [Unreleased]
 
+### Added
+
+- Nâng 5× giới hạn kích thước cho các file hướng dẫn nạp đầu phiên (`CAPS`), các nhóm thư mục (`DIR_CAPS`), hệ số mốc xét lại (`MARK_FACTOR = 5` trong `tests/test_docs_budget.py`) và trần `PROGRESS.md` (`PROGRESS_MAX_BYTES = 40960`, đồng bộ `utf8_head 40960` ở `.claude/hooks/session-start.sh`). [ADR-0089](docs/adr/0089-raise-file-and-dir-caps-5x.md).
+
 ## [3.35.0] - 2026-11-21
 
 Bản harden sau audit delta 5 lô (0 🔴; mọi lô rút gọn, phần chưa rà ở báo cáo): kênh thông tin dự án phái sinh (ADR-0087)
