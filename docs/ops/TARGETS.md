@@ -25,7 +25,9 @@ Lần gộp 2026-10-23 (T-2410, `feedback aggregate --from` bản clone nông c�
 
 ## Dự án phát triển từ mã nguồn khung
 
-X-Office giữ mã khung ở gốc. [X-Office #16](https://github.com/www-donghanhcungban-org/X-Office/pull/16).
+Bản ghi máy đọc ở [`docs/derived/`](../derived/README.md), dự án tự cập nhật bằng PR (ADR-0087). Mục này không thuộc
+danh sách kéo phản hồi. X-Office giữ mã khung ở gốc: [bản ghi](../derived/www-donghanhcungban-org--X-Office.json),
+[X-Office #16](https://github.com/www-donghanhcungban-org/X-Office/pull/16).
 
 ## Đã xét, không đưa vào
 

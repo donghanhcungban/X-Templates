@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "repo": "www-donghanhcungban-org/X-Office",
+  "kind": "derived",
+  "upstream": {
+    "repo": "www-donghanhcungban-org/X-Templates",
+    "version": "3.34.0"
+  },
+  "description": "Dự án phát triển từ mã nguồn X-Templates, giữ mã khung ở gốc repo.",
+  "status": "active",
+  "updated": "2026-11-21"
+}
