@@ -43,7 +43,8 @@ Chọn phương án 1.
 - **Chỉ steward merge:** tiêu đề, thân và commit của PR fork không lên nhánh chính. Steward gửi `commit_title` cố định
   `docs(derived): cập nhật <owner>--<repo> (#N)` và `commit_message` cố định dựng từ bản ghi đã kiểm. Repo đặt thân
   squash bằng mọi commit, còn guard chặn subject tường minh của phiên agent. Vì vậy `merge-check` và `pr next` trả `wait`
-  cho làn này và guard không cho agent merge. Tiêu đề PR fork không chặn làn.
+  cho làn này: chỉ `pr next` dừng agent; guard chỉ hỏi (`ask`, mặc định cho qua), chưa chặn hẳn (nợ AUD-HAR-454).
+  Tiêu đề PR fork không chặn làn.
 - `xt.py derived check [--pr N | TỆP…] [--json]` dùng chung hàm với `merge-check`; `xt.py derived list` đọc mọi bản
   ghi. Mô-đun chỉ có ở repo khung, không cài vào dự án đích. `registry` vẫn chỉ đọc dự án đã cài khung.
 

@@ -6623,9 +6623,9 @@ DERIVED_WAIT = "chờ pr-steward merge (sau khi CI xong hoặc lượt lịch 10
 
 
 def derived_steward_only(d: Dict[str, Any]) -> Dict[str, Any]:
-    """`merge-check` (cổng guard cho `gh pr merge`/REST/MCP của phiên agent): PR làn derived đủ điều kiện → `wait`. Lệnh
-    merge của agent không đặt được subject/thân (guard chặn `--subject`/`commit_title`), thân squash sẽ là commit của
-    fork; chỉ steward gửi `derived_commit`."""
+    """`merge-check` (đọc bởi `pr next`/guard): PR làn derived đủ điều kiện → `wait`. Lệnh merge của agent không đặt
+    được subject (guard chặn `--subject`/`commit_title`) và thân squash sẽ là commit của fork; chỉ steward gửi
+    `derived_commit`. Guard chỉ hỏi chứ không chặn hẳn (AUD-HAR-454)."""
     if d.get("lane") != "derived" or d.get("verdict") != "merge":
         return d
     out = {k: v for k, v in d.items() if k != "next_rest"}
