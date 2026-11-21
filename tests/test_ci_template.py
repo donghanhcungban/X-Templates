@@ -661,7 +661,10 @@ def job_if(expression: str, context: Dict[str, object]) -> bool:
             value = value.get(key, "") if isinstance(value, dict) else ""
         return value
 
-    return any(operand(a) == operand(b) for a, b in (part.split(" == ") for part in expression.split(" || ")))
+    def clause(part: str) -> bool:
+        return all(operand(a) == operand(b) for a, b in (term.split(" == ") for term in part.split(" && ")))
+
+    return any(clause(part) for part in expression.split(" || "))  # `&&` binds tighter than `||`, as in GitHub
 
 
 class ScheduledTemplateTest(unittest.TestCase):
@@ -671,15 +674,34 @@ class ScheduledTemplateTest(unittest.TestCase):
     def test_scheduled_jobs_run_on_schedule_and_dispatch_only_on_default_branch(self):
         schedule = {"github": {"event_name": "schedule", "ref_name": "trunk", "event": {"schedule": "23 6 * * *"}}}
         repository = {"repository": {"default_branch": "trunk"}}
-        main = {"github": {"event_name": "workflow_dispatch", "ref_name": "trunk", "event": repository}}
-        feature = {"github": {"event_name": "workflow_dispatch", "ref_name": "feat/x", "event": repository}}
+        main = {
+            "github": {
+                "event_name": "workflow_dispatch",
+                "ref_type": "branch",
+                "ref_name": "trunk",
+                "event": repository,
+            }
+        }
+        feature = {
+            "github": {
+                "event_name": "workflow_dispatch",
+                "ref_type": "branch",
+                "ref_name": "feat/x",
+                "event": repository,
+            }
+        }
+        # Tag trùng tên nhánh mặc định: người có quyền ghi dispatch trên `refs/tags/trunk` chạy mã của họ với token.
+        tag = {
+            "github": {"event_name": "workflow_dispatch", "ref_type": "tag", "ref_name": "trunk", "event": repository}
+        }
         for name, job in (("xt-upgrade.yml", "upgrade"), ("xt-field.yml", "export")):
             with self.subTest(name=name):
                 text = (TEMPLATES / name).read_text(encoding="utf-8")
                 self.assertIn("\n  schedule:\n", text)
                 expression = job_key(ci_jobs(text)[job], "if")
-                self.assertNotRegex(expression, r"[(,]")  # only the `a == b || c == d` form the evaluator reads
-                self.assertEqual([job_if(expression, case) for case in (schedule, main, feature)], [True, True, False])
+                self.assertNotRegex(expression, r"[(,]")  # only the `a == b && c == d || …` form the evaluator reads
+                cases = (schedule, main, feature, tag)
+                self.assertEqual([job_if(expression, case) for case in cases], [True, True, False, False])
         self.assertFalse(job_if("github.ref == 'refs/heads/main'", schedule))  # the evaluator reads missing as ''
 
 
