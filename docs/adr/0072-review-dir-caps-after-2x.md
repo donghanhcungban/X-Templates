@@ -1,7 +1,7 @@
 # ADR-0072: Xét lại trần thư mục sau khi `.claude/hooks/` vượt 2× mốc 2026-10-26 — giữ trần, mốc mới, cổng máy
 
 - **Trạng thái:** Đã chấp nhận 2026-11-05 (phiên chính tự duyệt theo tiêu chí chất lượng cuối, ADR-0008 — **D-373**; audit
-  delta T-3557 nhóm ARCH, AUD-ARCH-009).
+  delta T-3557 nhóm ARCH, AUD-ARCH-009); trần và hệ số mốc nâng 5× bởi [ADR-0089](0089-raise-file-and-dir-caps-5x.md).
 - **Trạng thái triển khai:** Đã triển khai — `tests/test_docs_budget.py` `SIZE_MARKS`, `test_dir_totals_within_double_latest_mark`;
   đo chi phí compile `guard.py` giao `T-3709` (PLAN-upgrade-2026-11-02, hạn 2027-01-21).
 - **Ngày:** 2026-11-05.
