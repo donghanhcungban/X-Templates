@@ -3,7 +3,7 @@ title: Bàn giao & các bên: tài liệu bàn giao, đào tạo, hỗ trợ, k�
 kind: module
 prefix: PM-HANDOVER
 applies_to: [all]
-updated: 2026-10-14
+updated: 2026-11-21
 ---
 
 # Bàn giao & các bên: tài liệu bàn giao, đào tạo, hỗ trợ, kết thúc dự án
