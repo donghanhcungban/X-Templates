@@ -5158,17 +5158,33 @@ class GuardDeltaAuditTest(unittest.TestCase):
         "gh release create nightly --title \"$T\" 'dist/*.zip'",
         "gh release create nightly dist/*.zip",  # glob ở tài sản (đối số vị trí sau tag)
         "gh release create -t {x,y} nightly",  # guard bung brace như bash: tag `y` đọc được
-        # `edit` không phát hành bản nháp/không đặt tag: giá trị cờ không nháy như base
+        # `edit`: giá trị cờ trong nháy, cờ bool, giá trị nguyên văn — như base
         'gh release edit v1.2.3 --notes "$X"',
-        "gh release edit d1 --notes $X",
-        "gh release edit d1 --draft=true --notes $X",
-        "gh release edit d1 --draft --notes $X",
-        "gh release edit d1 --draft true -n $X",
+        'gh release edit d1 --draft=true --notes "$X"',
+        "gh release edit d1 --draft --notes x",
+        "gh release edit v1.2.3 --notes-file notes.md",
         "gh release edit d1 --prerelease",
+        "gh release edit d1 --draft=true",
         "gh release edit d1 --draft=false",
         'gh release edit d1 --draft=false --notes "$X"',
         "gh release edit d1 --tag nightly2 --notes-file notes.md",
-        "gh release edit d1 --tagline $X",
+        "gh release edit d1 --tagline $X",  # cờ lạ (pflag lỗi), `$X` không ở vị trí giá trị
+        # vùng cờ trước lệnh có nháy/nguyên văn; lệnh khác của `release` (tài sản/mẫu sau lệnh con không xét)
+        'gh -R "$GITHUB_REPOSITORY" release create nightly',
+        'gh release -R "$R" create nightly',
+        "gh -R o/r release create nightly dist/*",
+        "gh release upload nightly dist/*",
+        "gh release download v1.2.3 -p *.zip",
+        "gh release view v1.2.3",
+        "gh release list",
+        'gh release create nightly --notes "$(cat CHANGELOG.md)"',
+        'gh -R "$GITHUB_REPOSITORY" pr list',
+        'gh --repo "$R" pr view 5',
+        'gh --repo="$R" pr view 5',
+        "gh --repo=owner/repo pr list",
+        "gh --hostname github.example.com pr list",
+        "gh -R o/r workflow run ci.yml",
+        "gh pr list -R $R",  # sau tên lệnh: không đổi được lệnh
         # review #707 🟠: cờ bool (gh 2.95 `release create --help`) không ăn từ kế — tài sản glob/`$VAR` như base
         "gh release create preview --draft --generate-notes build/*.whl",
         'gh release create nightly --title "Nightly $(date +%F)" --prerelease ./out/*.tar.gz',
@@ -5245,6 +5261,30 @@ class GuardDeltaAuditTest(unittest.TestCase):
         "gh release create nightly -pt$X",  # giá trị dính liền trong cụm
         "gh release create nightly -ph $X",  # chữ lạ trong cụm: xét mọi từ còn lại
         "gh release edit d1 --draft=false -n -- -t $X",
+        # review 693a19ca 🟠: tải giấu trong biến đặt ngoài lệnh — `X='x --tag v1.2.3'`, `X='x --draft=false'`, tệp tên
+        # `--draft=false`; `X='o/r create v1.2.3'` ở vùng cờ trước lệnh con của `release`, `gh` chưa rõ lệnh
+        "gh release edit nightly -t $X",
+        "gh release edit v1.2.3 -n $X",
+        "gh release edit v1.2.3 --notes-file $X",
+        "gh release edit v1.2.3 -n *",
+        "gh release edit d1 --draft=true --notes $X",
+        "gh release -R $X",
+        "gh release --repo $X",
+        "gh release --repo=$X view v1.2.3",
+        "gh release -R $X upload nightly dist/*",
+        "gh --repo=$X release create nightly",
+        "gh --repo=$X release list",
+        "gh --hostname=$H release view v1",
+        "gh -R $X",
+        "gh --repo=$X",
+        # mọi `gh`: vùng cờ trước lệnh (`X='o/r release create v1.2.3'` → lệnh thật là `release create`)
+        "gh --repo=$X pr list",
+        "gh --repo=$X pr view 5",
+        "gh --repo=$X api repos/o/r",
+        "gh --hostname=$H pr list",
+        "gh -R o$X pr list",
+        "gh --repo=$OWNER/repo pr list",
+        "gh -R * pr list",
     )
 
     # AUD-SEC-996a: `--follow-tags` (cả viết tắt git nhận) và `push.followTags` đẩy tag chú thích kèm nhánh — như
@@ -5430,9 +5470,15 @@ class GuardDeltaAuditTest(unittest.TestCase):
         ):
             with self.subTest(cmd):
                 self.assertIn(self.guard.RELEASE_TAG_WHY, str(self.guard.bash_decision(cmd, str(self.root))["reason"]))
-        for cmd in ("gh release create nightly", "gh", "X=1", "echo 'x", "gh release list -L $N"):
+        for cmd in ("gh release create nightly", "gh", "X=1", "echo 'x", "gh release list -L $N", "gh -R $R pr list"):
             with self.subTest(cmd):
                 self.assertEqual(self.guard._gh_release_split(cmd), "")
+        # vùng cờ của lệnh gh khác: cổng BUDGET đã bắt thì giữ mã BUDGET (`GuardGhRestSplitDebtTest`)
+        for cmd in ("gh -R $R pr merge 5", "gh -R $R pr list", "gh --repo $R pr view 5"):
+            with self.subTest(cmd):
+                self.assertEqual(
+                    self.guard.decide(self.guard.bash_decision(cmd, str(self.root))).code, self.guard.BUDGET
+                )
 
     def test_release_version_tag_concurrent(self):
         """Quyết định F-144 chạy đồng thời giống tuần tự (không trạng thái dùng chung giữa các lệnh)."""

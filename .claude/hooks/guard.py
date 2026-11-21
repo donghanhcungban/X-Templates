@@ -12962,18 +12962,19 @@ def _pflag_eats(a: str, valued: Tuple[str, ...], shorts: FrozenSet[str]) -> Opti
 
 
 def _gh_release_split(cmd: str) -> str:
-    """AUD-SEC-999: cờ/giá trị cờ (pflag; chữ lạ trong cụm → mọi từ sau) có `$`/glob không nháy của `release
-    create|new` (`edit`: `--tag`/`--draft` false)."""
+    """AUD-SEC-999: cờ/giá trị cờ (pflag; chữ lạ trong cụm → mọi từ sau) có `$`/glob không nháy — `gh` chưa rõ lệnh,
+    `release create|new|edit`, vùng cờ trước lệnh (con của `release`; lệnh khác: cổng BUDGET không bắt)."""
     for _, words in _simple_cmds(cmd) or []:
         p = [_dequote(w) for w in words]
-        path = _gh_path(p[1:]) if p and posixpath.basename(p[0]) == "gh" else []
-        sub = [p[j + 1] for j in path][:2]
-        d = [a + "=" + b if a == "--draft" and b.lower() in ("0", "f", "false") else a for a, b in zip(p, p[1:])]
-        pub = any(a.split("=")[0] == "--tag" or a[:8] == "--draft=" and a[8:] not in PFLAG_TRUE for a in d + p[-1:])
-        pub = sub in (["release", "create"], ["release", "new"]) or sub == ["release", "edit"] and pub
+        gh = p[:1] != [] and posixpath.basename(p[0]) == "gh"
+        path = [j + 1 for j in _gh_path(p[1:])] if gh else []
+        sub = [p[j] for j in path][:2]
+        rel = sub[:1] == ["release"]
+        whole = gh and (not path or rel and sub[1:] in ([], ["create"], ["new"], ["edit"]))
+        stop = len(p) if whole else path[-1] if rel else path[0] if gh and not _gate_bad_word(words) else 0
         val = GH_UPLOADS.get(tuple(sub), GH_RELEASE_EDIT_VALUE_OPTS) + GH_GLOBAL_VALUE_OPTS
-        i = path[0] + 2 if pub else len(p)
-        while i < len(p) and p[i] != "--":
+        i = 1
+        while i < stop and p[i] != "--":
             e = _pflag_eats(p[i], val, frozenset(o[1] for o in val if len(o) == 2))
             end = len(p) if e is None else i + 1 + e if p[i][:1] == "-" else i
             for a in words[i:end]:
