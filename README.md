@@ -90,8 +90,9 @@ Ghép thêm module ngoài hồ sơ bằng `--add`, ví dụ web app có tính n�
 
 Để giảm ngữ cảnh mỗi task, dùng `xt.py context --task T-NNN --plan <PLAN>` thay vì nạp toàn bộ blueprint; chọn
 quy mô theo rủi ro thật và giải trình mục không áp dụng. Thư viện dùng được qua nhiều công cụ; harness tự động
-hiện tập trung vào Claude Code + Bash + GitHub. Bộ cài và CLI dùng CPython 3.15.x. Cập nhật state cần `fcntl` và
-filesystem hỗ trợ `flock` (thiếu → exit 2, không ghi). CI trên Linux dùng bản ghim ở `.python-version`. Môi trường local
+hiện tập trung vào Claude Code + Bash + GitHub. Bộ cài và CLI dùng CPython 3.15.x trên môi trường POSIX (Linux, macOS;
+trên Windows cần chạy qua WSL2 hoặc DevContainer/Docker vì hook Bash và bộ cập nhật state cần đường dẫn POSIX, `fcntl` và
+filesystem hỗ trợ `flock` — thiếu `fcntl` lệnh ghi state thoát 2). CI trên Linux dùng bản ghim ở `.python-version`. Môi trường local
 và runner cần chọn `python3` là Python 3.15. Xem cách chuyển workflow đã cài ở [ADR-0078](docs/adr/0078-python-315-runtime.md).
 Tài liệu ngành là đầu vào rà soát; yêu cầu pháp lý chưa xác minh cần người có chuyên môn xác nhận.
 
