@@ -7441,7 +7441,11 @@ def _pr_rest(pr_arg: Optional[str], local_check: bool = True) -> Dict[str, Any]:
             ("author", user.get("login")),
             ("authorAssociation", pr.get("author_association")),
             ("authorCanWrite", _member_can_write(repo, pr.get("author_association"), user.get("login"))),
-            ("headRepo", head_repo.get("full_name")),
+            # fork bị xoá (API trả `repo: null`): không rõ nguồn → coi là fork, không phải PR nội bộ
+            (
+                "headRepo",
+                head_repo.get("full_name") or ("(đã xoá)" if "repo" in head and raw_head_repo is None else ""),
+            ),
             ("repo", base_repo.get("full_name")),
             ("baseRefName", base.get("ref")),
             ("defaultBranch", base_repo.get("default_branch")),

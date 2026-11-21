@@ -751,6 +751,15 @@ class RestLaneTest(unittest.TestCase):
         user = {"user": {"login": "alice"}, "author_association": "NONE"}
         return DerivedGh(pull={**p, **user}, raw=raw, reviews=reviews, real_git=True)
 
+    def test_deleted_fork_counts_as_untrusted_source(self) -> None:
+        """Fork đã xoá: `head.repo` null — không được coi là PR nội bộ (COLLABORATOR quyền đọc vẫn ra merge trước đây)."""
+        gh = self.gh()
+        gh.pull["head"]["repo"] = None
+        with gh.patch():
+            p = xt._pr_rest("7")
+        self.assertEqual(p["headRepo"], "(đã xoá)")
+        self.assertTrue(xt.merge_identity_reason({**p, "authorAssociation": "COLLABORATOR"}))
+
     def test_fork_pr_own_file_merges_by_steward(self) -> None:
         gh = self.gh()
         with gh.patch(), unittest.mock.patch.object(xt, "_steward_apply", side_effect=lambda out, d, r, c, *a: c):
