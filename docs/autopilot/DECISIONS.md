@@ -556,9 +556,9 @@
 ### D-520 · 2026-11-19T17:03:58+00:00 · Review #684 lượt 3: gương Codex của dự án (.agents/skills/<tên>/SKILL.md = bản dự án tự sửa C, trùng đầu ra sinh từ .claude/ của dự án) được ghi nhận là tệp khung quản lý ở lần cài đầu (kept → ghi hash vào codex_files); lần cài sau có --force-harness thay .claude/ bằng bản khung F thì gương được cập nhật thành F, không có .xtemplates-new — trái câu tài liệu 'gương dự án tự có không bị ghi đè'. Sửa mã hay sửa tài liệu?
 
 - Phương án: (1) Sửa tài liệu và tên test (b): tệp Codex là sản phẩm SINH từ .claude/; tệp trùng đầu ra sinh được ghi nhận (như mọi tệp harness trùng bản khung) và đi theo .claude/ ở các lần cài sau, kể cả khi --force-harness thay nguồn; chỉ tệp khác bản đã ghi nhận mới được giữ kèm .xtemplates-new · (2) Sửa mã (a): khi --force-harness, bỏ qua hash codex_files cho tệp có nguồn không phải bản khung → .xtemplates-new
-- Chọn: Sửa tài liệu và tên test (b): tệp Codex là sản phẩm SINH từ .claude/; tệp trùng đầu ra sinh được ghi nhận (như mọi tệp harness trùng bản khung) và đi theo .claude/ ở các lần cài sau, kể cả khi --force-harness thay nguồn; chỉ tệp khác bản đã ghi nhận mới được giữ kèm .xtemplates-new
-- Lý do (tiêu chí chất lượng cuối): Đúng: gương là bản sao byte của nguồn; khi người dùng chủ động --force-harness thay .claude/skills/<tên> thì gương giữ bản cũ sẽ LỆCH nguồn (test gương trùng byte của dự án như dhcb đỏ) — đi theo nguồn mới là hành vi nhất quán với mô hình 'tệp trùng bản khung ghi là của khung' mà install.py dùng cho mọi tệp harness. Phương án (a) thêm một ngoại lệ nữa vào luật sở hữu, để lại gương lệch nguồn, và nội dung cũ vẫn còn trong git. Lần cài ĐẦU với --force-harness vẫn giữ gương và để .xtemplates-new (chưa có ghi nhận) — đã sửa ở lượt 2.
-- Đường lùi: Áp phương án (a) trong install.py + test cài hai lượt
+- Chọn: Phương án (1): sửa tài liệu và tên test (b)
+- Lý do (tiêu chí chất lượng cuối): Đúng: gương là bản sao byte của nguồn; khi người dùng chủ động --force-harness thay .claude/skills/<tên> thì gương giữ bản cũ sẽ LỆCH nguồn (test gương trùng byte của dự án như dhcb đỏ) — đi theo nguồn mới là hành vi nhất quán với mô hình 'tệp trùng bản khung ghi là của khung' mà install.py dùng cho mọi tệp harness. Phương án (a) thêm ngoại lệ vào luật sở hữu và để gương lệch nguồn. Lần cài ĐẦU với --force-harness vẫn giữ gương và để .xtemplates-new (chưa có ghi nhận) — đã sửa ở lượt 2.
+- Đường lùi: Áp phương án (a) trong install.py
 
 ### D-521 · 2026-11-19T23:39:27+00:00 · Điều phối một dự án từ ý tưởng qua ba giai đoạn tới vận hành bằng gì?
 
@@ -643,3 +643,10 @@
 - Chọn: Sửa MUST cho khớp ADR-0079
 - Lý do (tiêu chí chất lượng cuối): ADR-0079 đã quyết hành vi; dự án siết bằng required.
 - Đường lùi: Khôi phục câu MUST cũ
+
+### D-534 · 2026-11-21T10:47:17+00:00 · AUD-HAR-454, AUD-CI-036: sửa hay chấp nhận có hạn?
+
+- Phương án: (1) Sửa ngay · (2) Chấp nhận tới 2027-01-21
+- Chọn: Chấp nhận tới 2027-01-21
+- Lý do (tiêu chí chất lượng cuối): cần agent làm trái `pr next` hoặc fork đổi tên; an toàn; sửa đòi mã guard sát trần.
+- Đường lùi: Mở lại và sửa
