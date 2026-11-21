@@ -1,4 +1,4 @@
-name: Upgrade X-Templates
+name: Nâng cấp công cụ quy trình
 on:
   schedule:
     - cron: "23 6 * * *"

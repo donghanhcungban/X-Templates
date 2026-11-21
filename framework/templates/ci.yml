@@ -1,9 +1,9 @@
-# CI mẫu cho dự án đích — `install.py --with-github` chép vào `.github/workflows/ci.yml` (copy-if-absent: dự án đã có
-# ci.yml thì giữ nguyên, bản khung ghi `ci.yml.xtemplates-new` để gộp tay). KHÔNG phụ thuộc stack: mọi lệnh lấy từ
-# `xt.yaml` qua `.xtemplates/scripts/dev-task.sh <task>` (WF-CI-002). CI ghim Python để chạy công cụ khung.
+# CI của dự án — `install.py --with-github` ghi `.github/workflows/ci.yml` (copy-if-absent: ci.yml đã sửa thì giữ
+# nguyên, bản mới ở `ci.yml.xtemplates-new` để gộp tay). KHÔNG phụ thuộc stack: mọi lệnh lấy từ
+# `xt.yaml` qua `.xtemplates/scripts/dev-task.sh <task>` (WF-CI-002). CI ghim Python cho công cụ quy trình `.xtemplates/`.
 # Toolchain và phụ thuộc của ứng dụng do dự án khai ở khoá `setup:` của xt.yaml.
 # Tối thiểu số job, song song tối đa trong số đó (ADR-0039, D-128, WF-CI-025): `gate` (một lần cài phụ thuộc,
-# `dev-task.sh gate-par` = typecheck ∥ lint ∥ build → test kèm coverage chạy nền cùng lúc TRONG job, rồi kiểm của khung) ·
+# `dev-task.sh gate-par` = typecheck ∥ lint ∥ build → test kèm coverage chạy nền cùng lúc TRONG job, rồi kiểm quy trình) ·
 # `e2e` (job dài) — hai job không `needs`, bắt đầu cùng lúc · `quality` (TỔNG HỢP với `if: always()`, WF-CI-001, kèm bước
 # protection-guard). Các repo cùng tài khoản dùng chung trần job đồng thời: job ngắn tách riêng làm job dài xếp hàng chờ
 # runner — không tách lại build/typecheck/lint/test thành job riêng.
@@ -52,7 +52,7 @@ jobs:
         with:
           python-version: "3.15.2"
           update-environment: false
-      - name: Runtime của khung
+      - name: Runtime công cụ quy trình
         env:
           FRAMEWORK_PYTHON: ${{ steps.framework-python.outputs.python-path }}
         run: printf 'XT_FRAMEWORK_PYTHON=%s\n' "$FRAMEWORK_PYTHON" >> "$GITHUB_ENV"
@@ -87,7 +87,7 @@ jobs:
       # job riêng; quy mô S/không blueprint → không áp; khoá thiếu chỉ cảnh báo (như doctor).
       - name: Sàn Gate M/L — `xt.py floor --run` (khoá sàn đã khai đỏ → bước đỏ)
         run: '"$XT_FRAMEWORK_PYTHON" .xtemplates/scripts/xt.py floor --run --skip e2e'
-      - name: Khung đã cài còn nguyên — `xt.py doctor` (đỏ khi có lỗi; cảnh báo không chặn)
+      - name: Công cụ quy trình còn nguyên — `xt.py doctor` (đỏ khi có lỗi; cảnh báo không chặn)
         run: '"$XT_FRAMEWORK_PYTHON" .xtemplates/scripts/xt.py doctor'
       - name: Workflow (ghim SHA, quyền, timeout, secret trên PR) + cấu hình xt.yaml — `xt.py ci-check`
         run: '"$XT_FRAMEWORK_PYTHON" .xtemplates/scripts/xt.py ci-check'
@@ -143,7 +143,7 @@ jobs:
         with:
           python-version: "3.15.2"
           update-environment: false
-      - name: Runtime của khung
+      - name: Runtime công cụ quy trình
         if: steps.config.outputs.empty != 'true'
         env:
           FRAMEWORK_PYTHON: ${{ steps.framework-python.outputs.python-path }}
