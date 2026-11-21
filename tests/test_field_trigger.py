@@ -254,6 +254,41 @@ class FieldTriggerTest(TmpRepoCase):
         self.assertIn("XT_FIELD_READ_TOKEN", reader)
         self.assertNotIn("XT_FIELD_READ_TOKEN", publisher)
         self.assertIn("perf field-check", publisher)
-        self.assertIn("pull-requests: write", publisher)
         self.assertIn("git diff --quiet", publisher)
         self.assertIn("gh pr create", publisher)
+        # Audit delta 3.35.0: a PR opened with github.token starts no CI and may get 403; the scheduled payload has no
+        # `repository`, so the base comes from the ref the reader job was restricted to.
+        self.assertIn("GH_TOKEN: ${{ secrets.XT_STEWARD_TOKEN }}", publisher)
+        for stale in ("${{ github.token }}", "pull-requests: write", "contents: write", "github.event.repository"):
+            self.assertNotIn(stale, publisher)
+        self.assertIn("BASE: ${{ github.ref_name }}", publisher)
+
+    def test_field_report_pr_needs_the_steward_token(self):
+        src = (xt.SCRIPT_DIR.parent / "framework/templates/xt-field.yml").read_text()
+        script = "\n".join(line.removeprefix(" " * 10) for line in src.split("        run: |\n")[-1].splitlines())
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        log = self.tmp / "calls"
+        fakes = {"gh": 'echo "gh $*" >> "$LOG"\n', "git": 'echo "git $*" >> "$LOG"\n[ "$1" != ls-remote ] || exit 2\n'}
+        for name, body in fakes.items():
+            (bin_dir / name).write_text("#!/bin/sh\n" + body)
+            (bin_dir / name).chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "LOG": str(log), "BASE": "trunk", "STAMP": "s"}
+
+        def publish(value):
+            return subprocess.run(
+                ["bash", "-eo", "pipefail", "-c", script],
+                env={**env, "GH_TOKEN": value},
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+        denied = publish("")
+        self.assertEqual(denied.returncode, 1)
+        self.assertIn("::error::", denied.stdout)
+        self.assertFalse(log.exists())
+        self.assertEqual(publish("steward").returncode, 0)
+        calls = log.read_text().splitlines()
+        self.assertIn("git push origin HEAD:refs/heads/xt-field/s", calls)
+        self.assertIn("gh pr create --base trunk --head xt-field/s", calls[-1])
