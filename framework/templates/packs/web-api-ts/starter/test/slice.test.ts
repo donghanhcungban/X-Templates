@@ -1,4 +1,4 @@
-// Lát dọc (research §5 của khung): migrate → đăng nhập → tạo dữ liệu → chặn tenant khác (API + RLS) → migration lùi/tiến.
+// Lát dọc: migrate → đăng nhập → tạo dữ liệu → chặn tenant khác (API + RLS) → migration lùi/tiến.
 
 import { connect } from "node:net";
 import type { Kysely } from "kysely";

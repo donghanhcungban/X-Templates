@@ -5393,7 +5393,7 @@ def _doctor_gitignore(base: Path) -> List[Finding]:
     lines = gi.read_text(encoding="utf-8", errors="replace").splitlines() if gi.is_file() else []
     if any(ln.strip() in AUTOPILOT_IGNORES for ln in lines):
         return []
-    block = "\n# X-Templates: trạng thái autopilot cục bộ\n.autopilot/\n"
+    block = "\n# Công cụ quy trình: trạng thái autopilot cục bộ\n.autopilot/\n"
     return [
         Finding(
             "gitignore",
@@ -5742,6 +5742,41 @@ def _doctor_distribution(base: Path) -> List[Finding]:
     return [Finding("provenance", "warn", "nguồn khung chưa xác minh attestation của tag phát hành")]
 
 
+def _github_texts(base: Path) -> Iterator[Path]:
+    """README gốc và mọi tệp thường dưới `.github/` (không theo symlink) — chữ GitHub hiển thị của dự án."""
+    yield base / "README.md"
+    github = base / ".github"
+    if github.is_dir() and not github.is_symlink():
+        yield from sorted(p for p in github.rglob("*") if p.is_file() and not p.is_symlink())
+
+
+def _doctor_github_text(base: Path) -> List[Finding]:
+    """WF-DOC-021 (SHOULD, chỉ cảnh báo): ở dự án đích, README gốc và `.github/**` mô tả dự án — nhắc X-Templates ngoài
+    ghi chú nguồn "Áp dụng từ phiên bản vX.Y.Z của dự án X-Templates" thì báo tệp:dòng. Repo khung (không có
+    `.xtemplates/VERSION`) không áp; README vắng không báo."""
+    if not (base / ".xtemplates" / "VERSION").is_file() or not (SCRIPT_DIR / "xt_distribution.py").is_file():
+        return []
+    _sibling_imports()
+    import xt_distribution
+
+    hits: List[str] = []
+    for path in _github_texts(base):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        rel = path.relative_to(base).as_posix()
+        hits += [f"{rel}:{n}" for n in xt_distribution.stray_mentions(text)]
+    if not hits:
+        return []
+    more = f" (+{len(hits) - 5})" if len(hits) > 5 else ""
+    msg = (
+        f"chữ hiển thị trên GitHub còn nhắc X-Templates ngoài ghi chú nguồn: {', '.join(hits[:5])}{more} — mô tả dự án, "
+        "giữ một dòng 'Áp dụng từ phiên bản vX.Y.Z của dự án X-Templates' (WF-DOC-021)"
+    )
+    return [Finding("github-text", "warn", msg)]
+
+
 def _doctor_version(base: Path) -> List[Finding]:
     """Khung đã cài (`.xtemplates/VERSION`) cũ hơn bản phát hành mới nhất → cảnh báo chạy lại `install.py`
     (LOOP-HARNESS-020, D-040). Chỉ ở dự án đích; nhãn không phải SemVer hay không đọc được tag → bỏ qua (fail-open).
@@ -5921,7 +5956,7 @@ def doctor_findings(base: Path, fw: Path, deep: bool = True, offline: bool = Fal
     out += _doctor_state(base) + _doctor_legacy(base) + _doctor_git(base) + _doctor_merge(base) + _doctor_memory(base)
     out += _doctor_orchestration(base) + _doctor_sandbox(base)
     if deep:
-        out += _doctor_framework(fw) + _doctor_progress(base)
+        out += _doctor_framework(fw) + _doctor_progress(base) + _doctor_github_text(base)
         if not offline:
             out += _doctor_version(base)
         out += _doctor_guard_canary(base) + _doctor_claude_version(base)

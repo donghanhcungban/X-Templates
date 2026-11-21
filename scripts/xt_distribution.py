@@ -23,6 +23,20 @@ SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
 UPGRADE_BRANCH = "chore/xt-upgrade"
 MANIFEST = ".xtemplates/manifest.json"
 WITHDRAWN = "docs/ops/WITHDRAWN-VERSIONS.txt"
+# WF-DOC-021: chữ hiển thị trên GitHub của dự án đích mô tả dự án; khung chỉ có MỘT ghi chú nguồn (`adopted_note`).
+ADOPTED = re.compile(r"Áp dụng từ phiên bản v?\d+\.\d+\.\d+ của dự án X-Templates", re.I)
+MENTION = re.compile(r"x-templates", re.I)
+
+
+def adopted_note(version: str, repo: object = None) -> str:
+    """Ghi chú nguồn duy nhất ở dự án đích (`.xtemplates/README.md`, chân trang README của `--new`); repo sai dạng → CANONICAL."""
+    slug = repo if isinstance(repo, str) and SLUG.fullmatch(repo) else CANONICAL
+    return f"Áp dụng từ phiên bản v{version.removeprefix('v')} của dự án X-Templates (https://github.com/{slug})."
+
+
+def stray_mentions(text: str) -> list[int]:
+    """Số dòng (từ 1) nhắc X-Templates ngoài dòng ghi chú nguồn hợp lệ."""
+    return [n for n, line in enumerate(text.splitlines(), 1) if MENTION.search(line) and not ADOPTED.search(line)]
 
 
 class DistributionError(ValueError):

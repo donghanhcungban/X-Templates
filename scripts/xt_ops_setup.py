@@ -17,6 +17,8 @@ from types import ModuleType
 from typing import Any
 from urllib.parse import quote
 
+import xt_distribution
+
 Doc = dict[str, Any]
 
 OK, MISSING, UNKNOWN, SKIP, OPTIONAL = "đạt", "thiếu", "không đọc được", "không áp dụng", "tuỳ chọn"
@@ -186,6 +188,22 @@ def deploy_secret_status(origin: Origin, cfg: dict[str, str]) -> str:
     return names_status(origin, set(names), origin.pages("actions/secrets", "secrets"))
 
 
+def about_status(origin: Origin) -> tuple[str, list[str]]:
+    """WF-DOC-021: mô tả repo (About, homepage, topics) mô tả dự án — trống hoặc nhắc khung ngoài ghi chú nguồn là việc
+    tuỳ chọn của chủ repo (installer ngoại tuyến không đặt được metadata GitHub). Repo khung và repo chưa có origin: không áp."""
+    if not origin.has_origin or (origin.base / "framework" / "00-method" / "README.md").is_file():
+        return SKIP, []
+    doc = origin.get("")
+    if not isinstance(doc, dict):
+        return UNKNOWN, []
+    topics, description = doc.get("topics"), doc.get("description")
+    words = [description, doc.get("homepage"), *(topics if isinstance(topics, list) else [])]
+    text = "\n".join(w for w in words if isinstance(w, str))
+    if isinstance(description, str) and description.strip() and not xt_distribution.stray_mentions(text):
+        return OK, []
+    return OPTIONAL, ['gh repo edit --description "<mô tả dự án>" — About/homepage/topics đang trống hoặc mô tả khung']
+
+
 def budget_valid(cfg: dict[str, str]) -> bool:
     try:
         amount = float(cfg.get("worker_budget_usd", ""))
@@ -256,6 +274,7 @@ def remote_items(origin: Origin) -> list[Doc]:
     missing_keys = [f"+ {k}: {v} — {why}" for k, (v, why) in KEYS.items() if cfg.get(k) != v]
     updates = field(origin.get("automated-security-fixes"), "enabled")
     launcher = origin.file(".github/workflows/worker.yml", repo_root=True)
+    about, about_changes = about_status(origin)
     return [
         row(
             "repo",
@@ -322,6 +341,14 @@ def remote_items(origin: Origin) -> list[Doc]:
             "Bật Dependabot security updates trong Settings.",
             "GET automated-security-fixes",
         ),
+        row(
+            "repo-about",
+            about,
+            "Mô tả repo trên GitHub do chủ repo đặt.",
+            "Đặt About, homepage và topics mô tả dự án.",
+            "GET repos/<owner>/<repo> (description, homepage, topics)",
+            changes=about_changes,
+        ),
     ]
 
 
@@ -352,10 +379,10 @@ def markdown(doc: Doc) -> str:
         lines.extend(f"| {i['id']} | {i['status']} | {i['reason']} | {i['action']} | {i['verify']} |" for i in todo)
     else:
         lines.append("Không còn việc thiết lập bắt buộc.")
-    for item in doc["items"]:
-        if item["status"] == OPTIONAL:
-            lines.extend(["", "## Tuỳ chọn — quyền chủ dự án có thể bật", ""])
-            lines.extend(f"- {change}" for change in item["changes"])
+    optional = [change for item in doc["items"] if item["status"] == OPTIONAL for change in item["changes"]]
+    if optional:
+        lines.extend(["", "## Tuỳ chọn — chủ dự án quyết", ""])
+        lines.extend(f"- {change}" for change in optional)
     lines.extend(["", f"UTC {doc['at']} · HEAD {doc['head'] or '—'} · dev {dev}"])
     return "\n".join(lines) + "\n"
 

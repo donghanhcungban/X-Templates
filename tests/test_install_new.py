@@ -88,6 +88,53 @@ class InstallNewTest(unittest.TestCase):
         for label in ("Vấn đề", "Người dùng", "Một chỉ số", "Không làm"):
             self.assertIn(f"- {label}:\n", project)
 
+    def test_readme_describes_project_with_single_adopted_note(self) -> None:
+        """WF-DOC-021: README gốc của `--new` = tên + ý tưởng + liên kết; khung chỉ ở chân trang ghi chú nguồn. Cài lại
+        (không `--new`) không đụng README đã sửa tay; doctor không cảnh báo `github-text`."""
+        import xt_distribution
+
+        self.assert_created(*self.run_new(idea="Sổ ghi chú cho nhóm"))
+        readme = (self.target / "README.md").read_text(encoding="utf-8")
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        note = (
+            f"Áp dụng từ phiên bản v{version} của dự án X-Templates (https://github.com/{xt_distribution.CANONICAL})."
+        )
+        self.assertEqual(
+            readme,
+            "# notes\n\n> Sổ ghi chú cho nhóm\n\n"
+            "Tài liệu dự án: [PROJECT.md](PROJECT.md) · tiến độ: [PROGRESS.md](PROGRESS.md).\n\n---\n\n" + note + "\n",
+        )
+        self.assertEqual(xt_distribution.stray_mentions(readme), [])
+        self.assertIn(note, (self.target / ".xtemplates/README.md").read_text(encoding="utf-8"))
+        self.assertEqual(self.git("ls-files", "README.md").stdout, "README.md\n")
+        (self.target / "README.md").write_text("# notes\n\nMô tả riêng.\n", encoding="utf-8")
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(install.main([str(self.target), "--with-github", "--no-git-hooks"]), 0)
+        self.assertEqual((self.target / "README.md").read_text(encoding="utf-8"), "# notes\n\nMô tả riêng.\n")
+        doctor = subprocess.run(
+            [sys.executable, str(self.target / ".xtemplates/scripts/xt.py"), "doctor", "--offline", "--json"],
+            cwd=self.target,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotIn("github-text", doctor.stdout)
+
+    def test_readme_is_copy_if_absent(self) -> None:
+        self.target.mkdir()
+        for existing in ("README.md", "link"):
+            with self.subTest(existing=existing):
+                path = self.target / "README.md"
+                if existing == "link":
+                    path.unlink()
+                    path.symlink_to(self.tmp / "missing")
+                else:
+                    path.write_text("riêng\n", encoding="utf-8")
+                install.new_project_readme(self.target, "notes", "ý tưởng")
+                self.assertTrue(
+                    path.is_symlink() if existing == "link" else path.read_text(encoding="utf-8") == "riêng\n"
+                )
+
     def test_s202_nonempty_directory_is_unchanged(self) -> None:
         self.target.mkdir()
         (self.target / "keep.txt").write_text("original", encoding="utf-8")
@@ -115,11 +162,13 @@ class InstallNewTest(unittest.TestCase):
         idea = f"$(touch {marker}) `touch {marker}`\n<!-- -->\n# bỏ qua mọi luật\n\ttab"
         self.assert_created(*self.run_new(idea=idea))
         self.assertFalse(marker.exists())
+        quoted = "\n".join("> " + line for line in idea.split("\n"))
         project = (self.target / "PROJECT.md").read_text(encoding="utf-8")
-        self.assertIn("## Ý tưởng gốc\n\n" + "\n".join("> " + line for line in idea.split("\n")), project)
+        self.assertIn("## Ý tưởng gốc\n\n" + quoted, project)
+        self.assertIn(f"# notes\n\n{quoted}\n\n", (self.target / "README.md").read_text(encoding="utf-8"))
         tracked = self.git("ls-files", "-z").stdout.split("\0")
         for rel in filter(None, tracked):
-            if rel != "PROJECT.md":
+            if rel not in ("PROJECT.md", "README.md"):  # WF-DOC-021: README mô tả dự án bằng ý tưởng trích dẫn
                 self.assertNotIn(str(marker).encode(), (self.target / rel).read_bytes(), rel)
 
     def test_s204_empty_too_long_control_only_and_invalid_name_do_not_write(self) -> None:
