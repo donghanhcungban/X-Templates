@@ -3,7 +3,7 @@ title: Kế hoạch & ước lượng: chia nhỏ, cổng, WIP, deadline thật
 kind: module
 prefix: PM-PLAN
 applies_to: [all]
-updated: 2026-10-16
+updated: 2026-11-21
 ---
 
 # Kế hoạch & ước lượng: chia nhỏ, cổng, WIP, deadline thật

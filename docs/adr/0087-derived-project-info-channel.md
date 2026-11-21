@@ -1,7 +1,7 @@
 # ADR-0087: Dự án phái sinh tự cập nhật thông tin qua PR một tệp và làn merge `derived`
 
 - **Trạng thái:** Đã chấp nhận ngày 2026-11-21 (phiên chính duyệt theo ADR-0008, yêu cầu của chủ repo).
-- **Trạng thái triển khai:** Đang làm — `scripts/xt_derived.py`, làn `derived` của `merge-check`, `xt.py derived`.
+- **Trạng thái triển khai:** Đã triển khai — `scripts/xt_derived.py`, làn `derived` của `merge-check` (`derived_lane`, `merge_decision`), `xt.py derived`; test `tests/test_derived.py`.
 
 ## Bối cảnh
 
