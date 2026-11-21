@@ -216,7 +216,7 @@ def _homepage(v: object, ctx: Ctx) -> Optional[str]:
         return f"homepage phải là chuỗi ≤ {HOME_MAX} ký tự"
     m = HOME_RE.fullmatch(v)
     if not m:
-        return "homepage chỉ nhận https://tên-miền[/đường-dẫn] (không userinfo, cổng, IP, query, fragment)"
+        return "homepage chỉ nhận https và tên miền kèm đường dẫn tuỳ chọn (không userinfo, cổng, IP, query, fragment)"
     labels = m[1].split(".")
     if labels[-1] in RESERVED_TLDS or any(label.startswith("xn--") for label in labels):
         return "homepage dùng tên miền dành riêng hoặc punycode"
