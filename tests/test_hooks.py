@@ -788,7 +788,7 @@ class CommitGateWorktreeConfigTest(CommitGateWorktreeBase):
 @unittest.skipIf(shutil.which("bash") is None, "cần bash")
 class SessionStartUtf8Test(unittest.TestCase):
     def test_session_start_utf8_cut_is_valid(self):
-        # AUD-HAR-011: head -c từng cắt giữa ký tự UTF-8 tiếng Việt (ADR-0088: trần 40960 byte).
+        # AUD-HAR-011: head -c từng cắt giữa ký tự UTF-8 tiếng Việt (ADR-0089: trần 40960 byte).
         tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
         body = "\n".join(f"- dòng {i}: Đang làm việc dở với tiếng Việt có dấu ạ ễ ữ" for i in range(1200))
         pad = ""

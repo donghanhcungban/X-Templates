@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CAPS = {  # byte; nhà của từng trần: PLAN-3.12-lean T-1701…T-1704; nâng 5× theo ADR-0088
+CAPS = {  # byte; nhà của từng trần: PLAN-3.12-lean T-1701…T-1704; nâng 5× theo ADR-0089
     "AGENTS.md": 7168 * 5,
     "framework/templates/AGENTS.md": 8192 * 5,
     "CLAUDE.md": 2048 * 5,
@@ -17,41 +17,41 @@ CAPS = {  # byte; nhà của từng trần: PLAN-3.12-lean T-1701…T-1704; nân
     ".claude/skills/optimize/SKILL.md": 6144 * 5,  # ADR-0048: skill tối ưu, cùng trần
     "framework/11-autonomous-loop/README.md": 12288 * 5,
 }
-# Trần TỔNG byte theo thư mục (ADR-0043, T-2407; ADR-0050: +1 MiB; ADR-0088: ×5 trần hiện tại).
+# Trần TỔNG byte theo thư mục (ADR-0043, T-2407; ADR-0050/ADR-0088: +1 MiB; ADR-0089: ×5 trần hiện tại).
 # Chỉ đếm file git theo dõi (bỏ cache/sinh ra).
 DIR_CAPS = {  # nhóm → (pathspec git, trần byte); đo: `git ls-files -z -- <spec> | xargs -0 cat | wc -c`
     "scripts (xt.py, install.py, xt_app)": (("scripts/*.py", "scripts/xt_app/"), (711855 + 1048576) * 5),
     ".claude/hooks": ((".claude/hooks/",), (369393 + 1048576) * 5),
     "framework/11-autonomous-loop": (("framework/11-autonomous-loop/",), (232307 + 1048576) * 5),
-    # Sổ sách đang dùng (T-3651, AUD-DOC-180, D-314; nâng 5× theo ADR-0088).
+    # Sổ sách đang dùng (T-3651, AUD-DOC-180, D-314; ADR-0088 +1 MiB; nâng 5× theo ADR-0089).
     # File lưu trữ (`*-ARCHIVE.md`, `DECISIONS-YYYY-MM.md`) đóng băng, không tính: lưu trữ thêm phải làm trần còn chỗ.
-    "docs/ops": (("docs/ops/", ":(exclude)docs/ops/*-ARCHIVE.md"), 810114 * 5),
-    "docs/autopilot": (("docs/autopilot/", ":(exclude)docs/autopilot/DECISIONS-*.md"), 352345 * 5),
+    "docs/ops": (("docs/ops/", ":(exclude)docs/ops/*-ARCHIVE.md"), (810114 + 1048576) * 5),
+    "docs/autopilot": (("docs/autopilot/", ":(exclude)docs/autopilot/DECISIONS-*.md"), (352345 + 1048576) * 5),
 }
-MARK_FACTOR = 5  # ADR-0088: mỗi nhóm ≤ 5× mốc mới nhất (trước là 2× theo ADR-0050/ADR-0072).
-# Mốc kích thước (ADR-0050 §Hệ quả, ADR-0072, ADR-0083, ADR-0088): mỗi nhóm ≤ MARK_FACTOR × mốc mới nhất.
+MARK_FACTOR = 5  # ADR-0089: mỗi nhóm ≤ 5× mốc mới nhất (trước là 2× theo ADR-0050/ADR-0072).
+# Mốc kích thước (ADR-0050 §Hệ quả, ADR-0072, ADR-0083, ADR-0089): mỗi nhóm ≤ MARK_FACTOR × mốc mới nhất.
 SIZE_MARKS = {
     "scripts (xt.py, install.py, xt_app)": (
         ("2026-10-26", 711824, "ADR-0072"),
         ("2026-11-20", 1414300, "ADR-0083"),
-        ("2026-11-21", 1639253, "ADR-0088"),
+        ("2026-11-21", 1639253, "ADR-0089"),
     ),
     ".claude/hooks": (
         ("2026-10-26", 369274, "ADR-0072"),
         ("2026-11-05", 843817, "ADR-0072"),
-        ("2026-11-21", 1417480, "ADR-0088"),
+        ("2026-11-21", 1417480, "ADR-0089"),
     ),
     "framework/11-autonomous-loop": (
         ("2026-10-26", 232297, "ADR-0072"),
-        ("2026-11-21", 336675, "ADR-0088"),
+        ("2026-11-21", 336675, "ADR-0089"),
     ),
     "docs/ops": (
         ("2026-11-02", 771538, "ADR-0072"),
-        ("2026-11-21", 798004, "ADR-0088"),
+        ("2026-11-21", 798004, "ADR-0089"),
     ),
     "docs/autopilot": (
         ("2026-11-02", 335567, "ADR-0072"),
-        ("2026-11-21", 352327, "ADR-0088"),
+        ("2026-11-21", 352327, "ADR-0089"),
     ),
 }
 
