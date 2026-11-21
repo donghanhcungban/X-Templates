@@ -166,3 +166,26 @@ class SetupEvidenceEdges(GithubFixture, TmpRepoCase):
         routing.write_text(json.dumps(routes))
         _, text, _ = run_main("admin-plan", "--json")
         self.assertEqual({i["id"]: i["status"] for i in json.loads(text)["items"]}["repo-about"], setup.OK)
+
+    def test_core_protocol_covers_every_referenced_attribute_on_xt(self):
+        """AUD-ARCH-015: xt_ops_setup, xt_release_ops, xt_deploy dùng Core(Protocol) thay vì ModuleType; mọi thuộc tính
+        truy cập qua core trong AST đều khai trên Protocol và có thật trên module xt."""
+        import ast
+        import xt_deploy
+        import xt_release_ops
+
+        for mod in (setup, xt_release_ops, xt_deploy):
+            declared = {k for cls in mod.Core.__mro__ for k in getattr(cls, "__annotations__", {})}
+            tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
+            used = {
+                node.attr
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Attribute)
+                and (
+                    (isinstance(node.value, ast.Name) and node.value.id == "core")
+                    or (isinstance(node.value, ast.Attribute) and node.value.attr == "core")
+                )
+            }
+            self.assertTrue(used <= declared, f"{mod.__name__}: thiếu trong Core Protocol: {sorted(used - declared)}")
+            missing = [name for name in declared if not hasattr(xt, name)]
+            self.assertEqual(missing, [], f"{mod.__name__}: tên không có trên xt: {missing}")
