@@ -3,7 +3,7 @@ title: Tài liệu sống: ADR, runbook, docs-as-code, tươi bằng máy
 kind: module
 prefix: WF-DOC
 applies_to: [all]
-updated: 2026-11-04
+updated: 2026-11-21
 ---
 
 # Tài liệu sống: ADR, runbook, docs-as-code, tươi bằng máy
@@ -61,6 +61,7 @@ updated: 2026-11-04
 - [ ] `WF-DOC-017` **MAY** Site tài liệu build từ `docs/` (MkDocs/Docusaurus/VitePress) với search và link check; deploy preview cho PR docs. → Kiểm: job build docs + preview URL.
 - [ ] `WF-DOC-018` **MAY** `llms.txt`/`docs-for-ai` tóm tắt kiến trúc cho agent, sinh từ chỉ mục; kiểm tươi như tài liệu khác. → Kiểm: file sinh, diff rỗng trong CI; xem [`../18-cross-cutting/docs-for-ai-agents.md`](../18-cross-cutting/docs-for-ai-agents.md).
 - [ ] `WF-DOC-019` **SHOULD** Lệnh cài **ghim phiên bản** trong README/docs/`SKILL.md` (`npx x@v`, `uvx x@v`, `pip install x==v`, `npm i x@v`, `cargo install x --version v`, `go install m@v`) phải trỏ **bản đã phát hành** — bản chưa tag làm lệnh cài đầu tiên của người dùng lỗi. → Kiểm: script trích lệnh bằng regex rồi hỏi registry (200 = có, 404 = không): npm `https://registry.npmjs.org/<pkg>/<ver>`, PyPI `https://pypi.org/pypi/<pkg>/<ver>/json`, crates.io `https://crates.io/api/v1/crates/<c>/<v>` (phải gửi `User-Agent`, thiếu thì 403), Go `https://proxy.golang.org/<mod>/@v/<v>.info` (đường dẫn **module**, không phải package của `go install …/cmd/x@v`; chữ hoa mã hoá `!x` — hoặc `go list -m <mod>@<v>`); chạy ở PR đổi docs + nightly. · Nguồn: các URL registry (kiểm bằng curl 2026-10-18); `www-donghanhcungban-org/stored` 19 §1d (rà 2026-10-18)
+- [ ] `WF-DOC-021` **SHOULD** Mọi chữ hiển thị trên GitHub của dự án đích (README, mô tả repo/About, mẫu PR, tên workflow/job/step, tên tệp phát hành, tài liệu gốc) mô tả **dự án đích**; khung chỉ xuất hiện ở MỘT ghi chú "Áp dụng từ phiên bản vX.Y.Z của dự án X-Templates" (`.xtemplates/README.md` và chân trang README do `install.py --new` sinh). Định danh công cụ (`.xtemplates/…`, `xt.py`, khoá `xt.yaml`) không tính. → Kiểm: `xt.py doctor` nhóm `github-text` cảnh báo khi README gốc/`.github/**` nhắc "X-Templates" ngoài ghi chú đó; `xt.py admin-plan` hàng `repo-about` (About/homepage/topics, `gh repo edit --description`).
 
 ## Bẫy thường gặp
 

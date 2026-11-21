@@ -59,7 +59,24 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   nghiệm (chưa có payload thật). **Dự án đích:** tuỳ chọn — chạy `install.py --harness codex`, rồi tin cậy hook trong
   Codex bằng `/hooks`; tệp do `/import` của Codex sinh trước đó (`.codex/hooks/`, `hooks.json` có đường tuyệt đối) nên xoá.
 
+- `WF-DOC-021` (SHOULD, mới): chữ hiển thị trên GitHub của dự án đích mô tả dự án; khung chỉ có MỘT ghi chú "Áp dụng
+  từ phiên bản vX.Y.Z của dự án X-Templates" (kèm liên kết repo nguồn). `xt.py doctor` có nhóm `github-text` (chỉ cảnh
+  báo, chỉ ở dự án đích) báo tệp:dòng khi README gốc hay `.github/**` nhắc X-Templates ngoài ghi chú đó; `xt.py
+  admin-plan` có hàng tuỳ chọn `repo-about` (About/homepage/topics trống hoặc mô tả khung → `gh repo edit --description`).
+  `install.py --new` sinh `README.md` gốc từ tên và ý tưởng (copy-if-absent; cài thường không tạo/đụng README).
+
 ### Changed
+
+- Dự án đích không còn mang lời mô tả khung trên GitHub (`WF-DOC-021`): `.xtemplates/README.md` chỉ còn ghi chú nguồn
+  và một câu "do `install.py`/`xt.py upgrade` quản lý"; tên workflow `xt-upgrade.yml` thành "Nâng cấp công cụ quy
+  trình"; tên bước và bình luận của `ci.yml`, mẫu PR, `pr-steward.yml`, gói `web-api-ts` và dòng chú thích `.gitignore`
+  không nhắc khung; khối mở đầu mẫu `AGENTS.md` trỏ `.xtemplates/README.md`. `release-tag.yml` đặt tên archive/biên nhận
+  theo tên repo (`<repo>-vX.Y.Z.tar.gz`, `.promotion.json`) — repo khung tên `X-Templates` nên tệp phát hành của khung
+  giữ nguyên `X-Templates-vX.Y.Z`, bộ xác minh nâng cấp (`xt_distribution`) không đổi. **Chủ fork khung:** đổi tên
+  repo thì tên archive lệch tiền tố `X-Templates-` mà `xt_distribution` đòi và `xt.py upgrade` của dự án cài từ fork
+  bị chặn (an toàn); giữ tên repo hoặc đổi tiền tố trong `xt_distribution`. **Dự án đích:** nâng khung là
+  nhận `.xtemplates/README.md` mới ngay; workflow, mẫu PR và `AGENTS.md` chưa sửa tay được cập nhật tại chỗ, đã sửa thì
+  nhận bản `*.xtemplates-new` để gộp tay; đặt mô tả repo theo hàng `repo-about` của `admin-plan`.
 
 - `xt.py test-select --unittest` (cổng commit `gate-fast`, khoá `test_fast`) chọn test theo **lớp** thay vì theo tệp: lớp
   chạy khi thân lớp nhắc tên tệp đổi, có glob khớp tên đó (`GO-NO-GO*.md` không còn khớp mọi `.md`), hoặc nhắc tên một

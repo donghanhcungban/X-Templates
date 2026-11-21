@@ -247,7 +247,7 @@ class CiTemplateTest(unittest.TestCase):
         self.assertIn(f'mode="$({DEV_TASK} e2e-mode)"\n', e2e)  # gán riêng: lỗi dev-task → bước đỏ (set -e)
         self.assertIn("set -euo pipefail", e2e)
         self.assertLess(e2e.index("actions/setup-python@"), e2e.index("e2e-mode"))
-        for header in ("id: framework-python", "name: Runtime của khung"):
+        for header in ("id: framework-python", "name: Runtime công cụ quy trình"):
             self.assertIn(f"- {header}\n        if: steps.config.outputs.empty != 'true'\n", e2e)
         self.assertLess(e2e.index("e2e-mode"), e2e.index(SETUP))
         self.assertIn(f'run: {DEV_TASK} e2e "$SHARD" "$TOTAL"\n', e2e)

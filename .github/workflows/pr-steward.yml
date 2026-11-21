@@ -96,7 +96,7 @@ jobs:
         run: |
           set -uo pipefail
           xt=scripts/xt.py
-          [ -f "$xt" ] || xt=.xtemplates/scripts/xt.py # dự án đích cài khung vào .xtemplates/
+          [ -f "$xt" ] || xt=.xtemplates/scripts/xt.py # dự án đích: công cụ quy trình ở .xtemplates/
           if [ -n "$PR" ]; then
             python3 "$xt" pr steward --apply --repo "$GH_REPO" --pr "$PR"
           elif [ "$EVENT" = check_suite ] || [ "$EVENT" = workflow_run ]; then

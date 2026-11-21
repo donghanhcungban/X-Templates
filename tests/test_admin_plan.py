@@ -100,7 +100,7 @@ class SetupTest(GithubFixture, TmpRepoCase):
         for key in ("repo", "bot-token", "worker-budget", "deploy-target"):
             self.assertEqual(items[key]["status"], ops_setup.MISSING)
         self.assertEqual(items["gated-keys"]["status"], ops_setup.OPTIONAL)
-        self.assertEqual(len(items), 12)
+        self.assertEqual(len(items), 13)
         self.assertEqual(self.git("status", "--porcelain"), before)
         self.assertNotIn("private-value", out)
         self.assertEqual(run_main("admin-plan", "--out", "../outside.md")[0], 2)
@@ -125,6 +125,7 @@ class SetupTest(GithubFixture, TmpRepoCase):
         self.assertEqual(rc, 0, (text, err))
         responses = {r["id"]: r["status"] for r in json.loads(text)["items"]}
         self.assertEqual(responses["gated-keys"], ops_setup.OPTIONAL)
+        self.assertEqual(responses["repo-about"], ops_setup.OPTIONAL)  # WF-DOC-021: SHOULD — không làm rc đỏ
         self.assertEqual(responses["deploy-target"], ops_setup.OK)
         self.assertIn("Không còn việc thiết lập", (self.repo / "setup.md").read_text())
 
