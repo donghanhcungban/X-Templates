@@ -5,8 +5,11 @@
 
   Gói `web-api-ts` triển khai bản dev bằng Docker Compose, ghi receipt và xác nhận digest của bản trước sau khi quay lui.
   `deploy status` đọc sổ, `release-check` đối chiếu receipt với ứng viên và `registry pull` đọc receipt từ dự án đích.
-  T-3843 và T-3844 đã hoàn tất. T-3842 còn phần chạy lệnh triển khai tuỳ biến và bảo vệ sổ receipt khỏi ghi tay.
-  Với production, `rollout-drill` kiểm điều kiện bàn giao cho pipeline của dự án. T-3860 còn mở cho triển khai và quay lui trên đích thật.
+  T-3842, T-3843, T-3844 và T-3860 đã hoàn tất (đã tick ở kế hoạch): `deploy run --env <env>` chạy lệnh triển khai theo khoá
+  `xt.yaml`, ghi receipt và quay lui khi smoke đỏ (`tests/test_deploy_run.py`); `--env prod` chỉ chạy khi có `grant`,
+  `promotion: approved`, HEAD trong nhánh chính của remote và digest đã qua dev (`scripts/xt_deploy.py`
+  `production_authority`, `tests/test_deploy_prod.py`).
+  `rollout-drill` kiểm điều kiện bàn giao production cho pipeline của dự án. Chưa có bằng chứng triển khai và quay lui trên đích thật.
   [Kế hoạch xưởng đầu-cuối](../autopilot/PLAN-factory-e2e.md) · [Lần CI kiểm rollback ở dev](https://github.com/www-donghanhcungban-org/X-Templates/actions/runs/44684821820)
 - **Đặc tả:** Khoá cấu hình, trình tự, schema receipt và các kịch bản nghiệm thu nằm trong
   [SPEC-factory-deploy](../specs/SPEC-factory-deploy.md).

@@ -1,7 +1,7 @@
 ---
 title: Mẫu GO-NO-GO
 kind: template
-updated: 2026-11-17
+updated: 2026-11-21
 ---
 
 # Mẫu GO-NO-GO.md — báo cáo phát hành
@@ -55,7 +55,7 @@ subject: digest <64 hex — chỉ khi khai `release_artifacts`>
 | 17 | SHOULD | Tài liệu khớp code (README, PROJECT, ADR không lỗi thời) | | | review <ngày> | |
 | 18 | BLOCKER | Mọi đề xuất "Khi chạy thật" (dịch vụ thay phần tự host) đã được chủ dự án quyết: chuyển (khoá/tài khoản đã cấu hình qua secret store) hoặc giữ tự host (có người vận hành, backup) | | | `python3 .xtemplates/scripts/xt.py release-check --json` hàng `prod_switch` PASS (N/A liệt kê D-NNN chờ và file); quyết ghi bằng `loop decide-prod --ref D-NNN` (luật: `LOOP-STOP-020`) | |
 | 19 | NICE | Tối ưu mã nguồn: dead code/dependency thừa đã rà | | | knip/depcheck output | |
-| 20 | BLOCKER (M/L) · SHOULD (S) | Người dùng thử luồng chính trên ứng viên, đọc SPEC (ca biên) và `THREAT-MODEL.md` (ADR-0048). Khi người chưa ghi kết quả, `release-sign` ở M/L có thể ghi kết quả mô phỏng theo D-526. | — | real-path | <bản/URL đã thử, ngày> | <tên · ngày — bắt buộc> |
+| 20 | BLOCKER (M/L) · SHOULD (S) | Người dùng thử luồng chính trên ứng viên, đọc SPEC (ca biên) và `THREAT-MODEL.md` (ADR-0048). Khi người chưa ghi kết quả, `release-sign` ở M/L có thể ghi kết quả mô phỏng theo quyết định D-NNN của dự án. | — | real-path | <bản/URL đã thử, ngày> | <tên · ngày — bắt buộc> |
 | 21 | <mức> | <mục đặc thù hồ sơ/ngành> | | | | |
 
 ## 2b. Bằng chứng chưa chứng minh (bắt buộc ghi, kể cả khi GO)
