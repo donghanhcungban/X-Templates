@@ -72,7 +72,9 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
   trình"; tên bước và bình luận của `ci.yml`, mẫu PR, `pr-steward.yml`, gói `web-api-ts` và dòng chú thích `.gitignore`
   không nhắc khung; khối mở đầu mẫu `AGENTS.md` trỏ `.xtemplates/README.md`. `release-tag.yml` đặt tên archive/biên nhận
   theo tên repo (`<repo>-vX.Y.Z.tar.gz`, `.promotion.json`) — repo khung tên `X-Templates` nên tệp phát hành của khung
-  giữ nguyên `X-Templates-vX.Y.Z`, bộ xác minh nâng cấp (`xt_distribution`) không đổi. **Dự án đích:** nâng khung là
+  giữ nguyên `X-Templates-vX.Y.Z`, bộ xác minh nâng cấp (`xt_distribution`) không đổi. **Chủ fork khung:** đổi tên
+  repo thì tên archive lệch tiền tố `X-Templates-` mà `xt_distribution` đòi và `xt.py upgrade` của dự án cài từ fork
+  bị chặn (an toàn); giữ tên repo hoặc đổi tiền tố trong `xt_distribution`. **Dự án đích:** nâng khung là
   nhận `.xtemplates/README.md` mới ngay; workflow, mẫu PR và `AGENTS.md` chưa sửa tay được cập nhật tại chỗ, đã sửa thì
   nhận bản `*.xtemplates-new` để gộp tay; đặt mô tả repo theo hàng `repo-about` của `admin-plan`.
 
