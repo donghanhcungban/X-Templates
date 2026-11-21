@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from nonet import HOOKS, isolate_network
 
 sys.path.insert(0, str(HOOKS))
-import guard  # noqa: E402
+import guard
 
 VERSION = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.+-]*)?")  # F-144: vX.Y.Z kèm hậu tố SemVer
 PFLAG_FALSE = {"0", "f", "F", "false", "FALSE", "False"}  # strconv.ParseBool
