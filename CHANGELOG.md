@@ -6,14 +6,6 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ## [Unreleased]
 
-## [3.35.0] - 2026-11-21
-
-Bản harden sau audit delta 5 lô (0 🔴; mọi lô rút gọn, phần chưa rà ở báo cáo): kênh thông tin dự án phái sinh (ADR-0087) và làn merge `derived`; dự án đích mô tả
-chính dự án trên GitHub (`WF-DOC-021`); `xt.py upgrade` mở PR nâng khung tự động và chạy được trên CI (cần secret
-`XT_STEWARD_TOKEN`); factory có điều kiện duyệt, triển khai và theo dõi bản phát hành; guard chặn thêm đường lách tag phiên
-bản (AUD-SEC-996/997/999; 998 còn 🟢); harness Codex sinh từ `.claude/` (ADR-0082); `merge-check`/`pr next` không còn ra `merge` cho PR fork thường. Dự án đích: nâng khung bằng
-`install.py` (≤ 3.34.x nâng tay một lần). Báo cáo: [`research/2026-11-21-audit-delta-3.35.0.md`](research/2026-11-21-audit-delta-3.35.0.md).
-
 ### Added
 
 - Dự án fork hoặc phát triển từ mã khung tự cập nhật thông tin của chính nó bằng PR chỉ đổi `docs/derived/<owner>--<repo>.json`. `merge-check` kiểm tệp qua API theo head repo của PR và schema 1. PR hợp lệ, CI xanh vào làn `derived`. Chỉ steward merge, không cần review, với subject và thân commit cố định do máy dựng (không lấy tiêu đề, thân hay commit của fork). `xt.py derived check/list` kiểm cục bộ hoặc theo PR. Bản ghi X-Office chuyển sang thư mục này. [ADR-0087](docs/adr/0087-derived-project-info-channel.md), [hướng dẫn](docs/derived/README.md).
