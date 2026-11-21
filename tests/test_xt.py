@@ -1381,9 +1381,9 @@ class ProgressCheckTest(unittest.TestCase):
         self.assertEqual(self.check(GOOD_PROGRESS.format(sha=self.base[:7])), [])
 
     def test_progress_too_big(self):
-        errs = self.check(GOOD_PROGRESS.format(sha=self.base) + "x" * 9000)
+        errs = self.check(GOOD_PROGRESS.format(sha=self.base) + "x" * (xt.PROGRESS_MAX_BYTES + 1000))
         self.assertEqual(len(errs), 1)
-        self.assertIn("> 8192", errs[0])
+        self.assertIn(f"> {xt.PROGRESS_MAX_BYTES}", errs[0])
 
     def test_progress_wrong_sections(self):
         text = GOOD_PROGRESS.format(sha=self.base).replace("## Quyết định", "## Lịch sử")

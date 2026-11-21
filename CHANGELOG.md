@@ -8,6 +8,7 @@ Bản < 3.20.0: [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (T-3651; `changel
 
 ### Added
 
+- Nâng 5× giới hạn kích thước cho các file hướng dẫn nạp đầu phiên (`CAPS`), các nhóm thư mục (`DIR_CAPS`), hệ số mốc xét lại (`MARK_FACTOR = 5` trong `tests/test_docs_budget.py`) và trần `PROGRESS.md` (`PROGRESS_MAX_BYTES = 40960`, đồng bộ `utf8_head 40960` ở `.claude/hooks/session-start.sh`). [ADR-0088](docs/adr/0088-raise-file-and-dir-caps-5x.md).
 - Dự án fork hoặc phát triển từ mã khung tự cập nhật thông tin của chính nó bằng PR chỉ đổi `docs/derived/<owner>--<repo>.json`. `merge-check` kiểm tệp qua API theo head repo của PR và schema 1. PR hợp lệ, CI xanh vào làn `derived`. Chỉ steward merge, không cần review, với subject và thân commit cố định do máy dựng (không lấy tiêu đề, thân hay commit của fork). `xt.py derived check/list` kiểm cục bộ hoặc theo PR. Bản ghi X-Office chuyển sang thư mục này. [ADR-0087](docs/adr/0087-derived-project-info-channel.md), [hướng dẫn](docs/derived/README.md).
 - Công cụ triển khai kiểm lại quyền và SHA của nhánh mặc định ngay trước mỗi lần đổi môi trường. Smoke thất bại sẽ khôi phục artifact trước và đối chiếu bytes đang phục vụ. Thu hồi quyền giữa chừng được ghi vào sổ triển khai.
 - Dự án có thể cấu hình trần duyệt giai đoạn 2/3 và trần ký M/L. Mỗi lần duyệt lưu SHA, tiêu chí đã đăng ký và bằng chứng. Máy ghi rõ lần ký mô phỏng. [Tiêu chí và quyền](docs/specs/SPEC-factory-scale.md).
