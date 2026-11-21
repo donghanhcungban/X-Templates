@@ -49,6 +49,10 @@ jobs:
           target=$(git rev-parse --verify --end-of-options "${INPUT_SHA:-$GITHUB_SHA}^{commit}")
           git merge-base --is-ancestor "$target" "$GITHUB_SHA"
           git merge-base --is-ancestor "$target" HEAD
+          if ! git cat-file -e "$target:VERSION" 2>/dev/null; then
+            echo "::notice::Không có tệp VERSION ở gốc repo: không có ứng viên phát hành."
+            exit 0
+          fi
           v=$(git show "$target:VERSION")
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           git show "$target:CHANGELOG.md" > "$RUNNER_TEMP/CHANGELOG.md"

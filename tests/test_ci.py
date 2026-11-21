@@ -366,6 +366,41 @@ class SupplyChainArtifactsTest(unittest.TestCase):
         for path in ("GO-NO-GO*.md", "docs/GO-NO-GO*.md", "docs/ops/GO-NO-GO*.md"):
             self.assertIn(f'      - "{path}"', verify)  # nháy kép theo biome của gói (tệp cài vào dự án đích)
 
+    def test_release_tag_candidate_without_root_version_is_a_notice(self):
+        """Audit delta 3.35.0: dự án đích không có VERSION ở gốc mà đẩy GO-NO-GO*.md lên main → bước ứng viên đỏ dưới
+        `set -e`. Nay: notice, không ứng viên; có VERSION thì vẫn kiểm chặt như cũ."""
+        script = step_run(ci_jobs((WORKFLOWS / "release-tag.yml").read_text(encoding="utf-8"))["approve"], "candidate")
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        repo = tmp / "repo"
+        repo.mkdir()
+
+        def git(*args: str) -> str:
+            return subprocess.run(
+                ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True, timeout=30
+            ).stdout.strip()
+
+        def candidate(files: Dict[str, str]) -> tuple[subprocess.CompletedProcess, str]:
+            for name, text in files.items():
+                (repo / name).write_text(text, encoding="utf-8")
+            git("add", ".")
+            git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "c")
+            out = tmp / "output"
+            out.write_text("", encoding="utf-8")
+            env = dict(os.environ, GITHUB_SHA=git("rev-parse", "HEAD"), INPUT_SHA="", GITHUB_OUTPUT=str(out))
+            env["RUNNER_TEMP"] = str(tmp)
+            r = subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True, text=True, timeout=30)
+            return r, out.read_text(encoding="utf-8")
+
+        git("init", "-qb", "main")
+        r, out = candidate({"GO-NO-GO.md": "GO\n"})
+        self.assertEqual((r.returncode, out), (0, ""), r.stderr)
+        self.assertIn("::notice::", r.stdout)
+        r, out = candidate({"VERSION": "next\n"})
+        self.assertNotEqual(r.returncode, 0)  # VERSION có mà sai dạng vẫn đỏ
+        r, out = candidate({"VERSION": "1.2.3\n", "CHANGELOG.md": "## [1.2.3] - 2026-11-21\n"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("version=1.2.3\n", out)
+
 
 class MergeGateStubTest(unittest.TestCase):
     """D-122/ADR-0036: `merge-gate.yml` chỉ là stub giữ context required check cũ tới khi chủ repo gỡ khỏi ruleset sống —

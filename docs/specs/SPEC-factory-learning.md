@@ -59,10 +59,12 @@ Giữ đúng ADR-0010: khung **không** cầm token ghi vào repo đích. Mỗi 
 - **Danh sách thu hồi** `docs/ops/WITHDRAWN-VERSIONS.txt` ở nhánh chính của khung (mỗi dòng `X.Y.Z — lý do`, đọc công
   khai): canary đỏ vì lỗi của khung → khung thêm bản đó vào danh sách qua PR; mọi dự án bỏ qua bản bị thu hồi. Cổng canary
   vì vậy là "số ngày + chưa bị thu hồi", không đọc registry (schema registry không có chỗ ghi canary).
-- `xt.py upgrade open-pr`: clone khung ở tag → `install.py .` (kèm `--pack` nếu dự án dùng gói) → `blueprint-status
-  --run` → mở PR "chore(xt): nâng khung X.Y.Z" bằng token của chính repo đích (token bot của nó — checklist `bot-token` —
-  để CI của PR tự chạy), thân liệt kê mục đổi theo CHANGELOG. Đã có PR nâng mở → cập nhật PR đó, không mở thêm. Merge là
-  việc của `pr-steward` ở repo đó.
+- `xt.py upgrade open-pr`: clone khung ở tag → `install.py . --no-git-hooks` (giữ `--pack`, adapter, `--no-harness` của
+  manifest) → commit không hook → mở PR "chore(xt): nâng khung X.Y.Z" bằng token của chính repo đích (token bot của nó —
+  checklist `bot-token` — để CI của PR tự chạy; lệnh `— Kiểm:` của blueprint là việc của CI đó, không chạy trong job có
+  token; chỉ bước đẩy từ repo trần sạch thấy token), thân liệt kê mục đổi theo CHANGELOG. Đã có PR nâng mở → cập nhật PR
+  đó, không mở thêm; bản của PR bị thu hồi mà chưa có bản hợp lệ → đóng PR kèm bình luận. Merge là việc của `pr-steward`
+  ở repo đó.
 - Canary đỏ: PR nâng ở dự án canary có CI đỏ → dự án đó ghi phản hồi `cong-cu` (`xt.py feedback add`) trong chính PR;
   Routine phản hồi (F-162) đưa về khung; khung quyết thu hồi bản đó trong `upgrade_soak_days` ngày — đây là lý do có
   khoảng chờ.

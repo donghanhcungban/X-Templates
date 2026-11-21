@@ -102,7 +102,8 @@ Chỉ số vượt `budget_*` thành task; không có `budget_*` → không ph�
 `xt.py perf field-check --file F` trả 0 khi đạt, 1 khi vượt (in chỉ số và ngưỡng), 2 khi bằng chứng sai.
 Dự án khai `field_export` trong `xt.yaml` cho lệnh đọc dashboard và in JSON tổng hợp. Job tuần
 `xt-field.yml` chỉ chạy trên nhánh mặc định. Cất token đọc (secret `XT_FIELD_READ_TOKEN`) trong GitHub Environment `xt-field-read`,
-giới hạn environment ở nhánh mặc định. Cho phép GitHub Actions mở PR ở repo đích. Bỏ trống lệnh thì bỏ lượt xuất.
+giới hạn environment ở nhánh mặc định. PR mở bằng secret `XT_STEWARD_TOKEN` để CI chạy; thiếu là job đỏ.
+Bỏ trống lệnh thì bỏ lượt xuất.
 Lệnh có thể in schema của `ops-check` khi dự án có receipt và khai `field_env`, `field_max_p95_ms`,
 `field_max_error_pct`. Khi đó bản ghi lưu cả digest phục vụ, số request/lỗi và thời gian quan sát.
 Workflow mở PR cho report đã lọc; sau merge, `loop next-step --prs FILE --json` đọc bản mới nhất trong
