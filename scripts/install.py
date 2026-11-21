@@ -224,12 +224,16 @@ MANIFEST = ".xtemplates/harness.sha256.json"
 MANIFEST_V2 = ".xtemplates/manifest.json"  # REC-09: hash file + rule do khung đặt + chính sách
 
 
-def write_atomic(path: Path, text: str) -> None:
-    """Ghi qua tệp tạm cùng thư mục rồi đổi tên — lỗi giữa chừng không để settings/manifest dở (BASE-DATA-009)."""
+def write_atomic(path: Path, text: str, keep_mode: bool = False) -> None:
+    """Ghi qua tệp tạm cùng thư mục rồi đổi tên — lỗi giữa chừng không để settings/manifest dở (BASE-DATA-009).
+    Đồng bộ với `xt.write_atomic` (AUD-ARCH-001): tạo thư mục cha, `newline=""` và `keep_mode` giữ quyền."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
+        if keep_mode and path.exists():
+            os.chmod(tmp, path.stat().st_mode & 0o7777)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
