@@ -46,6 +46,7 @@ class Core(Protocol):
     state_dir: Callable[..., Path]
     write_atomic: Callable[..., None]
 
+
 OK, MISSING, UNKNOWN, SKIP, OPTIONAL = "đạt", "thiếu", "không đọc được", "không áp dụng", "tuỳ chọn"
 BLOCKS = (MISSING, UNKNOWN)
 NAME = re.compile(r"[A-Z][A-Z0-9_]{0,99}")

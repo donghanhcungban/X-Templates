@@ -124,9 +124,7 @@ def production_authority(core: Core, base: Path, env: str, head: str, ledger: Do
     return remote_authority(core, base, env, head, ledger["envs"], (base / "xt.yaml").read_text(encoding="utf-8"))
 
 
-def remote_authority(
-    core: Core, base: Path, env: str, head: str, envs: Doc, config_text: str
-) -> xt_ops_setup.Origin:
+def remote_authority(core: Core, base: Path, env: str, head: str, envs: Doc, config_text: str) -> xt_ops_setup.Origin:
     origin = xt_ops_setup.Origin(core, base)
     target = xt_ops_setup.target(origin, env)
     if not target["remote_grant"]:
