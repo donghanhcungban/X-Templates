@@ -3253,6 +3253,21 @@ class GitHooksTest(unittest.TestCase):
         with mock.patch.object(install.subprocess, "run", side_effect=OSError("không có git")):
             self.assertIsNone(install.git_common_dir(self.target))
 
+    def test_write_atomic_and_template_body_match_xt(self):
+        """AUD-ARCH-001: write_atomic và template_body ở install.py đồng bộ chữ ký và hành vi với xt.py."""
+        import inspect
+        import xt
+
+        self.assertEqual(inspect.signature(install.write_atomic), inspect.signature(xt.write_atomic))
+        nested = self.target / "sub" / "file.txt"
+        install.write_atomic(nested, "dòng 1\r\ndòng 2\n")
+        self.assertEqual(nested.read_bytes(), "dòng 1\r\ndòng 2\n".encode("utf-8"))
+        install.write_atomic(nested, "dòng 3\n", keep_mode=True)
+        self.assertEqual(nested.read_bytes(), "dòng 3\n".encode("utf-8"))
+        for tmpl in sorted((install.SRC / "framework" / "templates").glob("*.md")):
+            raw = tmpl.read_text(encoding="utf-8")
+            self.assertEqual(install.template_body(raw), xt.template_body(raw), tmpl.name)
+
 
 if __name__ == "__main__":
     unittest.main()
