@@ -465,7 +465,7 @@
 ### D-507 · 2026-11-18T05:57:25+00:00 · Cổng ký lần 8 (7b1ebc84) vẫn tìm 8 🔴/🟠 ở lô fuzz và 3 🔴 + 5 🟠 ở lô hồi quy; mỗi vòng reviewer mở rộng sang họ mới (8 vòng liên tiếp). Đóng vòng thế nào để hội tụ mà không hạ tiêu chí an toàn?
 
 - Phương án: (1) Sửa nhóm lỗi có thể xảy ra do lỡ tay hoặc hồi quy/chặn oan lệnh phổ biến (rm trong .git qua glob/dotglob, mktemp -p/.. sau giá trị tính được, $(date) vào thư mục có sẵn, .git chung của worktree, push src:dst từ $(branch), pull/fetch/rebase với $(branch), [ -eq ] bị coi số học, SQL/manifest bị quét theo từ, bỏ nháy thân stdin, cờ dính -cVAL, vim/ex -c/+cmd, procsub vào công cụ đọc chương trình, ghi đè .git/HEAD bằng cp/tee/sed -i/ln/install); chấp nhận có chủ và hạn 2027-01-21 (cùng mốc xét sandbox D-331/D-332, ADR-0072) cho hai họ dựng lệnh lúc chạy cần nhiều bước hoặc xây chuỗi động: trồng lệnh vào thư mục PATH qua 3 lệnh rồi $(date), argv parallel dựng bằng nối chuỗi/biến/exec{...}; ghi rõ giới hạn ở harness-files.md; cổng ký 9 chấp nhận khi không còn 🔴/🟠 mở ngoài hai họ đã chấp nhận · (2) Tiếp tục sửa mọi ca fuzz mỗi vòng cho tới khi reviewer không tìm thêm (không có điểm dừng định trước) · (3) Dừng harden guard, ký GO với toàn bộ phát hiện chấp nhận
-- Chọn: Sửa nhóm lỗi có thể xảy ra do lỡ tay hoặc hồi quy/chặn oan lệnh phổ biến (rm trong .git qua glob/dotglob, mktemp -p/.. sau giá trị tính được, $(date) vào thư mục có sẵn, .git chung của worktree, push src:dst từ $(branch), pull/fetch/rebase với $(branch), [ -eq ] bị coi số học, SQL/manifest bị quét theo từ, bỏ nháy thân stdin, cờ dính -cVAL, vim/ex -c/+cmd, procsub vào công cụ đọc chương trình, ghi đè .git/HEAD bằng cp/tee/sed -i/ln/install); chấp nhận có chủ và hạn 2027-01-21 (cùng mốc xét sandbox D-331/D-332, ADR-0072) cho hai họ dựng lệnh lúc chạy cần nhiều bước hoặc xây chuỗi động: trồng lệnh vào thư mục PATH qua 3 lệnh rồi $(date), argv parallel dựng bằng nối chuỗi/biến/exec{...}; ghi rõ giới hạn ở harness-files.md; cổng ký 9 chấp nhận khi không còn 🔴/🟠 mở ngoài hai họ đã chấp nhận
+- Chọn: Phương án 1 (sửa nhóm lỗi do lỡ tay/chặn oan; chấp nhận hai họ dựng lệnh lúc chạy, hạn 2027-01-21)
 - Lý do (tiêu chí chất lượng cuối): Đúng và an toàn trước: mọi lỗi có thể do lỡ tay hoặc làm hỏng lệnh lành phổ biến đều được sửa; chỉ hai họ cần chủ ý nhiều bước/dựng chuỗi động (không thể là tai nạn của agent) được chấp nhận, có chủ, có hạn, nêu ở tài liệu, và hàng rào thật là sandbox (ADR-0072) chứ không phải heuristic văn bản. Phương án 2 không có điểm dừng nên không hội tụ (8 vòng); phương án 3 bỏ cả lỗi lỡ tay.
 - Đường lùi: Mở lại AUD-SEC chấp nhận thành mở và sửa ở đợt sau; không đổi mã
 
@@ -629,3 +629,10 @@
 - Chọn: Kiểm khoá ở mọi giai đoạn, trước kiểm cây và trần
 - Lý do (tiêu chí chất lượng cuối): S-507 ghi exit 2, chỉ người; PR đổi thứ tự mà không có quyết định. Siết lại là cách hiểu chặt hơn.
 - Đường lùi: Chỉ kiểm ở giai đoạn 1 và nới assert e2e.
+
+### D-532 · 2026-11-21T05:50:11+00:00 · #707 còn 2 lách có từ trước: vá tiếp hay merge?
+
+- Phương án: (1) Vá vòng 6 · (2) Merge, ghi AUD-HAR-452/453 chấp nhận
+- Chọn: Merge, ghi AUD-HAR-452/453 chấp nhận
+- Lý do (tiêu chí chất lượng cuối): base cũng lọt, cùng họ D-332; #707 nhẹ hơn base = 0; hàng rào thật là ruleset tag v*.
+- Đường lùi: Mở lại hai mục và vá.
